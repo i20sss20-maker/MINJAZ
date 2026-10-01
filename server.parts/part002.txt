@@ -114,10 +114,29 @@ def onboarding_status(user_id,role):
         steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
     done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
 
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '')
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw
+    raw_cookie=str(headers.get('Cookie') or '')
+    if not raw_cookie:return ''
+    try:
+        jar=SimpleCookie();jar.load(raw_cookie);m=jar.get(SESSION_COOKIE_NAME)
+        return str(m.value or '').strip() if m else ''
+    except Exception:
+        return ''
+
+def session_cookie_header(raw,max_age=None):
+    ttl=SESSION_TTL_DAYS*86400 if max_age is None else max(0,int(max_age))
+    value=str(raw or '') if ttl>0 else ''
+    parts=[f'{SESSION_COOKIE_NAME}={value}','Path=/',f'Max-Age={ttl}','HttpOnly','SameSite=Lax']
+    if IS_PROD or _https_url(PUBLIC_BASE_URL):parts.append('Secure')
+    return '; '.join(parts)
+
 def auth(headers):
-    h=headers.get('Authorization','')
-    if not h.startswith('Bearer '): return None
-    raw=h[7:]
+    raw=session_token_from_headers(headers)
+    if not raw:return None
     row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
