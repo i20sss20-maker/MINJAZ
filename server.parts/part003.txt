@@ -1,6 +1,3 @@
-            pr=cur.fetchone()
-            if not pr:
-                c.rollback();return None,None,'payout_not_found'
             current=str(pr.get('status') or '')
             if current in ('paid','rejected','cancelled'):
                 c.rollback();return None,dict(pr),'payout_finalized'
@@ -145,6 +142,30 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def update_privacy_request(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'privacy_request_not_found'
+            current=str(pr.get('status') or '')
+            if current in ('completed','rejected') and status!=current:
+                c.rollback();return None,dict(pr),'privacy_request_finalized'
+            cur.execute("""update privacy_requests
+                           set status=%s,admin_note=%s,
+                               resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
+                           where id=%s returning *""",
+                        (status,str(admin_note or '')[:3000] or None,status,int(pid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
@@ -180,18 +201,3 @@ def onboarding_status(user_id,role):
     else:
         cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
         steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
-    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
-
-def session_token_from_headers(headers):
-    h=str(headers.get('Authorization') or '').strip()
-    if h.startswith('Bearer '):
-        raw=h[7:].strip()
-        if raw:return raw,'bearer'
-    cookie=str(headers.get('Cookie') or '')
-    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
-    return (m.group(1),'cookie') if m else ('','')
-
-def auth(headers):
-    raw,transport=session_token_from_headers(headers)
-    if not raw:return None
-    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
