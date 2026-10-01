@@ -15,10 +15,10 @@ ers where status='delivered'",(), 'one')['n'],'open_disputes':q("select count(*)
                         action=str(b.get('action') or '')
                         if action not in ('resume','cancel'):return self.sendj(400,{'error':'invalid_resolution_action'})
                         if action=='resume':
-                            os=d.get('previous_order_status') or 'in_progress';ts=d.get('previous_task_status') or ('delivered' if os=='delivered' else 'in_progress')
-                            if os in ('disputed','completed','cancelled'):os='in_progress'
+                            prev_order_status=d.get('previous_order_status') or 'in_progress';ts=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
+                            if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
                             if ts in ('disputed','completed','cancelled'):ts='in_progress'
-                            q('update orders set status=%s where id=%s',(os,d['order_id']),None);q('update tasks set status=%s,updated_at=now() where id=%s',(ts,d['task_id']),None)
+                            q('update orders set status=%s where id=%s',(prev_order_status,d['order_id']),None);q('update tasks set status=%s,updated_at=now() where id=%s',(ts,d['task_id']),None)
                         else:
                             q("update orders set status='cancelled' where id=%s",(d['order_id'],),None);q("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],),None)
                         res=q("update order_disputes set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(action,str(b.get('resolution_note') or '')[:3000] or None,u['id'],did),'one');parts=q('select client_id,freelancer_id from orders where id=%s',(d['order_id'],),'one');ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع';notify(parts['client_id'],ttl,str(b.get('resolution_note') or '')[:220],'dispute',d['order_id']);notify(parts['freelancer_id'],ttl,str(b.get('resolution_note') or '')[:220],'dispute',d['order_id']);return self.sendj(200,res)
