@@ -3,6 +3,7 @@ import urllib.request, urllib.error
 from decimal import Decimal
 from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
 from storage import RailwayBucketStorage, StorageError, ALLOWED_TYPES
 import psycopg2
@@ -24,6 +25,7 @@ SOURCE_CONTROL=os.getenv('SOURCE_CONTROL','railway_env')
 VERSION=os.getenv('MINJAZ_VERSION','0.5.5-rc5')
 APP_ENV=os.getenv('APP_ENV','beta').strip().lower()
 SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
+SESSION_COOKIE_NAME=(os.getenv('SESSION_COOKIE_NAME','minjaz_session').strip() or 'minjaz_session')[:80]
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
 LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
@@ -509,10 +511,29 @@ def onboarding_status(user_id,role):
         steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
     done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
 
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '')
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw
+    raw_cookie=str(headers.get('Cookie') or '')
+    if not raw_cookie:return ''
+    try:
+        jar=SimpleCookie();jar.load(raw_cookie);m=jar.get(SESSION_COOKIE_NAME)
+        return str(m.value or '').strip() if m else ''
+    except Exception:
+        return ''
+
+def session_cookie_header(raw,max_age=None):
+    ttl=SESSION_TTL_DAYS*86400 if max_age is None else max(0,int(max_age))
+    value=str(raw or '') if ttl>0 else ''
+    parts=[f'{SESSION_COOKIE_NAME}={value}','Path=/',f'Max-Age={ttl}','HttpOnly','SameSite=Lax']
+    if IS_PROD or _https_url(PUBLIC_BASE_URL):parts.append('Secure')
+    return '; '.join(parts)
+
 def auth(headers):
-    h=headers.get('Authorization','')
-    if not h.startswith('Bearer '): return None
-    raw=h[7:]
+    raw=session_token_from_headers(headers)
+    if not raw:return None
     row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
@@ -746,7 +767,7 @@ class H(BaseHTTPRequestHandler):
         ip=str(self.client_address[0] if self.client_address else '')
         return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
     def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
-    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
+    def _headers(self,status=200,ctype='application/json; charset=utf-8',extra_headers=None):
         self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
         self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
         csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
@@ -755,11 +776,14 @@ class H(BaseHTTPRequestHandler):
         if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
         origin=(self.headers.get('Origin') or '').rstrip('/')
         if origin and origin in CORS_ORIGINS:
-            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
-        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
-    def sendj(self,status,obj):
+            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Access-Control-Allow-Credentials','true'); self.send_header('Vary','Origin')
+        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS')
+        for k,v in (extra_headers or {}).items():
+            if v is not None:self.send_header(str(k),str(v))
+        self.end_headers()
+    def sendj(self,status,obj,extra_headers=None):
         if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
-        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
+        self._headers(status,extra_headers=extra_headers); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
     def raw_body(self):
         if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
         n=int(self.headers.get('Content-Length','0') or 0)
@@ -932,11 +956,13 @@ class H(BaseHTTPRequestHandler):
                 ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
                 log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
                 user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
-                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
+                payload={'user':user,'roles':roles,'session_mode':'cookie'}
+                if not IS_PROD:payload['token']=raw
+                return self.sendj(200,payload,{'Set-Cookie':session_cookie_header(raw)})
             if method=='POST' and p=='/api/v1/auth/logout':
                 u=self.require();
                 if not u:return
-                raw=self.headers.get('Authorization','')[7:]; q('update sessions set revoked_at=now() where token_hash=%s',(sha(raw+SECRET),),None);log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
+                raw=session_token_from_headers(self.headers); q('update sessions set revoked_at=now() where token_hash=%s',(sha(raw+SECRET),),None);log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True},{'Set-Cookie':session_cookie_header('',0)})
             if method=='GET' and p=='/api/v1/me':
                 u=self.require();
                 if not u:return
@@ -1029,7 +1055,8 @@ class H(BaseHTTPRequestHandler):
                 sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
                 if not row:return self.sendj(404,{'error':'session_not_found'})
                 log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
-                return self.sendj(200,{'ok':True,'current_revoked':sid==int(u.get('session_id') or 0)})
+                current=sid==int(u.get('session_id') or 0)
+                return self.sendj(200,{'ok':True,'current_revoked':current},{'Set-Cookie':session_cookie_header('',0)} if current else None)
             if method=='GET' and p=='/api/v1/me/roles':
                 u=self.require();
                 if not u:return
