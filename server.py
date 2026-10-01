@@ -1759,14 +1759,32 @@ class H(BaseHTTPRequestHandler):
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
                     if o.get('payment_status')=='paid':return self.sendj(200,{'ok':True,'already_paid':True})
                     if o.get('status')!='awaiting_payment':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    active_cancel=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
+                    if active_cancel:return self.sendj(409,{'error':'active_cancellation_exists','id':active_cancel['id']})
                     if PAYMENT_MODE=='mock':
                         if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
-                        q("update orders set payment_status='paid',status='in_progress' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
+                        paid=q("""update orders set payment_status='paid',status='in_progress'
+                                  where id=%s and payment_status='unpaid' and status='awaiting_payment'
+                                    and not exists(select 1 from order_cancellation_requests cr where cr.order_id=orders.id and cr.status in ('pending','in_review'))
+                                  returning task_id,freelancer_id""",(oid,),'one')
+                        if not paid:
+                            active_cancel=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
+                            if active_cancel:return self.sendj(409,{'error':'active_cancellation_exists','id':active_cancel['id']})
+                            latest=q('select status,payment_status from orders where id=%s',(oid,),'one') or {}
+                            if latest.get('payment_status')=='paid':return self.sendj(200,{'ok':True,'already_paid':True})
+                            return self.sendj(409,{'error':'invalid_order_state','state':latest.get('status')})
+                        q("update tasks set status='in_progress',updated_at=now() where id=%s",(paid['task_id'],),None);log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(paid['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
                     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
                     if o.get('payment_checkout_url') and o.get('provider_payment_id'):
                         return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':o['payment_checkout_url'],'provider_payment_id':o['provider_payment_id'],'reused':True})
-                    claim=q("update orders set payment_checkout_started_at=now() where id=%s and payment_status='unpaid' and status='awaiting_payment' and (payment_checkout_started_at is null or payment_checkout_started_at<now()-interval '2 minutes') returning id",(oid,),'one')
+                    claim=q("""update orders set payment_checkout_started_at=now()
+                               where id=%s and payment_status='unpaid' and status='awaiting_payment'
+                                 and (payment_checkout_started_at is null or payment_checkout_started_at<now()-interval '2 minutes')
+                                 and not exists(select 1 from order_cancellation_requests cr where cr.order_id=orders.id and cr.status in ('pending','in_review'))
+                               returning id""",(oid,),'one')
                     if not claim:
+                        active_cancel=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
+                        if active_cancel:return self.sendj(409,{'error':'active_cancellation_exists','id':active_cancel['id']})
                         latest=q('select payment_checkout_url,provider_payment_id from orders where id=%s',(oid,),'one') or {}
                         if latest.get('payment_checkout_url') and latest.get('provider_payment_id'):return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':latest['payment_checkout_url'],'provider_payment_id':latest['provider_payment_id'],'reused':True})
                         return self.sendj(409,{'error':'payment_initialization_in_progress','retry_after_seconds':120})
@@ -1781,25 +1799,34 @@ class H(BaseHTTPRequestHandler):
                     q("update orders set provider_payment_id=%s,payment_checkout_url=%s,payment_checkout_started_at=null where id=%s and payment_status='unpaid'",(provider_id,checkout,oid),None);log_order_event(oid,'payment_checkout','تم إنشاء رابط الدفع',u['id'],meta={'mode':'adapter'});return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':checkout,'provider_payment_id':provider_id})
                 if action=='deliver':
                     if u['role']!='freelancer' or int(o['freelancer_id'])!=int(u['id']):return self.sendj(403,{'error':'freelancer_only'})
-                    if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
                     b=self.body(); note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    d=q('insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *',(oid,u['id'],note[:5000]),'one'); insert_attachments(u['id'],b.get('attachments'),order_id=oid,delivery_id=d['id']); q("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(oid,),None); q("update orders set status='delivered' where id=%s",(oid,),None);q("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid);return self.sendj(201,{'ok':True,'delivery':d})
+                    d,ctx,err=transition_order_delivery(oid,u['id'],note)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='active_cancellation_exists':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err,'state':ctx.get('status') if ctx else None})
+                    insert_attachments(u['id'],b.get('attachments'),order_id=oid,delivery_id=d['id'])
+                    notify(ctx['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid)
+                    return self.sendj(201,{'ok':True,'delivery':d})
                 if action=='revision':
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
                     b=self.body(); note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    lim=q('select coalesce(p.revisions,0)::int allowed,(select count(*)::int from order_revision_requests rr where rr.order_id=o.id) used from orders o left join proposals p on p.id=o.proposal_id where o.id=%s',(oid,),'one')
-                    allowed=int(lim.get('allowed') or 0); used=int(lim.get('used') or 0)
-                    if used>=allowed:return self.sendj(409,{'error':'revision_limit_reached','allowed':allowed,'used':used})
-                    rr=q("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(oid,u['id'],used+1,note[:3000]),'one')
-                    q("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(oid,u['id'],('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+note)[:4000]),None)
-                    q("update orders set status='revision_requested' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid);return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(allowed-(used+1),0)})
+                    rr,ctx,meta,err=transition_order_revision(oid,u['id'],note)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='revision_limit_reached':return self.sendj(409,{'error':err,'allowed':meta['allowed'],'used':meta['used']})
+                    if err=='active_cancellation_exists':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err,'state':ctx.get('status') if ctx else None})
+                    notify(ctx['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
+                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':meta['remaining']})
                 if action=='complete':
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('payment_status')!='paid' or o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    q("update orders set status='completed',completed_at=now() where id=%s",(oid,),None);q("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],),None);refresh_freelancer(o['freelancer_id']);notify(o['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid);return self.sendj(200,{'ok':True})
+                    ctx,err=transition_order_complete(oid,u['id'])
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='active_cancellation_exists':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err,'state':ctx.get('status') if ctx else None})
+                    refresh_freelancer(ctx['freelancer_id']);notify(ctx['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid)
+                    return self.sendj(200,{'ok':True})
                 if action=='review':
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
                     if o.get('status')!='completed':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
@@ -1816,14 +1843,15 @@ class H(BaseHTTPRequestHandler):
                 if method=='GET':
                     return self.sendj(200,{'item':q('select d.*,us.name opened_by_name from order_disputes d join users us on us.id=d.opened_by where d.order_id=%s order by d.created_at desc limit 1',(oid,),'one')})
                 if method=='POST':
-                    if o.get('status') in ('completed','cancelled'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    active=q("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(oid,),'one')
-                    if active:return self.sendj(409,{'error':'active_dispute_exists','id':active['id']})
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    d=q("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status')),'one')
-                    q("update orders set status='disputed' where id=%s",(oid,),None);q("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],),None)
-                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
+                    d,ctx,conflict,err=open_order_dispute(oid,u['id'],reason,details)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='active_dispute_exists':return self.sendj(409,{'error':err,'id':conflict['id']})
+                    if err=='active_cancellation_exists':return self.sendj(409,{'error':err,'id':conflict['id']})
+                    if err:return self.sendj(409,{'error':err,'state':ctx.get('status') if ctx else None})
+                    other=ctx['freelancer_id'] if int(u['id'])==int(ctx['client_id']) else ctx['client_id']
+                    notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
                     return self.sendj(201,d)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
             if m:
@@ -1835,14 +1863,15 @@ class H(BaseHTTPRequestHandler):
                 if method=='GET':
                     return self.sendj(200,{'item':q('select cr.*,us.name requested_by_name from order_cancellation_requests cr join users us on us.id=cr.requested_by where cr.order_id=%s order by cr.created_at desc limit 1',(oid,),'one')})
                 if method=='POST':
-                    if o.get('status') in ('completed','cancelled','disputed'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    active=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
-                    if active:return self.sendj(409,{'error':'active_cancellation_exists','id':active['id']})
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
-                    cr=q("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund),'one')
-                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{o.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
+                    cr,ctx,conflict,err=create_order_cancellation(oid,u['id'],reason,details)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='active_cancellation_exists':return self.sendj(409,{'error':err,'id':conflict['id']})
+                    if err=='active_dispute_exists':return self.sendj(409,{'error':err,'id':conflict['id']})
+                    if err:return self.sendj(409,{'error':err,'state':ctx.get('status') if ctx else None})
+                    other=ctx['freelancer_id'] if int(u['id'])==int(ctx['client_id']) else ctx['client_id']
+                    notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{ctx.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
                     return self.sendj(201,cr)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
             if m and method=='GET':
