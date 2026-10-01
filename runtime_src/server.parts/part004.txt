@@ -1,0 +1,123 @@
+action_restricted(a,b):
+    try:
+        a=int(a);b=int(b)
+    except Exception:
+        return True
+    if a==b:return False
+    return bool(q("""select 1 where
+        exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+        or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+        limit 1""",(a,b,b,a,a,b),'one'))
+
+def task_hidden(task_id):
+    try:return bool(q('select 1 from task_moderation where task_id=%s and hidden=true',(int(task_id),),'one'))
+    except Exception:return False
+
+class H(BaseHTTPRequestHandler):
+    server_version=f'MINJAZ/{VERSION}'
+    def request_id(self):
+        if not hasattr(self,'_request_id'):
+            incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
+            self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
+        return self._request_id
+    def client_key(self):
+        ip=str(self.client_address[0] if self.client_address else '')
+        return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
+    def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
+    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
+        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
+        self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
+        csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        if IS_PROD: csp+='; upgrade-insecure-requests'
+        self.send_header('Content-Security-Policy',csp)
+        if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
+        origin=(self.headers.get('Origin') or '').rstrip('/')
+        if origin and origin in CORS_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
+        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
+    def sendj(self,status,obj):
+        if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
+        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
+    def raw_body(self):
+        if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
+        n=int(self.headers.get('Content-Length','0') or 0)
+        if n>2_000_000: raise ValueError('too_large')
+        self._raw_body_cache=self.rfile.read(n) if n else b''
+        return self._raw_body_cache
+    def body(self):
+        raw=self.raw_body()
+        try:
+            return json.loads(raw or b'{}')
+        except json.JSONDecodeError as exc:
+            raise ValueError('invalid_json') from exc
+    def require(self,role=None):
+        u=auth(self.headers)
+        if not u: self.sendj(401,{'error':'unauthorized'}); return None
+        if role and u.get('role')!=role: self.sendj(403,{'error':role+'_only'}); return None
+        return u
+    def do_OPTIONS(self): self._headers(204)
+    def do_GET(self): self.route('GET')
+    def do_POST(self): self.route('POST')
+    def do_PATCH(self): self.route('PATCH')
+    def do_DELETE(self): self.route('DELETE')
+    def route(self,method):
+        try:
+            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p=='/health':
+                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'environment':APP_ENV,'now':now,'version':VERSION})
+            if method=='GET' and p=='/readiness':
+                checks=[
+                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
+                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
+                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
+                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
+                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
+                    {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
+                    {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
+                    {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
+                    {'key':'public_base_url','ok':_https_url(PUBLIC_BASE_URL),'value':PUBLIC_BASE_URL or 'missing','required':True},
+                    {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
+                    {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
+                    {'key':'operational_telemetry','ok':True,'value':'operational_events enabled','required':False},
+                    {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
+                ]
+                commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
+                status=503 if IS_PROD and not commercial else 200
+                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION})
+            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
+                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
+                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
+                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
+                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
+                try:b=json.loads(raw or b'{}')
+                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
+                try:result=apply_kyc_adapter_event(b)
+                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
+                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
+                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
+                return self.sendj(200,{'ok':True})
+            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
+                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
+                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
+                expected=hmac.new(PAYMENT_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
+                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
+                try:b=json.loads(raw or b'{}')
+                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
+                try:result=apply_payment_adapter_event(b)
+                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
+                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
+                o=result['order']; event_id=result['event_id']
+                if result['event_type']=='payment.succeeded' and result.get('workflow_started'):
+                    log_order_event(o['id'],'payment','تم تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',o['id'])
+                elif result['event_type']=='payment.succeeded' and result.get('late_cancelled_payment'):
+                    log_order_event(o['id'],'late_payment','وصل تأكيد دفع بعد إلغاء الطلب؛ يلزم استرداد/مراجعة مالية',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'وصل دفع بعد إلغاء الطلب','سجلنا العملية للمراجعة والاسترداد بدون إعادة فتح التنفيذ','payment',o['id']);notify_admins('دفع متأخر بعد إلغاء طلب',f"الطلب #{o['id']} يحتاج مراجعة واسترداد",'payment',o['id'])
+                elif result['event_type']=='payment.succeeded' and result.get('changed'):
+                    log_order_event(o['id'],'payment_reconciliation','تم تسجيل دفع في حالة طلب غير متوقعة للمراجعة',None,meta={'mode':'adapter','event_id':event_id});notify_admins('دفع يحتاج مطابقة يدوية',f"الطلب #{o['id']} كان في حالة {o.get('status')}",'payment',o['id'])
+                if result['event_type']=='payment.failed' and result.get('failed_effective'):
+                    log_order_event(o['id'],'payment_failed','تعذر تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'تعذر تأكيد الدفع','يمكنك إعادة المحاولة من رابط الدفع أو التواصل مع الدعم','payment',o['id'])
+                return self.sendj(200,{'ok':True})
+            if method=='GET' and p=='/api/v1/legal/documents':
+                return self.sendj(200,{'documents':[
+                    {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':'draft_pending_legal_review','sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
+                    {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':'draft_pending_legal_review','sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
+                    {'key':'marketplace_rules','title':'ق
