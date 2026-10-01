@@ -1,3 +1,9 @@
+                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
+            m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
+            if m and method=='DELETE':
+                u=self.require('freelancer');
+                if not u:return
+                q('delete from saved_task_searches where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
             if p=='/api/v1/tasks' and method=='GET':
                 u=self.require();
                 if not u:return
@@ -128,10 +134,3 @@
                 u=self.require('freelancer');
                 if not u:return
                 if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})
-                b=self.body()
-                try: price=money_decimal(b.get('price') or 0)
-                except Exception:return self.sendj(400,{'error':'invalid_price'})
-                if price<=0:return self.sendj(400,{'error':'invalid_price'})
-                if price>Decimal('1000000'):return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
-                try: delivery_hours=int(b.get('delivery_hours') or 24); revisions=int(b.get('revisions') if b.get('revisions') not in (None,'') else 1)
-                except Exception:return self.sendj(400,{'error':'invalid_proposal_terms'})
