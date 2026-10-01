@@ -1,6 +1,6 @@
 import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
 import urllib.request, urllib.error
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -12,6 +12,8 @@ PORT=int(os.getenv('PORT','3000'))
 SECRET=os.getenv('AUTH_SECRET','dev-secret-change-me')
 DEV_OTP=os.getenv('DEV_OTP','1234')
 FEE=Decimal(os.getenv('PLATFORM_FEE_PERCENT','15'))
+MONEY_QUANT=Decimal('0.01')
+if not FEE.is_finite() or FEE<0 or FEE>100: raise RuntimeError('PLATFORM_FEE_PERCENT must be between 0 and 100')
 ADMIN_PHONE=os.getenv('ADMIN_PHONE','').strip()
 PAYMENT_MODE=os.getenv('PAYMENT_MODE','mock')
 DB_PERSISTENCE=os.getenv('DB_PERSISTENCE','volume_missing')
@@ -98,6 +100,11 @@ def normalize_phone(value):
     if digits.startswith('5') and len(digits)==9: return '+966'+digits
     if raw.startswith('+') and len(digits)>=9: return '+'+digits
     return ''
+def money_decimal(value):
+    d=Decimal(str(value))
+    if not d.is_finite(): raise ValueError('invalid_money')
+    return d.quantize(MONEY_QUANT,rounding=ROUND_HALF_UP)
+
 def as_json(v):
     if isinstance(v, Decimal): return float(v)
     if isinstance(v, (datetime,date)): return v.isoformat()
@@ -164,7 +171,7 @@ def apply_payment_adapter_event(b):
             amount=b.get('amount')
             if amount is not None:
                 try:
-                    if Decimal(str(amount)).quantize(Decimal('0.01'))!=Decimal(str(o['amount'])).quantize(Decimal('0.01')): raise AdapterEventError(409,'amount_mismatch')
+                    if money_decimal(amount)!=money_decimal(o['amount']): raise AdapterEventError(409,'amount_mismatch')
                 except AdapterEventError: raise
                 except Exception: raise AdapterEventError(400,'invalid_amount')
             if not ev:

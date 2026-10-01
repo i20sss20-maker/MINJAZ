@@ -3,10 +3,10 @@
                 if not u:return
                 if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})
                 b=self.body()
-                try: price=float(b.get('price') or 0)
+                try: price=money_decimal(b.get('price') or 0)
                 except Exception:return self.sendj(400,{'error':'invalid_price'})
                 if price<=0:return self.sendj(400,{'error':'invalid_price'})
-                if price>1_000_000:return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
+                if price>Decimal('1000000'):return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
                 try: delivery_hours=int(b.get('delivery_hours') or 24); revisions=int(b.get('revisions') if b.get('revisions') not in (None,'') else 1)
                 except Exception:return self.sendj(400,{'error':'invalid_proposal_terms'})
                 if delivery_hours<1 or delivery_hours>8760:return self.sendj(400,{'error':'invalid_delivery_hours','minimum':1,'maximum':8760})
@@ -37,7 +37,7 @@
                 if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
                 ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
                 if ex:return self.sendj(409,{'error':'order_exists'})
-                fee=round(float(x['price'])*float(FEE)/100,2); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+                fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100')); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
             if p=='/api/v1/orders' and method=='GET':
                 u=self.require();
                 if not u:return
