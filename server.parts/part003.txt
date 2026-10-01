@@ -1,3 +1,38 @@
+        return None,'invalid_amount',None
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id from users where id=%s for update',(fid,))
+            if not cur.fetchone():
+                c.rollback();return None,'user_not_found',None
+            cur.execute('select kyc_status from freelancer_profiles where user_id=%s',(fid,))
+            fp=cur.fetchone()
+            if not fp or fp.get('kyc_status')!='approved':
+                c.rollback();return None,'kyc_required',None
+            cur.execute("""select coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned from orders where freelancer_id=%s""",(fid,))
+            net=Decimal(str(cur.fetchone()['net_earned'] or 0))
+            cur.execute("""select coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts from payout_requests where freelancer_id=%s""",(fid,))
+            pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0));available=max(Decimal('0'),net-paid-pending)
+            if amount>available:
+                c.rollback();return None,'insufficient_balance',available
+            cur.execute("insert into payout_requests(freelancer_id,amount,note,status) values(%s,%s,%s,'pending') returning *",(fid,amount,str(note or '')[:500] or None))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},None,max(Decimal('0'),available-amount)
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def update_payout_status(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'payout_not_found'
             current=str(pr.get('status') or '')
             if current in ('paid','rejected','cancelled'):
                 c.rollback();return None,dict(pr),'payout_finalized'
@@ -184,20 +219,3 @@ def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
 
 def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
     try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
-    except Exception as e:print('ADMIN_AUDIT_ERR',repr(e),flush=True)
-
-def legal_versions(): return {'terms':LEGAL_TERMS_VERSION,'privacy':LEGAL_PRIVACY_VERSION,'marketplace_rules':LEGAL_MARKETPLACE_VERSION}
-
-def legal_status(user_id):
-    accepted={(x['document'],x['version']) for x in q('select document,version from legal_acceptances where user_id=%s',(user_id,))}
-    docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
-    return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
-
-def onboarding_status(user_id,role):
-    legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
-    if role=='freelancer':
-        fp=q('select bio,skills,is_available from freelancer_profiles where user_id=%s',(user_id,),'one') or {}; portfolio=q('select count(*)::int n from freelancer_portfolio where freelancer_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إضافة نبذة مهنية','done':bool(str(fp.get('bio') or '').strip()),'required':True},{'key':'skills','label':'إضافة 3 مهارات على الأقل','done':len(fp.get('skills') or [])>=3,'required':True},{'key':'availability','label':'تحديد حالة التوفر','done':bool(fp.get('is_available')),'required':False},{'key':'portfolio','label':'إضافة نموذج عمل','done':int(portfolio.get('n') or 0)>0,'required':False}]
-    else:
-        cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
