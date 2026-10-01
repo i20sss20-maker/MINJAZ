@@ -230,6 +230,30 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def update_privacy_request(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'privacy_request_not_found'
+            current=str(pr.get('status') or '')
+            if current in ('completed','rejected') and status!=current:
+                c.rollback();return None,dict(pr),'privacy_request_finalized'
+            cur.execute("""update privacy_requests
+                           set status=%s,admin_note=%s,
+                               resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
+                           where id=%s returning *""",
+                        (status,str(admin_note or '')[:3000] or None,status,int(pid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
