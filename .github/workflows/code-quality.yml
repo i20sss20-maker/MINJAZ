@@ -54,6 +54,21 @@ jobs:
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
           PY
 
+      - name: Parse inline frontend JavaScript
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          html = Path("public/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script(?:\\s[^>]*)?>(.*?)</script>", html, flags=re.I | re.S)
+          if not scripts:
+              raise SystemExit("no inline scripts found")
+          Path("/tmp/minjaz-inline.js").write_text("\n;\n".join(scripts), encoding="utf-8")
+          print("INLINE_SCRIPTS", len(scripts))
+          PY
+          node --check /tmp/minjaz-inline.js
+
       - name: Compile E2E test suites
         run: |
           set -euo pipefail
