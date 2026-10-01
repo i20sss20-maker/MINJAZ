@@ -358,16 +358,25 @@ def create_order_atomic(proposal_id,client_id):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
+            cur.execute("""select p.task_id,t.client_id
                            from proposals p join tasks t on t.id=p.task_id
-                           where p.id=%s for update of p,t""",(int(proposal_id),))
-            x=cur.fetchone()
-            if not x or int(x['client_id'])!=int(client_id):
+                           where p.id=%s""",(int(proposal_id),))
+            seed=cur.fetchone()
+            if not seed or int(seed['client_id'])!=int(client_id):
                 c.rollback();return None,None,'proposal_not_found'
-            if x.get('status')!='sent' or x.get('task_status')!='open':
-                cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(seed['task_id'],))
+            task=cur.fetchone()
+            if not task or int(task['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+            x=cur.fetchone()
+            if not x:
+                c.rollback();return None,None,'proposal_not_found'
+            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
+            if x.get('status')!='sent' or task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s',(task['id'],))
                 exists=cur.fetchone()
-                c.rollback();return None,dict(x),'order_exists' if exists else 'proposal_not_available'
+                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
             cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
             hidden=cur.fetchone()
             cur.execute("""select 1 where
