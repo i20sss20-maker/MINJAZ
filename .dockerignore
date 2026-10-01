@@ -1,4 +1,11 @@
 minjaz_rc5_runtime.tgz
+payload.part*
+source.sha256
+runtime_loader.py
+server.parts/
+public/index.parts/
+public/.index-build-a
+public/.index-build-b
 runtime_chunks/
 *.pyc
 __pycache__/
