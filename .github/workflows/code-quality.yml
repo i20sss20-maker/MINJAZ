@@ -24,7 +24,10 @@ jobs:
           set -euo pipefail
           test "$(wc -c < server.py)" -gt 160000
           test "$(wc -c < public/index.html)" -gt 290000
-          test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 11
+          migration_count="$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)"
+          test "$migration_count" -ge 1
+          test "$(find database/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | cut -d_ -f1 | sort | uniq -d | wc -l)" -eq 0
+          echo "MIGRATIONS_OK count=$migration_count"
           grep -q "ThreadingHTTPServer" server.py
           grep -q "/health" server.py
           grep -q "/readiness" server.py
@@ -32,6 +35,24 @@ jobs:
           grep -q "privacy_request_finalized" server.py
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
+          ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
+
+      - name: Verify auth and demo safety invariants
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          server = Path("server.py").read_text(encoding="utf-8")
+          ui = Path("public/index.html").read_text(encoding="utf-8")
+          assert "'code_length':len(code)" in server
+          assert "code=f'{secrets.randbelow(1000000):06d}'" in server
+          assert "code.length!==4" not in ui
+          assert "renderOtpInputs" in ui and "otpLength" in ui
+          assert 'id="devOtpHint"' in ui
+          assert "demoHostAllowed" in ui
+          assert "new URLSearchParams(location.search).get('demo')==='1'||" not in ui
+          print("MINJAZ_AUTH_UI_INVARIANTS_OK")
+          PY
 
       - name: Compile E2E test suites
         run: |
