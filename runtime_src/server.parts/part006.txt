@@ -1,0 +1,120 @@
+m where m.order_id=any(%s) order by m.created_at limit 3000',(order_ids,))
+                data={
+                    'account':q('select id,phone,name,role,is_verified,created_at from users where id=%s',(uid,),'one'),
+                    'roles':enabled_roles(uid),
+                    'client_profile':q('select * from client_profiles where user_id=%s',(uid,),'one'),
+                    'freelancer_profile':q('select * from freelancer_profiles where user_id=%s',(uid,),'one'),
+                    'tasks':q('select * from tasks where client_id=%s order by created_at desc limit 1000',(uid,)),
+                    'proposals':q('select * from proposals where freelancer_id=%s order by created_at desc limit 1000',(uid,)),
+                    'orders':q('select * from orders where client_id=%s or freelancer_id=%s order by created_at desc limit 1000',(uid,uid)),
+                    'messages':messages,
+                    'reviews':q('select * from reviews where reviewer_id=%s or reviewee_id=%s order by created_at desc limit 1000',(uid,uid)),
+                    'support_tickets':q('select * from support_tickets where user_id=%s order by created_at desc limit 500',(uid,)),
+                    'privacy_requests':q('select * from privacy_requests where user_id=%s order by created_at desc limit 500',(uid,)),
+                    'activity':q('select event_type,label,meta,created_at from account_activity where user_id=%s order by created_at desc limit 500',(uid,)),
+                    'legal_acceptances':q('select document,version,accepted_at from legal_acceptances where user_id=%s order by accepted_at desc',(uid,))
+                }
+                log_account_activity(uid,'privacy_export','تم إنشاء تصدير بيانات الحساب',u.get('session_id'))
+                return self.sendj(200,{'generated_at':datetime.now().astimezone().isoformat(),'version':VERSION,'data':data})
+            if p=='/api/v1/account/preferences':
+                u=self.require();
+                if not u:return
+                if method=='GET':
+                    pref=q("select opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at from user_preferences where user_id=%s",(u['id'],),'one')
+                    if not pref:pref=q("insert into user_preferences(user_id) values(%s) returning opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at",(u['id'],),'one')
+                    return self.sendj(200,pref)
+                if method=='PATCH':
+                    b=self.body();cur=q("select * from user_preferences where user_id=%s",(u['id'],),'one') or {}; ks=('opportunity_alerts','product_updates','marketing','onboarding_dismissed'); vals={k:bool(b[k]) if k in b else bool(cur.get(k,False)) for k in ks}
+                    r=q("insert into user_preferences(user_id,opportunity_alerts,product_updates,marketing,onboarding_dismissed) values(%s,%s,%s,%s,%s) on conflict(user_id) do update set opportunity_alerts=excluded.opportunity_alerts,product_updates=excluded.product_updates,marketing=excluded.marketing,onboarding_dismissed=excluded.onboarding_dismissed,updated_at=now() returning opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at",(u['id'],vals['opportunity_alerts'],vals['product_updates'],vals['marketing'],vals['onboarding_dismissed']),'one');log_account_activity(u['id'],'preferences_updated','تم تحديث إعدادات الحساب',u.get('session_id'));return self.sendj(200,r)
+            if p=='/api/v1/account/activity' and method=='GET':
+                u=self.require();
+                if not u:return
+                return self.sendj(200,{'items':q("select id,event_type,label,meta,created_at from account_activity where user_id=%s order by created_at desc limit 60",(u['id'],))})
+            if p=='/api/v1/onboarding' and method=='GET':
+                u=self.require();
+                if not u:return
+                return self.sendj(200,onboarding_status(u['id'],u['role']))
+            if p=='/api/v1/onboarding/dismiss' and method=='POST':
+                u=self.require();
+                if not u:return
+                q("insert into user_preferences(user_id,onboarding_dismissed) values(%s,true) on conflict(user_id) do update set onboarding_dismissed=true,updated_at=now()",(u['id'],),None);return self.sendj(200,{'ok':True})
+            if p=='/api/v1/legal/status' and method=='GET':
+                u=self.require();
+                if not u:return
+                return self.sendj(200,legal_status(u['id']))
+            if p=='/api/v1/legal/accept' and method=='POST':
+                u=self.require();
+                if not u:return
+                b=self.body();docs=b.get('documents') if isinstance(b.get('documents'),list) else [];valid=legal_versions();accepted=[]
+                for doc in docs:
+                    if doc in valid:q("insert into legal_acceptances(user_id,document,version) values(%s,%s,%s) on conflict do nothing",(u['id'],doc,valid[doc]),None);accepted.append(doc)
+                if accepted:log_account_activity(u['id'],'legal_acceptance','تمت الموافقة على المستندات القانونية الحالية',u.get('session_id'),{'documents':accepted})
+                return self.sendj(200,legal_status(u['id']))
+            if p=='/api/v1/account/sessions' and method=='GET':
+                u=self.require();
+                if not u:return
+                items=q("select id,device_label,created_at,last_seen_at,expires_at from sessions where user_id=%s and revoked_at is null and expires_at>now() order by coalesce(last_seen_at,created_at) desc",(u['id'],))
+                for x in items:x['current']=int(x['id'])==int(u.get('session_id') or 0)
+                return self.sendj(200,{'items':items,'session_ttl_days':SESSION_TTL_DAYS})
+            if p=='/api/v1/account/sessions/revoke-others' and method=='POST':
+                u=self.require();
+                if not u:return
+                q('update sessions set revoked_at=now() where user_id=%s and id<>%s and revoked_at is null',(u['id'],u['session_id']),None)
+                log_account_activity(u['id'],'sessions_revoked','تم تسجيل خروج الأجهزة الأخرى',u.get('session_id'))
+                return self.sendj(200,{'ok':True})
+            m=re.fullmatch(r'/api/v1/account/sessions/(\d+)',p)
+            if m and method=='DELETE':
+                u=self.require();
+                if not u:return
+                sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
+                if not row:return self.sendj(404,{'error':'session_not_found'})
+                log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
+                return self.sendj(200,{'ok':True,'current_revoked':sid==int(u.get('session_id') or 0)})
+            if method=='GET' and p=='/api/v1/me/roles':
+                u=self.require();
+                if not u:return
+                roles=enabled_roles(u['id'])
+                return self.sendj(200,{'active_role':u['role'],'roles':roles})
+            if method=='PATCH' and p=='/api/v1/me/active-role':
+                u=self.require();
+                if not u:return
+                if u['role']=='admin':return self.sendj(403,{'error':'admin_role_locked'})
+                b=self.body(); role=str(b.get('role') or '')
+                if role not in ('client','freelancer'):return self.sendj(400,{'error':'invalid_role'})
+                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
+                if role=='freelancer':q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
+                q('update users set role=%s where id=%s',(role,u['id']),None)
+                log_account_activity(u['id'],'role_switched','تم تغيير الدور النشط',u.get('session_id'),{'role':role})
+                user=q('select id,phone,name,role,is_verified from users where id=%s',(u['id'],),'one'); roles=enabled_roles(u['id']); user['roles']=roles
+                return self.sendj(200,{'user':user,'roles':roles,'active_role':role})
+            if method=='POST' and p=='/api/v1/freelancer/kyc/start':
+                u=self.require('freelancer');
+                if not u:return
+                if KYC_MODE!='adapter' or not _https_url(KYC_START_URL):return self.sendj(503,{'error':'kyc_provider_not_configured'})
+                fp=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one')
+                if not fp:return self.sendj(404,{'error':'freelancer_profile_not_found'})
+                if fp.get('kyc_status')=='approved':return self.sendj(200,{'ok':True,'already_verified':True})
+                if fp.get('kyc_status')=='pending' and fp.get('kyc_verification_url') and fp.get('kyc_provider_reference'):
+                    return self.sendj(200,{'ok':True,'verification_url':fp['kyc_verification_url'],'provider_reference':fp['kyc_provider_reference'],'reused':True})
+                claim=q("update freelancer_profiles set kyc_started_at=now() where user_id=%s and kyc_status<>'approved' and (kyc_started_at is null or kyc_started_at<now()-interval '2 minutes') returning user_id",(u['id'],),'one')
+                if not claim:return self.sendj(409,{'error':'kyc_initialization_in_progress','retry_after_seconds':120})
+                payload={'user_id':u['id'],'phone':u.get('phone'),'name':u.get('name'),'return_url':(PUBLIC_BASE_URL+'/#account') if PUBLIC_BASE_URL else None,'webhook_contract':'minjaz-kyc-v1','webhook_url':(PUBLIC_BASE_URL+'/api/v1/integrations/kyc/webhook') if PUBLIC_BASE_URL else None}
+                try:resp=adapter_post_json(KYC_START_URL,payload,KYC_ADAPTER_BEARER)
+                except Exception as exc:
+                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);operational_event('error','kyc','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'user',u.get('id'));print('KYC_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'kyc_provider_unavailable'})
+                verification_url=str(resp.get('verification_url') or '').strip(); provider_ref=str(resp.get('provider_reference') or '').strip()[:180]
+                if not _https_url(verification_url) or not provider_ref:
+                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);return self.sendj(502,{'error':'invalid_kyc_provider_response'})
+                q("update freelancer_profiles set kyc_status='pending',kyc_provider_reference=%s,kyc_verification_url=%s,kyc_started_at=null where user_id=%s",(provider_ref,verification_url,u['id']),None)
+                return self.sendj(200,{'ok':True,'verification_url':verification_url,'provider_reference':provider_ref})
+            if method=='PATCH' and p=='/api/v1/freelancer/profile':
+                u=self.require('freelancer');
+                if not u:return
+                b=self.body(); bio=b.get('bio'); skills=b.get('skills') if isinstance(b.get('skills'),list) else None; avail=b.get('is_available') if 'is_available' in b else None
+                q('update freelancer_profiles set bio=coalesce(%s,bio),skills=coalesce(%s::text[],skills),is_available=coalesce(%s,is_available) where user_id=%s',(None if bio is None else str(bio)[:500],skills,avail,u['id']),None)
+                return self.sendj(200,q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one'))
+            if p=='/api/v1/client/profile':
+                u=self.require('client');
+                if not u:return
+                if method=='GET':
+                    prof=q('select user_id,company_name,bio,city,sector,updated_at from client_profiles where user_id=%s',(u['id'],),'one') or {'user_id':u['id'],'company_name':None,'bio':
