@@ -67,10 +67,21 @@ jobs:
           dispute_helper_start=server.index("def admin_transition_dispute")
           cancellation_helper_start=server.index("def admin_transition_cancellation")
           privacy_helper_start=server.index("def update_privacy_request")
+          delivery_helper_start=server.index("def transition_order_delivery")
+          revision_helper_start=server.index("def transition_order_revision")
+          complete_helper_start=server.index("def transition_order_complete")
+          open_dispute_helper_start=server.index("def open_order_dispute")
+          create_cancel_helper_start=server.index("def create_order_cancellation")
+          friendly_start=server.index("def friendly_device")
           payout_block=server[payout_start:dispute_helper_start]
           dispute_helper=server[dispute_helper_start:cancellation_helper_start]
           cancellation_helper=server[cancellation_helper_start:privacy_helper_start]
-          privacy_helper=server[privacy_helper_start:server.index("def friendly_device")]
+          privacy_helper=server[privacy_helper_start:delivery_helper_start]
+          delivery_helper=server[delivery_helper_start:revision_helper_start]
+          revision_helper=server[revision_helper_start:complete_helper_start]
+          complete_helper=server[complete_helper_start:open_dispute_helper_start]
+          open_dispute_helper=server[open_dispute_helper_start:create_cancel_helper_start]
+          create_cancel_helper=server[create_cancel_helper_start:friendly_start]
           assert "select * from payout_requests where id=%s for update" in payout_block
           assert "payout_finalized" in payout_block
           assert "for update of d,o" in dispute_helper
@@ -79,6 +90,16 @@ jobs:
           assert "cancellation_finalized" in cancellation_helper
           assert "select * from privacy_requests where id=%s for update" in privacy_helper
           assert "privacy_request_finalized" in privacy_helper
+          for helper in (delivery_helper,revision_helper,complete_helper,open_dispute_helper,create_cancel_helper):
+              assert "for update of o,t" in helper
+          assert "active_cancellation_exists" in delivery_helper
+          assert "active_cancellation_exists" in revision_helper
+          assert "active_cancellation_exists" in complete_helper
+          assert "active_cancellation_exists" in open_dispute_helper
+          assert "active_dispute_exists" in create_cancel_helper
+          assert "not exists(select 1 from order_cancellation_requests" in server
+          parts="".join(Path(f"server.parts/part{i:03d}.txt").read_text(encoding="utf-8") for i in range(14))
+          assert parts==server, "server.parts drifted from server.py"
           pay_start=server.index("def apply_payment_adapter_event")
           kyc_start=server.index("def apply_kyc_adapter_event")
           pay_block=server[pay_start:kyc_start]
