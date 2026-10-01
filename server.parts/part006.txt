@@ -69,7 +69,8 @@ m where m.order_id=any(%s) order by m.created_at limit 3000',(order_ids,))
                 sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
                 if not row:return self.sendj(404,{'error':'session_not_found'})
                 log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
-                return self.sendj(200,{'ok':True,'current_revoked':sid==int(u.get('session_id') or 0)})
+                current=sid==int(u.get('session_id') or 0)
+                return self.sendj(200,{'ok':True,'current_revoked':current},{'Set-Cookie':session_cookie_header('',0)} if current else None)
             if method=='GET' and p=='/api/v1/me/roles':
                 u=self.require();
                 if not u:return
