@@ -1259,7 +1259,7 @@ class H(BaseHTTPRequestHandler):
                 else:
                     try: category_id=int(category_id)
                     except Exception:return self.sendj(400,{'error':'invalid_category'})
-                    if not q('select 1 from categories where id=%s and active=true',(category_id,),'one'):return self.sendj(400,{'error':'invalid_category'})
+                    if not q('select 1 from categories where id=%s and is_active=true',(category_id,),'one'):return self.sendj(400,{'error':'invalid_category'})
                 urgency=str(b.get('urgency') or 'normal').strip().lower()
                 if urgency not in ('normal','urgent'):return self.sendj(400,{'error':'invalid_urgency'})
                 try:
