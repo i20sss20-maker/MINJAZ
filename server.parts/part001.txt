@@ -1,6 +1,3 @@
-    try: uid=int(b.get('user_id') or 0)
-    except Exception: uid=0
-    if not event_id or not uid or not provider_ref or status not in ('pending','approved','rejected'): raise AdapterEventError(400,'invalid_kyc_event')
     c=db_connect(); c.autocommit=False
     try:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -146,6 +143,46 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def create_order_from_proposal_atomic(proposal_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
+                           from proposals p join tasks t on t.id=p.task_id
+                           where p.id=%s for update of p,t""",(proposal_id,))
+            x=cur.fetchone()
+            if not x or int(x['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            existing=cur.fetchone()
+            if existing:
+                c.rollback();y=dict(x);y['existing_order_id']=existing['id'];return None,y,'order_exists'
+            if x.get('status')!='sent' or x.get('task_status')!='open':
+                c.rollback();return None,dict(x),'proposal_not_found'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
+                           values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
+                        (x['task_id'],x['id'],client_id,x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
@@ -193,39 +230,3 @@ def request_revision_atomic(oid,user_id,note):
             allowed=int(o.get('revisions_allowed') or 0)
             cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
             used=int(cur.fetchone()['used'] or 0)
-            if used>=allowed:
-                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
-            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
-            rr=dict(cur.fetchone())
-            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
-            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
-            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
-        c.commit()
-        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def complete_order_atomic(oid,user_id):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
-                           where o.id=%s for update of o,t""",(int(oid),))
-            o=cur.fetchone()
-            if not o:
-                c.rollback();return None,'order_not_found'
-            if int(o['client_id'])!=int(user_id):
-                c.rollback();return dict(o),'client_only'
-            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
-                c.rollback();return dict(o),'invalid_order_state'
-            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
-            active_cancel=cur.fetchone()
-            if active_cancel:
-                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
-            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
-            active_dispute=cur.fetchone()
-            if active_dispute:
-                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
