@@ -24,7 +24,7 @@ class H(BaseHTTPRequestHandler):
         ip=str(self.client_address[0] if self.client_address else '')
         return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
     def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
-    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
+    def _headers(self,status=200,ctype='application/json; charset=utf-8',extra_headers=None):
         self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
         self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
         csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
@@ -33,11 +33,14 @@ class H(BaseHTTPRequestHandler):
         if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
         origin=(self.headers.get('Origin') or '').rstrip('/')
         if origin and origin in CORS_ORIGINS:
-            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
-        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
-    def sendj(self,status,obj):
+            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Access-Control-Allow-Credentials','true'); self.send_header('Vary','Origin')
+        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS')
+        for k,v in (extra_headers or {}).items():
+            if v is not None:self.send_header(str(k),str(v))
+        self.end_headers()
+    def sendj(self,status,obj,extra_headers=None):
         if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
-        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
+        self._headers(status,extra_headers=extra_headers); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
     def raw_body(self):
         if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
         n=int(self.headers.get('Content-Length','0') or 0)
