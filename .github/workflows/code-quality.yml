@@ -59,6 +59,11 @@ jobs:
           assert "self.headers.get('X-Real-IP')" in server
           assert "ipaddress.ip_address" in server
           assert "ip=self.client_ip()" in server
+          assert "from decimal import Decimal, ROUND_HALF_UP" in server
+          assert "def money_decimal(value):" in server
+          assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
+          assert "price=float(" not in server
+          assert "fee=round(float(" not in server
           assert "credentials:'same-origin'" in ui
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
