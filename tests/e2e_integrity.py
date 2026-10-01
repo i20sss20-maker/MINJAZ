@@ -22,13 +22,13 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     return payload
 
 def login(phone,role,name):
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
             break
         except AssertionError as exc:
             info=exc.args[0] if exc.args else ()
-            if attempt==0 and isinstance(info,tuple) and len(info)>=4 and info[2]==429:
+            if attempt<2 and isinstance(info,tuple) and len(info)>=4 and info[2]==429:
                 delay=min(65,int((info[3] or {}).get("retry_after_seconds") or 60)+1)
                 time.sleep(delay);continue
             raise
