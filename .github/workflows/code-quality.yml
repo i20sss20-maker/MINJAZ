@@ -65,6 +65,12 @@ jobs:
           assert "from decimal import Decimal, ROUND_HALF_UP" in server
           assert "def money_decimal(value):" in server
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
+          assert "def create_order_from_proposal_atomic(proposal_id,client_id):" in server
+          order_create_start=server.index("def create_order_from_proposal_atomic")
+          order_create_end=server.index("def deliver_order_atomic")
+          order_create_block=server[order_create_start:order_create_end]
+          assert "for update of p,t" in order_create_block
+          assert "order_exists" in order_create_block
           assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
           assert "def deliver_order_atomic(oid,user_id,note,attachments=None):" in server
           assert "def request_revision_atomic(oid,user_id,note):" in server
@@ -195,6 +201,12 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_order_transition_concurrency.py
+
+      - name: Run order creation concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_order_creation_concurrency.py
 
       - name: Show server logs on failure
         if: failure()
