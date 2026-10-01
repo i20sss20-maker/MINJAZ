@@ -77,6 +77,32 @@ def create_payout_request(fid,raw_amount,note=None):
     finally:
         c.close()
 
+def update_payout_status(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'payout_not_found'
+            current=str(pr.get('status') or '')
+            if current in ('paid','rejected','cancelled'):
+                c.rollback();return None,dict(pr),'payout_finalized'
+            if status=='paid' and current not in ('pending','processing'):
+                c.rollback();return None,dict(pr),'invalid_payout_state'
+            cur.execute("""update payout_requests
+                           set status=%s,admin_note=%s,updated_at=now(),
+                               resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end
+                           where id=%s returning *""",
+                        (status,str(admin_note or '')[:1000] or None,status,int(pid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
