@@ -1774,7 +1774,7 @@ class H(BaseHTTPRequestHandler):
                     r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(st,str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one')
                     if not r:return self.sendj(404,{'error':'support_ticket_not_found'})
                     admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':st});return self.sendj(200,r)
-                if p=='/api/admin/privacy' and method=='GET':                if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
+                if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
                 if m and method=='PATCH':
                     b=self.body();st=str(b.get('status') or 'in_progress')
@@ -1784,7 +1784,7 @@ class H(BaseHTTPRequestHandler):
                     if pr.get('status') in ('completed','rejected') and st!=pr.get('status'):return self.sendj(409,{'error':'privacy_request_finalized'})
                     r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,pid),'one')
                     admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st});return self.sendj(200,r)
-            return self.sendj(404,{'error':'not_found'})            return self.sendj(404,{'error':'not_found'})
+            return self.sendj(404,{'error':'not_found'})
         except ValueError as e:
             code=str(e)
             if code in ('invalid_json','too_large'):
