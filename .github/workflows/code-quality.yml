@@ -77,7 +77,10 @@ jobs:
           pay_mock_start=server.index("def pay_mock_atomic")
           create_block=server[create_start:pay_mock_start]
           pay_mock_block=server[pay_mock_start:server.index("def deliver_order_atomic")]
-          assert "for update of p,t" in create_block
+          task_lock="select id,client_id,status from tasks where id=%s for update"
+          proposal_lock="select * from proposals where id=%s and task_id=%s for update"
+          assert task_lock in create_block and proposal_lock in create_block
+          assert create_block.index(task_lock) < create_block.index(proposal_lock)
           assert "order_exists" in create_block
           assert "for update of o,t" in pay_mock_block
           assert "payment_status='paid',status='in_progress'" in pay_mock_block
