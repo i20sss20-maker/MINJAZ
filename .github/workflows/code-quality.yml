@@ -51,13 +51,18 @@ jobs:
           assert 'id="devOtpHint"' in ui
           assert "demoHostAllowed" in ui
           assert "new URLSearchParams(location.search).get('demo')==='1'||" not in ui
+          assert "session_cookie_header" in server and "HttpOnly" in server and "SameSite=Lax" in server
+          assert "session_token_from_headers" in server and "SimpleCookie" in server
+          assert "if not IS_PROD:payload['token']=raw" in server
+          assert "credentials:'same-origin'" in ui
+          assert "if(!token)return showAuth()" not in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
           PY
 
       - name: Compile E2E test suites
         run: |
           set -euo pipefail
-          python3 -m py_compile tests/e2e_marketplace.py tests/e2e_operations.py tests/e2e_integrity.py
+          python3 -m py_compile tests/e2e_marketplace.py tests/e2e_operations.py tests/e2e_integrity.py tests/e2e_cookie_session.py
 
       - name: Quality gate passed
         run: echo "MINJAZ_CODE_QUALITY_OK"
