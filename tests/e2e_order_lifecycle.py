@@ -1,4 +1,10 @@
-import json, os, random, time, urllib.error, urllib.request
+import json, os, random, time, urllib.error, urllib.request, runpy
+from pathlib import Path
+
+if os.getenv("E2E_SUITE")=="case-concurrency":
+    runpy.run_path(str(Path(__file__).with_name("e2e_case_concurrency.py")),run_name="__main__")
+    raise SystemExit
+
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
