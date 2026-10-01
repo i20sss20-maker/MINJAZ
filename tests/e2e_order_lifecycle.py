@@ -186,3 +186,4 @@ class H(BaseHTTPRequestHandler):
     def log_message(self,*_): pass
 
 ThreadingHTTPServer(("0.0.0.0",PORT),H).serve_forever()
+# Railway snapshot refresh: order lifecycle E2E
