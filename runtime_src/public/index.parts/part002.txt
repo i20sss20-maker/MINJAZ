@@ -1,0 +1,88 @@
+.includes(category)))categoryHit=true;if(service&&(service.includes(sk)||sk.includes(service)))serviceHit=true}
+  return {score:Math.min(95,25+(categoryHit?25:0)+(serviceHit?10:0)+Math.min(40,matched.length*20)),matched:matched.slice(0,3)};
+}
+async function demoApi(path,opt={}){
+  const rawPath=String(path||''),qi=rawPath.indexOf('?'),query=new URLSearchParams(qi>=0?rawPath.slice(qi+1):'');path=qi>=0?rawPath.slice(0,qi):rawPath;
+  const d=demoLoad(),method=(opt.method||'GET').toUpperCase(),b=demoBody(opt),u=demoAuth(d);
+  const now=()=>new Date().toISOString(),next=k=>++d.seq[k];
+  if(path==='/api/v1/categories')return demoResp(200,{items:d.categories});
+  if(path==='/api/v1/auth/request-otp'&&method==='POST')return demoResp(201,{challenge_id:'demo-'+Date.now(),delivery:'development',dev_code:'1234'});
+  if(path==='/api/v1/auth/verify-otp'&&method==='POST'){
+    if(String(b.code)!=='1234')return demoResp(401,{error:'invalid_code'});
+    const phone=String(document.getElementById('loginPhone')?.value||'').trim(),name=String(b.name||'مستخدم'),wantRole=b.role||'client';
+    let usr=d.users.find(x=>x.phone===phone);
+    const actualRole=phone==='+966500000001'?'admin':wantRole;
+    if(!usr){usr={id:next('user'),phone,name,role:actualRole,is_verified:true,created_at:now()};d.users.push(usr)}
+    else{usr.name=name;usr.role=actualRole}
+    if(actualRole==='freelancer'&&!d.profiles[String(usr.id)])d.profiles[String(usr.id)]={user_id:usr.id,bio:'',skills:[],rating:0,completed_tasks:0,on_time_rate:100,avg_response_minutes:null,is_available:false,kyc_status:'pending'};
+    const t='demo-'+Math.random().toString(36).slice(2)+Date.now();d.tokens[t]=usr.id;demoSave(d);return demoResp(200,{token:t,user:usr});
+  }
+  if(!u)return demoResp(401,{error:'unauthorized'});
+  if(path==='/api/v1/auth/logout'&&method==='POST'){const t=localStorage.getItem('minjaz_token');delete d.tokens[t];demoSave(d);return demoResp(200,{ok:true})}
+  if(path==='/api/v1/me')return demoResp(200,{user:u,freelancer_profile:u.role==='freelancer'?demoProfile(d,u.id):null});
+  if(path==='/api/v1/freelancer/profile'&&method==='PATCH'){
+    if(u.role!=='freelancer')return demoResp(403,{error:'freelancer_only'});const p=demoProfile(d,u.id);
+    if(b.bio!==undefined)p.bio=String(b.bio);if(Array.isArray(b.skills))p.skills=b.skills;if(b.is_available!==undefined)p.is_available=!!b.is_available;
+    demoSave(d);return demoResp(200,p)
+  }
+  if(path==='/api/v1/tasks'&&method==='GET'){
+    let a=[];
+    if(u.role==='client')a=d.tasks.filter(x=>x.client_id===u.id).map(x=>({...x,category_name:demoCategory(d,x.category_id)?.name_ar,proposal_count:d.proposals.filter(p=>p.task_id===x.id).length}));
+    else if(u.role==='freelancer'){
+      const skills=(demoProfile(d,u.id)?.skills)||[];
+      a=d.tasks.filter(x=>x.status==='open'&&x.client_id!==u.id).map(x=>{const item={...x,category_name:demoCategory(d,x.category_id)?.name_ar,has_proposal:d.proposals.some(p=>p.task_id===x.id&&p.freelancer_id===u.id)};const m=opportunityScore(item,skills);return {...item,match_score:m.score,matched_skills:m.matched}});
+      const q=matchNorm(query.get('q')),cat=Number(query.get('category_id')||0),urg=query.get('urgency')||'',proposal=query.get('proposal')||'',minBudget=Number(query.get('min_budget')||0),sort=query.get('sort')||'match';
+      if(q)a=a.filter(x=>matchNorm([x.title,x.description,x.category_name,x.service_name].join(' ')).includes(q));if(cat)a=a.filter(x=>Number(x.category_id)===cat);if(['normal','urgent'].includes(urg))a=a.filter(x=>x.urgency===urg);if(proposal==='sent')a=a.filter(x=>x.has_proposal);else if(proposal==='new')a=a.filter(x=>!x.has_proposal);if(minBudget)a=a.filter(x=>Number(x.budget_max||x.budget_min||0)>=minBudget);
+      if(sort==='budget_desc')a.sort((x,y)=>Number(y.budget_max||y.budget_min||0)-Number(x.budget_max||x.budget_min||0));else if(sort==='latest')a.sort((x,y)=>String(y.created_at||'').localeCompare(String(x.created_at||'')));else a.sort((x,y)=>(Number(y.match_score||0)-Number(x.match_score||0))||String(y.created_at||'').localeCompare(String(x.created_at||'')));
+      const limit=Math.max(1,Math.min(Number(query.get('limit')||200)||200,200));a=a.slice(0,limit);
+    } else a=d.tasks.map(x=>({...x,category_name:demoCategory(d,x.category_id)?.name_ar})).sort((x,y)=>y.id-x.id);
+    return demoResp(200,{items:a});
+  }
+  if(path==='/api/v1/tasks'&&method==='POST'){
+    if(u.role!=='client')return demoResp(403,{error:'client_only'});
+    const t={id:next('task'),client_id:u.id,category_id:+b.category_id||null,title:b.title,description:b.description,budget_min:b.budget_min,budget_max:b.budget_max,urgency:b.urgency||'normal',status:'open',created_at:now()};d.tasks.push(t);demoSave(d);return demoResp(201,t)
+  }
+  let m=path.match(/^\/api\/v1\/tasks\/(\d+)\/repeat$/);
+  if(m&&method==='POST'){
+    const s=d.tasks.find(x=>x.id==m[1]&&x.client_id===u.id);if(!s)return demoResp(404,{error:'task_not_found'});
+    const t={...s,id:next('task'),status:'open',created_at:now()};d.tasks.push(t);demoSave(d);return demoResp(201,t)
+  }
+  m=path.match(/^\/api\/v1\/tasks\/(\d+)\/proposals$/);
+  if(m&&method==='POST'){
+    if(u.role!=='freelancer')return demoResp(403,{error:'freelancer_only'});const tid=+m[1];let p=d.proposals.find(x=>x.task_id===tid&&x.freelancer_id===u.id);
+    if(!p){p={id:next('proposal'),task_id:tid,freelancer_id:u.id,created_at:now(),status:'sent'};d.proposals.push(p)}
+    Object.assign(p,{price:+b.price,delivery_hours:+b.delivery_hours||24,revisions:+b.revisions||1,message:b.message||''});demoSave(d);return demoResp(201,p)
+  }
+  if(m&&method==='GET'){
+    const tid=+m[1],task=d.tasks.find(x=>x.id===tid);if(!task)return demoResp(404,{error:'task_not_found'});
+    let a=d.proposals.filter(x=>x.task_id===tid);
+    if(u.role==='freelancer')a=a.filter(x=>x.freelancer_id===u.id);
+    a=a.map(p=>{const usr=demoUser(d,p.freelancer_id),fp=demoProfile(d,p.freelancer_id)||{};return {...p,name:usr?.name,bio:fp.bio||'',skills:fp.skills||[],rating:fp.rating||0,completed_tasks:fp.completed_tasks||0,on_time_rate:fp.on_time_rate||100,avg_response_minutes:fp.avg_response_minutes||null,is_available:fp.is_available||false,kyc_status:fp.kyc_status||'pending'}});
+    return demoResp(200,{items:a})
+  }
+  if(path==='/api/v1/orders'&&method==='POST'){
+    if(u.role!=='client')return demoResp(403,{error:'client_only'});const p=d.proposals.find(x=>x.id===+b.proposal_id);if(!p)return demoResp(404,{error:'proposal_not_found'});
+    const task=d.tasks.find(x=>x.id===p.task_id);let o=d.orders.find(x=>x.task_id===task.id);if(o)return demoResp(409,{error:'order_exists',order:o});
+    o={id:next('order'),task_id:task.id,proposal_id:p.id,client_id:u.id,freelancer_id:p.freelancer_id,amount:p.price,platform_fee:Math.round(p.price*.15*100)/100,status:'awaiting_payment',payment_status:'unpaid',created_at:now()};
+    d.orders.push(o);task.status='matched';d.proposals.filter(x=>x.task_id===task.id).forEach(x=>x.status=x.id===p.id?'accepted':'rejected');demoSave(d);return demoResp(201,o)
+  }
+  if(path==='/api/v1/orders'&&method==='GET'){
+    let a=d.orders.filter(o=>u.role==='admin'||(u.role==='client'?o.client_id===u.id:o.freelancer_id===u.id)).map(o=>{const t=d.tasks.find(x=>x.id===o.task_id),rv=d.reviews.find(x=>x.order_id===o.id);return {...o,title:t?.title,description:t?.description,due_at:t?.due_at,client_name:demoUser(d,o.client_id)?.name,freelancer_name:demoUser(d,o.freelancer_id)?.name,net_amount:Number(o.amount||0)-Number(o.platform_fee||0),reviewed:!!rv}});
+    return demoResp(200,{items:a.sort((a,b)=>b.id-a.id)})
+  }
+  m=path.match(/^\/api\/v1\/orders\/(\d+)$/);
+  if(m&&method==='GET'){
+    const o=d.orders.find(x=>x.id==m[1]);if(!o)return demoResp(404,{error:'order_not_found'});const t=d.tasks.find(x=>x.id===o.task_id);
+    const pp=d.proposals.find(x=>x.id===o.proposal_id)||{},used=0,rv=d.reviews.find(x=>x.order_id===o.id);return demoResp(200,{...o,title:t?.title,description:t?.description,due_at:t?.due_at,urgency:t?.urgency,promised_hours:pp.delivery_hours||null,revisions_allowed:pp.revisions||0,revisions_used:used,revisions_remaining:Math.max(Number(pp.revisions||0)-used,0),client_name:demoUser(d,o.client_id)?.name,freelancer_name:demoUser(d,o.freelancer_id)?.name,net_amount:Number(o.amount||0)-Number(o.platform_fee||0),review_id:rv?.order_id||null,review_quality:rv?.quality||null,review_timeliness:rv?.timeliness||null,review_communication:rv?.communication||null,review_comment:rv?.comment||null,review_created_at:rv?.created_at||null})
+  }
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/pay$/);if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]&&x.client_id===u.id);if(!o)return demoResp(404,{error:'not_found'});o.payment_status='paid';o.status='in_progress';d.tasks.find(x=>x.id===o.task_id).status='in_progress';demoSave(d);return demoResp(200,{ok:true,mode:'mock',order:o})}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/deliver$/);if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]&&x.freelancer_id===u.id);if(!o)return demoResp(404,{error:'not_found'});o.status='delivered';d.tasks.find(x=>x.id===o.task_id).status='delivered';d.deliveries.push({id:next('msg'),order_id:o.id,freelancer_id:u.id,note:b.note||'',created_at:now()});demoSave(d);return demoResp(200,o)}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/revision$/);if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]&&x.client_id===u.id);if(!o)return demoResp(404,{error:'not_found'});o.status='revision_requested';if(b.note)d.messages.push({id:next('msg'),order_id:o.id,sender_id:u.id,body:'طلب تعديل: '+b.note,created_at:now()});demoSave(d);return demoResp(200,o)}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/complete$/);if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]&&x.client_id===u.id);if(!o)return demoResp(404,{error:'not_found'});o.status='completed';o.completed_at=now();d.tasks.find(x=>x.id===o.task_id).status='completed';const p=demoProfile(d,o.freelancer_id);if(p)p.completed_tasks=(p.completed_tasks||0)+1;demoSave(d);return demoResp(200,o)}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/review$/);if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]);if(!o)return demoResp(404,{error:'not_found'});d.reviews=d.reviews.filter(x=>x.order_id!==o.id);d.reviews.push({order_id:o.id,reviewer_id:u.id,reviewee_id:o.freelancer_id,...b,created_at:now()});const p=demoProfile(d,o.freelancer_id);if(p){const rs=d.reviews.filter(x=>x.reviewee_id===o.freelancer_id);p.rating=Math.round((rs.reduce((s,x)=>s+((+x.quality + +x.timeliness + +x.communication)/3),0)/rs.length)*100)/100}demoSave(d);return demoResp(201,{ok:true})}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/cancellation$/);
+  if(m&&method==='GET'){const o=d.orders.find(x=>x.id==m[1]);if(!o)return demoResp(404,{error:'order_not_found'});const item=(d.cancellations||[]).filter(x=>x.order_id===o.id).sort((a,b)=>b.id-a.id)[0]||null;return demoResp(200,{item:item?{...item,requested_by_name:demoUser(d,item.requested_by)?.name}:null})}
+  if(m&&method==='POST'){const o=d.orders.find(x=>x.id==m[1]);if(!o)return demoResp(404,{error:'order_not_found'});if(['completed','cancelled','disputed'].includes(o.status))return demoResp(409,{error:'invalid_order_state'});if((d.cancellations||[]).some(x=>x.order_id===o.id&&['pending','in_review'].includes(x.status)))return demoResp(409,{error:'active_cancellation_exists'});const cr={id:next('cancel'),order_id:o.id,requested_by:u.id,reason:b.reason||'',details:b.details||'',status:'pending',previous_order_status:o.status,payment_status_at_request:o.payment_status,refund_status:o.payment_status==='paid'?'pending':'not_needed',created_at:now()};d.cancellations=d.cancellations||[];d.cancellations.push(cr);demoSave(d);return demoResp(201,cr)}
+  m=path.match(/^\/api\/v1\/orders\/(\d+)\/messages$/);
+  if(m&&method==='GET'){const a=d.messages.filter(x=>x.order_id==m[1]).map(x=>({...x,sender_name:demoUser(d,x.sender_id)?.name,sender_role:demoUser(d,x.sender_id)?.role}));return demoResp(200,{items:a})}
+  if(
