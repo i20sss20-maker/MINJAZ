@@ -1,3 +1,10 @@
+                if action=='complete':
+                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
+                    locked,err=complete_order_atomic(oid,u['id'])
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='client_only':return self.sendj(403,{'error':err})
+                    if err in ('active_cancellation_exists','active_dispute_exists'):
+                        return self.sendj(409,{'error':err,'id':locked.get('active_cancellation_id') or locked.get('active_dispute_id')})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
                     refresh_freelancer(locked['freelancer_id']);notify(locked['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid)
                     return self.sendj(200,{'ok':True})
@@ -126,6 +133,3 @@
                 if not u:return
                 if method=='GET':
                     return self.sendj(200,{'items':q("select sr.*,ru.name reported_user_name,t.title task_title from safety_reports sr left join users ru on ru.id=sr.reported_user_id left join tasks t on t.id=sr.task_id where sr.reporter_id=%s order by sr.created_at desc limit 100",(u['id'],))})
-                if method=='POST':
-                    b=self.body();cat=str(b.get('category') or 'other')
-                    if cat not in ('spam','fraud','harassment','unsafe','prohibited_service','impersonation','other'):return self.sendj(400,{'error':'invalid_category'})
