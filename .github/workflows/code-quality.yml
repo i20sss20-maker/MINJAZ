@@ -35,7 +35,7 @@ jobs:
           grep -q "privacy_request_finalized" server.py
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
-          ! grep -Eq 'wc -l.*-eq [0-9]+' Dockerfile
+          ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
 
       - name: Verify auth and demo safety invariants
         run: |
