@@ -1,3 +1,14 @@
+                self.set_session_cookie(raw)
+                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
+                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
+            if method=='POST' and p=='/api/v1/auth/session-cookie':
+                u=self.require();
+                if not u:return
+                raw,transport=session_token_from_headers(self.headers)
+                if not raw:return self.sendj(401,{'error':'unauthorized'})
+                self.set_session_cookie(raw)
+                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
                 return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
             if method=='POST' and p=='/api/v1/auth/logout':
                 u=self.require();
@@ -130,7 +141,3 @@
                 try:resp=adapter_post_json(KYC_START_URL,payload,KYC_ADAPTER_BEARER)
                 except Exception as exc:
                     q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);operational_event('error','kyc','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'user',u.get('id'));print('KYC_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'kyc_provider_unavailable'})
-                verification_url=str(resp.get('verification_url') or '').strip(); provider_ref=str(resp.get('provider_reference') or '').strip()[:180]
-                if not _https_url(verification_url) or not provider_ref:
-                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);return self.sendj(502,{'error':'invalid_kyc_provider_response'})
-                q("update freelancer_profiles set kyc_status='pending',kyc_provider_reference=%s,kyc_verification_url=%s,kyc_started_at=null where user_id=%s",(provider_ref,verification_url,u['id']),None)
