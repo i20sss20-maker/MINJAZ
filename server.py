@@ -32,6 +32,8 @@ LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
 RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
 IS_PROD=APP_ENV=='production'
 PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL','').strip().rstrip('/')
+SESSION_COOKIE_NAME='minjaz_session'
+SESSION_COOKIE_MAX_AGE=SESSION_TTL_DAYS*86400
 SMS_WEBHOOK_URL=os.getenv('SMS_WEBHOOK_URL','').strip()
 SMS_WEBHOOK_BEARER=os.getenv('SMS_WEBHOOK_BEARER','').strip()
 PAYMENT_CREATE_URL=os.getenv('PAYMENT_CREATE_URL','').strip()
@@ -509,10 +511,18 @@ def onboarding_status(user_id,role):
         steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
     done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
 
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '').strip()
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw,'bearer'
+    cookie=str(headers.get('Cookie') or '')
+    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    return (m.group(1),'cookie') if m else ('','')
+
 def auth(headers):
-    h=headers.get('Authorization','')
-    if not h.startswith('Bearer '): return None
-    raw=h[7:]
+    raw,transport=session_token_from_headers(headers)
+    if not raw:return None
     row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
@@ -520,6 +530,7 @@ def auth(headers):
              where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() limit 1""",
           (sha(raw+SECRET),), 'one')
     if row:
+        row['_auth_transport']=transport
         try:
             q("update sessions set last_seen_at=now() where id=%s and (last_seen_at is null or last_seen_at<now()-interval '10 minutes')",(row['session_id'],),None)
         except Exception:
@@ -746,6 +757,15 @@ class H(BaseHTTPRequestHandler):
         ip=str(self.client_address[0] if self.client_address else '')
         return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
     def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
+    def _queue_cookie(self,value):
+        if not hasattr(self,'_set_cookie_headers'):self._set_cookie_headers=[]
+        self._set_cookie_headers.append(value)
+    def set_session_cookie(self,raw):
+        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
+        self._queue_cookie(f"{SESSION_COOKIE_NAME}={raw}; Path=/; Max-Age={SESSION_COOKIE_MAX_AGE}; HttpOnly; SameSite=Strict{secure}")
+    def clear_session_cookie(self):
+        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
+        self._queue_cookie(f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{secure}")
     def _headers(self,status=200,ctype='application/json; charset=utf-8'):
         self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
         self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
@@ -756,6 +776,7 @@ class H(BaseHTTPRequestHandler):
         origin=(self.headers.get('Origin') or '').rstrip('/')
         if origin and origin in CORS_ORIGINS:
             self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
+        for cookie in getattr(self,'_set_cookie_headers',[]):self.send_header('Set-Cookie',cookie)
         self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
     def sendj(self,status,obj):
         if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
@@ -930,13 +951,22 @@ class H(BaseHTTPRequestHandler):
                 roles=enabled_roles(u['id'])
                 raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=str(self.client_address[0] if self.client_address else '')
                 ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
+                self.set_session_cookie(raw)
                 log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
                 user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
                 return self.sendj(200,{'token':raw,'user':user,'roles':roles})
+            if method=='POST' and p=='/api/v1/auth/session-cookie':
+                u=self.require();
+                if not u:return
+                raw,transport=session_token_from_headers(self.headers)
+                if not raw:return self.sendj(401,{'error':'unauthorized'})
+                self.set_session_cookie(raw)
+                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
+                return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
             if method=='POST' and p=='/api/v1/auth/logout':
                 u=self.require();
                 if not u:return
-                raw=self.headers.get('Authorization','')[7:]; q('update sessions set revoked_at=now() where token_hash=%s',(sha(raw+SECRET),),None);log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
+                q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
             if method=='GET' and p=='/api/v1/me':
                 u=self.require();
                 if not u:return
@@ -1028,8 +1058,10 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
                 if not row:return self.sendj(404,{'error':'session_not_found'})
+                current_revoked=sid==int(u.get('session_id') or 0)
+                if current_revoked:self.clear_session_cookie()
                 log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
-                return self.sendj(200,{'ok':True,'current_revoked':sid==int(u.get('session_id') or 0)})
+                return self.sendj(200,{'ok':True,'current_revoked':current_revoked})
             if method=='GET' and p=='/api/v1/me/roles':
                 u=self.require();
                 if not u:return
