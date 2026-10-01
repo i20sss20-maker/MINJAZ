@@ -1,154 +1,195 @@
-order_id,)):
-        add(x.get('created_at'),'revision_requested','طلب تعديل '+str(x.get('sequence_no')),x.get('note'),x.get('actor_name'),{'sequence_no':x.get('sequence_no'),'status':x.get('status')})
-        if x.get('satisfied_at'):add(x.get('satisfied_at'),'revision_satisfied','تم تنفيذ التعديل '+str(x.get('sequence_no')),None,None,{'sequence_no':x.get('sequence_no')})
-    for x in q("select d.*,u.name actor_name,(select count(*)::int from attachments a where a.delivery_id=d.id) attachment_count from deliveries d join users u on u.id=d.freelancer_id where d.order_id=%s order by d.created_at",(order_id,)):
-        add(x.get('created_at'),'delivery','تم تسليم العمل',x.get('note'),x.get('actor_name'),{'attachments':x.get('attachment_count') or 0})
-    for x in q("select d.*,uo.name opened_by_name,ur.name resolved_by_name from order_disputes d join users uo on uo.id=d.opened_by left join users ur on ur.id=d.resolved_by where d.order_id=%s order by d.created_at",(order_id,)):
-        add(x.get('created_at'),'dispute_opened','تم فتح نزاع',x.get('reason'),x.get('opened_by_name'))
-        if x.get('resolved_at'):
-            ttl='تم استئناف الطلب بعد النزاع' if x.get('resolution_action')=='resume' else 'تم إلغاء الطلب بعد النزاع'
-            add(x.get('resolved_at'),'dispute_resolved',ttl,x.get('resolution_note'),x.get('resolved_by_name'),{'action':x.get('resolution_action')})
-    if o.get('completed_at'):add(o.get('completed_at'),'completed','اكتمل الطلب',None,None)
-    r=q("select r.*,u.name actor_name from reviews r join users u on u.id=r.reviewer_id where r.order_id=%s",(order_id,),'one')
-    if r:add(r.get('created_at'),'review','تم إضافة التقييم',r.get('comment'),r.get('actor_name'),{'quality':r.get('quality'),'timeliness':r.get('timeliness'),'communication':r.get('communication')})
-    ev.sort(key=lambda x: str(x.get('created_at') or ''))
-    return ev[-200:]
-
-
-def ensure_services_schema():
-    q("""create table if not exists services(
-        id bigserial primary key,
-        category_id bigint not null references categories(id),
-        slug text unique not null,
-        name_ar text not null,
-        description_ar text,
-        min_price numeric(10,2),
-        max_price numeric(10,2),
-        active boolean not null default true,
-        created_at timestamptz not null default now()
-    );
-    create index if not exists idx_services_category on services(category_id,active,id);
-    insert into services(category_id,slug,name_ar,description_ar,min_price,max_price)
-    select c.id,v.slug,v.name_ar,v.description_ar,v.min_price,v.max_price
-    from (values
-        ('design','social-post-1','تصميم منشور سوشال واحد','تصميم منشور جاهز للنشر بالمقاس المطلوب',49,79),
-        ('design','social-posts-3','تصميم 3 منشورات سوشال','ثلاثة تصاميم متناسقة لهوية الحساب',79,149),
-        ('design','banner-ad','تصميم بانر أو إعلان','بانر رقمي أو إعلان بمقاس واحد',49,99),
-        ('design','menu-price-list','تصميم منيو أو قائمة أسعار','تنسيق بصري احترافي لقائمة خدمات أو أسعار',99,249),
-        ('design','business-card','تصميم بطاقة عمل','بطاقة عمل بوجه أو وجهين',49,99),
-        ('design','simple-logo','تصميم شعار بسيط','شعار بسيط لمشروع صغير مع ملف نهائي',99,299),
-        ('design','invitation-certificate','دعوة أو شهادة أو بطاقة','تصميم بطاقة مناسبة أو شهادة أو دعوة',49,99),
-        ('design','resize-designs','تعديل مقاسات تصاميم','إعادة تجهيز التصاميم لمقاسات منصات مختلفة',49,99),
-        ('files','ppt-10','عرض PowerPoint حتى 10 شرائح','تنسيق عرض واضح ومرتب حتى 10 شرائح',79,149),
-        ('files','ppt-20','عرض PowerPoint حتى 20 شريحة','تنسيق عرض احترافي حتى 20 شريحة',149,299),
-        ('files','word-format-20','تنسيق Word حتى 20 صفحة','تنسيق العناوين والجداول والهوامش والفهرسة البسيطة',49,99),
-        ('files','pdf-tools','دمج أو ترتيب أو تحويل PDF','دمج وترتيب وتحويل ملفات PDF',49,79),
-        ('files','word-pdf-form','إنشاء نموذج Word أو PDF','إنشاء نموذج منظم قابل للتعبئة أو الطباعة',49,99),
-        ('design','cv-design','تصميم سيرة ذاتية','تنسيق سيرة ذاتية حديثة وواضحة',79,149),
-        ('design','company-profile','بروفايل شركة صغير','تصميم ملف تعريفي مختصر لشركة أو مشروع',149,299),
-        ('excel','excel-clean','تنظيف وتنسيق Excel','تنظيف الجدول وتوحيد التنسيق والقيم',49,99),
-        ('excel','excel-formulas','معادلات Excel','إضافة أو إصلاح معادلات وصيغ Excel',79,149),
-        ('excel','excel-charts','رسوم وتقرير Excel','إنشاء رسوم بيانية وتقرير مختصر من البيانات',79,149),
-        ('excel','excel-dashboard','Dashboard Excel بسيط','لوحة مؤشرات بسيطة ومترابطة داخل Excel',149,299),
-        ('excel','data-entry-300','إدخال بيانات حتى 300 صف','إدخال وتنظيم بيانات حتى 300 صف',49,99),
-        ('excel','merge-dedupe','دمج وإزالة تكرار البيانات','دمج ملفات أو جداول وإزالة السجلات المكررة',49,99),
-        ('excel','google-sheet','تنظيم Google Sheet','إعداد جدول منظم وسهل الاستخدام',79,149),
-        ('writing','product-desc-10','كتابة 10 أوصاف منتجات','أوصاف منتجات مختصرة وواضحة للبيع الإلكتروني',59,119),
-        ('writing','social-copy-10','كتابة 10 منشورات سوشال','نصوص جاهزة للنشر لوسائل التواصل',79,149),
-        ('writing','proofread-1500','تدقيق 1500 كلمة','تدقيق لغوي وإملائي حتى 1500 كلمة',49,79),
-        ('writing','rewrite-1500','إعادة صياغة 1500 كلمة','إعادة صياغة تحافظ على المعنى وتحسن الأسلوب',49,99),
-        ('translation','translate-1000','ترجمة حتى 1000 كلمة','ترجمة نص حتى 1000 كلمة بين اللغات المدعومة',59,129),
-        ('writing','transcribe-30','تفريغ صوت حتى 30 دقيقة','تحويل تسجيل صوتي إلى نص منظم',59,129),
-        ('writing','summarize-30','تلخيص حتى 30 صفحة','تلخيص محتوى طويل إلى نقاط وأفكار أساسية',59,129),
-        ('business','research-sources','جمع مصادر ومعلومات','جمع معلومات عامة ومصادر مرتبة حول موضوع محدد',59,149),
-        ('design','remove-bg-20','إزالة خلفية حتى 20 صورة','قص وإزالة الخلفيات وتسليم PNG',49,79),
-        ('design','retouch-5','تحسين 5 صور','تحسين إضاءة وألوان وتنظيف بسيط لخمس صور',59,119),
-        ('design','product-images-3','تجهيز 3 صور منتجات','تهيئة صور منتجات نظيفة ومتناسقة للمتجر',59,129),
-        ('video','reel-under-1','مونتاج Reel أقل من دقيقة','مونتاج فيديو قصير مع قص وانتقالات بسيطة',79,149),
-        ('video','subtitles-5','إضافة ترجمة لفيديو حتى 5 دقائق','إضافة نصوص أو ترجمة زمنية لفيديو قصير',59,119),
-        ('video','video-1-3','مونتاج فيديو 1–3 دقائق','مونتاج فيديو متوسط مع ترتيب المقاطع والصوت',119,299),
-        ('video','audio-clean-15','تنظيف صوت حتى 15 دقيقة','تقليل ضوضاء وتحسين مستوى الصوت',59,129),
-        ('design','thumbnail-cover','تصميم صورة مصغرة أو غلاف','غلاف أو Thumbnail جذاب بمقاس واحد',49,79),
-        ('business','upload-products-20','رفع 20 منتج','إدخال بيانات وصور 20 منتج في متجر إلكتروني',79,149),
-        ('excel','product-file-50','تجهيز ملف 50 منتج','تنظيم بيانات حتى 50 منتج في ملف جاهز',79,149),
-        ('design','quotation-design','تصميم قائمة أسعار أو عرض سعر','تصميم عرض سعر أو قائمة أسعار مرتبة',59,119),
-        ('business','content-plan-2w','خطة محتوى لأسبوعين','خطة نشر وأفكار محتوى لمدة أسبوعين',99,199),
-        ('business','competitors-5','مقارنة 5 منافسين','مقارنة عامة ومنظمة لخمس جهات منافسة',99,199),
-        ('business','businesses-30','جمع بيانات 30 نشاطًا','جمع معلومات عامة متاحة لثلاثين نشاطًا تجاريًا',79,149),
-        ('writing','meeting-summary','تلخيص اجتماع أو تسجيل','تلخيص القرارات والنقاط المهمة من اجتماع أو تسجيل',59,129),
-        ('writing','cs-replies-15','صياغة 15 رد خدمة عملاء','ردود جاهزة ومهنية لسيناريوهات خدمة العملاء',59,129),
-        ('ai','ai-prompts','إعداد Prompts أو Workflow بالذكاء الاصطناعي','صياغة تعليمات وقوالب استخدام عملية للذكاء الاصطناعي',79,149),
-        ('ai','ai-classify-data','تصنيف بيانات غير حساسة بالذكاء الاصطناعي','تنظيم وتصنيف بيانات غير حساسة وفق قواعد واضحة',79,199),
-        ('ai','no-code-automation','أتمتة No-code بسيطة','إعداد أتمتة بسيطة بين أدوات مدعومة',149,299),
-        ('business','cms-edits','تعديلات محتوى CMS بسيطة','تحديث نصوص وصور ومحتوى بسيط داخل نظام إدارة محتوى',79,199)
-    ) as v(category_slug,slug,name_ar,description_ar,min_price,max_price)
-    join categories c on c.slug=v.category_slug
-    on conflict(slug) do update set category_id=excluded.category_id,name_ar=excluded.name_ar,description_ar=excluded.description_ar,min_price=excluded.min_price,max_price=excluded.max_price,active=true;""",(),None)
-
-def ensure_roles_schema():
-    q("""create table if not exists user_roles(
-        user_id bigint not null references users(id) on delete cascade,
-        role text not null check(role in ('client','freelancer','admin')),
-        enabled boolean not null default true,
-        created_at timestamptz not null default now(),
-        primary key(user_id,role)
-    );
-    create index if not exists idx_user_roles_role on user_roles(role,user_id);
-    insert into user_roles(user_id,role,enabled)
-      select id,role,true from users
-      on conflict(user_id,role) do update set enabled=true;
-    insert into user_roles(user_id,role,enabled)
-      select user_id,'freelancer',true from freelancer_profiles
-      on conflict(user_id,role) do update set enabled=true;""",(),None)
-
-def enabled_roles(user_id):
-    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
-
-def ensure_notifications_schema():
-    q("""create table if not exists user_notifications_v2(
-        id bigserial primary key,
-        user_id bigint not null references users(id) on delete cascade,
-        order_id bigint references orders(id) on delete cascade,
-        kind text not null default 'general',
-        title text not null,
-        body text,
-        read_at timestamptz,
-        created_at timestamptz not null default now()
-    );
-    create index if not exists idx_user_notifications_v2_user on user_notifications_v2(user_id,created_at desc);
-    create index if not exists idx_user_notifications_v2_unread on user_notifications_v2(user_id,read_at,created_at desc);""",(),None)
-
-def ensure_engagement_schema():
-    q("""create table if not exists client_profiles(
-        user_id bigint primary key references users(id) on delete cascade,
-        company_name text,bio text,city text,sector text,updated_at timestamptz not null default now()
-    );
-    create table if not exists favorite_tasks(
-        freelancer_id bigint not null references users(id) on delete cascade,
-        task_id bigint not null references tasks(id) on delete cascade,
-        created_at timestamptz not null default now(),
-        primary key(freelancer_id,task_id)
-    );
-    create index if not exists idx_favorite_tasks_freelancer on favorite_tasks(freelancer_id,created_at desc);
-    create table if not exists saved_task_searches(
-        id bigserial primary key,freelancer_id bigint not null references users(id) on delete cascade,
-        name text not null,filters jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
-    );
-    create index if not exists idx_saved_task_searches_freelancer on saved_task_searches(freelancer_id,created_at desc);
-    alter table user_notifications_v2 add column if not exists task_id bigint references tasks(id) on delete cascade;
-    create index if not exists idx_user_notifications_v2_task on user_notifications_v2(user_id,task_id,created_at desc) where task_id is not null;""",(),None)
-
-def notify(user_id,title,body=None,kind='general',order_id=None,task_id=None):
+    c=db_connect()
     try:
-        q("insert into user_notifications_v2(user_id,order_id,task_id,kind,title,body) values(%s,%s,%s,%s,%s,%s)",(user_id,order_id,task_id,kind,title[:180],(body or '')[:1200] or None),None)
-    except Exception as e:
-        print('NOTIFY_ERR',repr(e),flush=True)
-
-def notify_admins(title,body=None,kind='admin',order_id=None,task_id=None):
-    try:
-        for a in q("select id from users where role='admin' order by id"):
-            notify(a['id'],title,body,kind,order_id,task_id)
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and o.freelancer_id=%s for update of o,t""",(int(oid),int(freelancer_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),'active_cancellation_exists'
+            cur.execute('insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *',(int(oid),int(freelancer_id),str(note)[:5000]))
+            delivery=dict(cur.fetchone())
+            cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
+            cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in delivery.items()},dict(o),None
     except Exception:
-        pass
+        c.rollback();raise
+    finally:
+        c.close()
 
-def inter
+def transition_order_revision(oid,client_id,note):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
+                           from orders o join tasks t on t.id=o.task_id left join proposals p on p.id=o.proposal_id
+                           where o.id=%s and o.client_id=%s for update of o,t""",(int(oid),int(client_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            if cur.fetchone():
+                c.rollback();return None,dict(o),None,'active_cancellation_exists'
+            cur.execute('select count(*)::int used from order_revision_requests where order_id=%s',(int(oid),))
+            used=int((cur.fetchone() or {}).get('used') or 0); allowed=int(o.get('revisions_allowed') or 0)
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+            sequence=used+1
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(client_id),sequence,str(note)[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(client_id),('طلب تعديل '+str(sequence)+'/'+str(allowed)+': '+str(note))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':sequence,'remaining':max(allowed-sequence,0)},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def transition_order_complete(oid,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and o.client_id=%s for update of o,t""",(int(oid),int(client_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            if cur.fetchone():
+                c.rollback();return dict(o),'active_cancellation_exists'
+            cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
+            cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_order_dispute(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and (o.client_id=%s or o.freelancer_id=%s) for update of o,t""",(int(oid),int(user_id),int(user_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested','delivered'):
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            cancellation=cur.fetchone()
+            if cancellation:
+                c.rollback();return None,dict(o),dict(cancellation),'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),dict(active),'active_dispute_exists'
+            cur.execute("""insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status)
+                           values(%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),str(reason)[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
+            d=dict(cur.fetchone())
+            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in d.items()},dict(o),None,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def create_order_cancellation(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and (o.client_id=%s or o.freelancer_id=%s) for update of o,t""",(int(oid),int(user_id),int(user_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled','disputed'):
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            dispute=cur.fetchone()
+            if dispute:
+                c.rollback();return None,dict(o),dict(dispute),'active_dispute_exists'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),dict(active),'active_cancellation_exists'
+            refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
+            cur.execute("""insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status)
+                           values(%s,%s,%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),str(reason)[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
+            cr=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in cr.items()},dict(o),None,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def friendly_device(user_agent):
+    ua=str(user_agent or '')[:500]; low=ua.lower()
+    if 'ipad' in low:return 'iPad'
+    if 'iphone' in low:return 'iPhone'
+    if 'android' in low and ('tv' in low or 'aft' in low):return 'Android TV'
+    if 'android' in low:return 'Android'
+    if 'windows' in low:return 'Windows'
+    if 'macintosh' in low or 'mac os' in low:return 'Mac'
+    if 'linux' in low:return 'Linux'
+    return 'متصفح'
+
+
+def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
+    try:q("insert into account_activity(user_id,session_id,event_type,label,meta) values(%s,%s,%s,%s,%s::jsonb)",(user_id,session_id,event_type,str(label or '')[:180],json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as e:print('ACCOUNT_ACTIVITY_ERR',repr(e),flush=True)
+
+def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
+    try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
+    except Exception as e:print('ADMIN_AUDIT_ERR',repr(e),flush=True)
+
+def legal_versions(): return {'terms':LEGAL_TERMS_VERSION,'privacy':LEGAL_PRIVACY_VERSION,'marketplace_rules':LEGAL_MARKETPLACE_VERSION}
+
+def legal_status(user_id):
+    accepted={(x['document'],x['version']) for x in q('select document,version from legal_acceptances where user_id=%s',(user_id,))}
+    docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
+    return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
+
+def onboarding_status(user_id,role):
+    legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
+    if role=='freelancer':
+        fp=q('select bio,skills,is_available from freelancer_profiles where user_id=%s',(user_id,),'one') or {}; portfolio=q('select count(*)::int n from freelancer_portfolio where freelancer_id=%s',(user_id,),'one') or {'n':0}
+        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إضافة نبذة مهنية','done':bool(str(fp.get('bio') or '').strip()),'required':True},{'key':'skills','label':'إضافة 3 مهارات على الأقل','done':len(fp.get('skills') or [])>=3,'required':True},{'key':'availability','label':'تحديد حالة التوفر','done':bool(fp.get('is_available')),'required':False},{'key':'portfolio','label':'إضافة نموذج عمل','done':int(portfolio.get('n') or 0)>0,'required':False}]
+    else:
+        cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
+        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
+    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
+
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '').strip()
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw,'bearer'
+    cookie=str(headers.get('Cookie') or '')
+    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    return (m.group(1),'cookie') if m else ('','')
+
+def auth(headers):

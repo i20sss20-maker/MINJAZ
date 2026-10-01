@@ -1,142 +1,169 @@
-action_restricted(a,b):
+    raw,transport=session_token_from_headers(headers)
+    if not raw:return None
+    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
+                    s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
+                    s.last_seen_at session_last_seen_at,s.device_label session_device_label
+             from sessions s join users u on u.id=s.user_id
+             where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() limit 1""",
+          (sha(raw+SECRET),), 'one')
+    if row:
+        row['_auth_transport']=transport
+        try:
+            q("update sessions set last_seen_at=now() where id=%s and (last_seen_at is null or last_seen_at<now()-interval '10 minutes')",(row['session_id'],),None)
+        except Exception:
+            pass
+    return row
+
+def refresh_freelancer(fid):
     try:
-        a=int(a);b=int(b)
+        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
     except Exception:
-        return True
-    if a==b:return False
-    return bool(q("""select 1 where
-        exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
-        or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
-        limit 1""",(a,b,b,a,a,b),'one'))
+        pass
 
-def task_hidden(task_id):
-    try:return bool(q('select 1 from task_moderation where task_id=%s and hidden=true',(int(task_id),),'one'))
-    except Exception:return False
 
-class H(BaseHTTPRequestHandler):
-    server_version=f'MINJAZ/{VERSION}'
-    def request_id(self):
-        if not hasattr(self,'_request_id'):
-            incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
-            self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
-        return self._request_id
-    def client_ip(self):
-        candidates=[]
-        if ON_RAILWAY:candidates.append(str(self.headers.get('X-Real-IP') or '').strip())
-        candidates.append(str(self.client_address[0] if self.client_address else '').strip())
-        for value in candidates:
-            if not value:continue
-            try:return str(ipaddress.ip_address(value))
-            except ValueError:continue
-        return ''
-    def client_key(self):
-        ip=self.client_ip()
-        return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
-    def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
-    def _queue_cookie(self,value):
-        if not hasattr(self,'_set_cookie_headers'):self._set_cookie_headers=[]
-        self._set_cookie_headers.append(value)
-    def set_session_cookie(self,raw):
-        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
-        self._queue_cookie(f"{SESSION_COOKIE_NAME}={raw}; Path=/; Max-Age={SESSION_COOKIE_MAX_AGE}; HttpOnly; SameSite=Strict{secure}")
-    def clear_session_cookie(self):
-        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
-        self._queue_cookie(f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{secure}")
-    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
-        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
-        self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
-        csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        if IS_PROD: csp+='; upgrade-insecure-requests'
-        self.send_header('Content-Security-Policy',csp)
-        if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
-        origin=(self.headers.get('Origin') or '').rstrip('/')
-        if origin and origin in CORS_ORIGINS:
-            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
-        for cookie in getattr(self,'_set_cookie_headers',[]):self.send_header('Set-Cookie',cookie)
-        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
-    def sendj(self,status,obj):
-        if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
-        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
-    def raw_body(self):
-        if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
-        n=int(self.headers.get('Content-Length','0') or 0)
-        if n>2_000_000: raise ValueError('too_large')
-        self._raw_body_cache=self.rfile.read(n) if n else b''
-        return self._raw_body_cache
-    def body(self):
-        raw=self.raw_body()
-        try:
-            return json.loads(raw or b'{}')
-        except json.JSONDecodeError as exc:
-            raise ValueError('invalid_json') from exc
-    def require(self,role=None):
-        u=auth(self.headers)
-        if not u: self.sendj(401,{'error':'unauthorized'}); return None
-        if role and u.get('role')!=role: self.sendj(403,{'error':role+'_only'}); return None
-        return u
-    def do_OPTIONS(self): self._headers(204)
-    def do_GET(self): self.route('GET')
-    def do_POST(self): self.route('POST')
-    def do_PATCH(self): self.route('PATCH')
-    def do_DELETE(self): self.route('DELETE')
-    def route(self,method):
-        try:
-            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
-            if p=='/health':
-                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'environment':APP_ENV,'now':now,'version':VERSION})
-            if method=='GET' and p=='/readiness':
-                checks=[
-                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
-                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
-                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
-                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
-                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
-                    {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
-                    {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
-                    {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
-                    {'key':'public_base_url','ok':_https_url(PUBLIC_BASE_URL),'value':PUBLIC_BASE_URL or 'missing','required':True},
-                    {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
-                    {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
-                    {'key':'operational_telemetry','ok':True,'value':'operational_events enabled','required':False},
-                    {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
-                ]
-                commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
-                status=503 if IS_PROD and not commercial else 200
-                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION})
-            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
-                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
-                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
-                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
-                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
-                try:b=json.loads(raw or b'{}')
-                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
-                try:result=apply_kyc_adapter_event(b)
-                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
-                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
-                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
-                return self.sendj(200,{'ok':True})
-            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
-                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
-                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
-                expected=hmac.new(PAYMENT_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
-                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
-                try:b=json.loads(raw or b'{}')
-                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
-                try:result=apply_payment_adapter_event(b)
-                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
-                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
-                o=result['order']; event_id=result['event_id']
-                if result['event_type']=='payment.succeeded' and result.get('workflow_started'):
-                    log_order_event(o['id'],'payment','تم تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',o['id'])
-                elif result['event_type']=='payment.succeeded' and result.get('late_cancelled_payment'):
-                    log_order_event(o['id'],'late_payment','وصل تأكيد دفع بعد إلغاء الطلب؛ يلزم استرداد/مراجعة مالية',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'وصل دفع بعد إلغاء الطلب','سجلنا العملية للمراجعة والاسترداد بدون إعادة فتح التنفيذ','payment',o['id']);notify_admins('دفع متأخر بعد إلغاء طلب',f"الطلب #{o['id']} يحتاج مراجعة واسترداد",'payment',o['id'])
-                elif result['event_type']=='payment.succeeded' and result.get('changed'):
-                    log_order_event(o['id'],'payment_reconciliation','تم تسجيل دفع في حالة طلب غير متوقعة للمراجعة',None,meta={'mode':'adapter','event_id':event_id});notify_admins('دفع يحتاج مطابقة يدوية',f"الطلب #{o['id']} كان في حالة {o.get('status')}",'payment',o['id'])
-                if result['event_type']=='payment.failed' and result.get('failed_effective'):
-                    log_order_event(o['id'],'payment_failed','تعذر تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'تعذر تأكيد الدفع','يمكنك إعادة المحاولة من رابط الدفع أو التواصل مع الدعم','payment',o['id'])
-                return self.sendj(200,{'ok':True})
-            if method=='GET' and p=='/api/v1/legal/documents':
-                return self.sendj(200,{'documents':[
-                    {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':'draft_pending_legal_review','sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
-                    {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':'draft_pending_legal_review','sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
-                    {'key':'marketplace_rules','title':'ق
+def ensure_timeline_schema():
+    q("""create table if not exists order_events(
+        id bigserial primary key,
+        order_id bigint not null references orders(id) on delete cascade,
+        actor_id bigint references users(id),
+        event_type text not null,
+        title text not null,
+        details text,
+        meta jsonb not null default '{}'::jsonb,
+        created_at timestamptz not null default now()
+    );
+    create index if not exists idx_order_events_order on order_events(order_id,created_at);""",(),None)
+
+def log_order_event(order_id,event_type,title,actor_id=None,details=None,meta=None):
+    try:
+        q("insert into order_events(order_id,actor_id,event_type,title,details,meta) values(%s,%s,%s,%s,%s,%s::jsonb)",(order_id,actor_id,event_type,title,(details or None),json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as e:
+        print('EVENT_ERR',repr(e),flush=True)
+
+def order_timeline(order_id):
+    o=q("select o.*,t.title task_title from orders o join tasks t on t.id=o.task_id where o.id=%s",(order_id,),'one')
+    if not o:return []
+    ev=[]
+    def add(ts,kind,title,details=None,actor=None,meta=None):
+        if not ts:return
+        ev.append({'created_at':ts,'type':kind,'title':title,'details':details,'actor_name':actor,'meta':meta or {}})
+    add(o.get('created_at'),'order_created','تم اختيار العرض وإنشاء الطلب',o.get('task_title'))
+    for x in q("select e.*,u.name actor_name from order_events e left join users u on u.id=e.actor_id where e.order_id=%s order by e.created_at",(order_id,)):
+        add(x.get('created_at'),x.get('event_type'),x.get('title'),x.get('details'),x.get('actor_name'),x.get('meta') or {})
+    for x in q("select m.*,u.name actor_name,(select count(*)::int from attachments a where a.message_id=m.id) attachment_count from messages m join users u on u.id=m.sender_id where m.order_id=%s order by m.created_at",(order_id,)):
+        body=str(x.get('body') or '')
+        if body.startswith('طلب تعديل '):
+            continue
+        add(x.get('created_at'),'message','رسالة جديدة',body[:180],x.get('actor_name'),{'attachments':x.get('attachment_count') or 0})
+    for x in q("select rr.*,u.name actor_name from order_revision_requests rr join users u on u.id=rr.requested_by where rr.order_id=%s order by rr.created_at",(order_id,)):
+        add(x.get('created_at'),'revision_requested','طلب تعديل '+str(x.get('sequence_no')),x.get('note'),x.get('actor_name'),{'sequence_no':x.get('sequence_no'),'status':x.get('status')})
+        if x.get('satisfied_at'):add(x.get('satisfied_at'),'revision_satisfied','تم تنفيذ التعديل '+str(x.get('sequence_no')),None,None,{'sequence_no':x.get('sequence_no')})
+    for x in q("select d.*,u.name actor_name,(select count(*)::int from attachments a where a.delivery_id=d.id) attachment_count from deliveries d join users u on u.id=d.freelancer_id where d.order_id=%s order by d.created_at",(order_id,)):
+        add(x.get('created_at'),'delivery','تم تسليم العمل',x.get('note'),x.get('actor_name'),{'attachments':x.get('attachment_count') or 0})
+    for x in q("select d.*,uo.name opened_by_name,ur.name resolved_by_name from order_disputes d join users uo on uo.id=d.opened_by left join users ur on ur.id=d.resolved_by where d.order_id=%s order by d.created_at",(order_id,)):
+        add(x.get('created_at'),'dispute_opened','تم فتح نزاع',x.get('reason'),x.get('opened_by_name'))
+        if x.get('resolved_at'):
+            ttl='تم استئناف الطلب بعد النزاع' if x.get('resolution_action')=='resume' else 'تم إلغاء الطلب بعد النزاع'
+            add(x.get('resolved_at'),'dispute_resolved',ttl,x.get('resolution_note'),x.get('resolved_by_name'),{'action':x.get('resolution_action')})
+    if o.get('completed_at'):add(o.get('completed_at'),'completed','اكتمل الطلب',None,None)
+    r=q("select r.*,u.name actor_name from reviews r join users u on u.id=r.reviewer_id where r.order_id=%s",(order_id,),'one')
+    if r:add(r.get('created_at'),'review','تم إضافة التقييم',r.get('comment'),r.get('actor_name'),{'quality':r.get('quality'),'timeliness':r.get('timeliness'),'communication':r.get('communication')})
+    ev.sort(key=lambda x: str(x.get('created_at') or ''))
+    return ev[-200:]
+
+
+def ensure_services_schema():
+    q("""create table if not exists services(
+        id bigserial primary key,
+        category_id bigint not null references categories(id),
+        slug text unique not null,
+        name_ar text not null,
+        description_ar text,
+        min_price numeric(10,2),
+        max_price numeric(10,2),
+        active boolean not null default true,
+        created_at timestamptz not null default now()
+    );
+    create index if not exists idx_services_category on services(category_id,active,id);
+    insert into services(category_id,slug,name_ar,description_ar,min_price,max_price)
+    select c.id,v.slug,v.name_ar,v.description_ar,v.min_price,v.max_price
+    from (values
+        ('design','social-post-1','تصميم منشور سوشال واحد','تصميم منشور جاهز للنشر بالمقاس المطلوب',49,79),
+        ('design','social-posts-3','تصميم 3 منشورات سوشال','ثلاثة تصاميم متناسقة لهوية الحساب',79,149),
+        ('design','banner-ad','تصميم بانر أو إعلان','بانر رقمي أو إعلان بمقاس واحد',49,99),
+        ('design','menu-price-list','تصميم منيو أو قائمة أسعار','تنسيق بصري احترافي لقائمة خدمات أو أسعار',99,249),
+        ('design','business-card','تصميم بطاقة عمل','بطاقة عمل بوجه أو وجهين',49,99),
+        ('design','simple-logo','تصميم شعار بسيط','شعار بسيط لمشروع صغير مع ملف نهائي',99,299),
+        ('design','invitation-certificate','دعوة أو شهادة أو بطاقة','تصميم بطاقة مناسبة أو شهادة أو دعوة',49,99),
+        ('design','resize-designs','تعديل مقاسات تصاميم','إعادة تجهيز التصاميم لمقاسات منصات مختلفة',49,99),
+        ('files','ppt-10','عرض PowerPoint حتى 10 شرائح','تنسيق عرض واضح ومرتب حتى 10 شرائح',79,149),
+        ('files','ppt-20','عرض PowerPoint حتى 20 شريحة','تنسيق عرض احترافي حتى 20 شريحة',149,299),
+        ('files','word-format-20','تنسيق Word حتى 20 صفحة','تنسيق العناوين والجداول والهوامش والفهرسة البسيطة',49,99),
+        ('files','pdf-tools','دمج أو ترتيب أو تحويل PDF','دمج وترتيب وتحويل ملفات PDF',49,79),
+        ('files','word-pdf-form','إنشاء نموذج Word أو PDF','إنشاء نموذج منظم قابل للتعبئة أو الطباعة',49,99),
+        ('design','cv-design','تصميم سيرة ذاتية','تنسيق سيرة ذاتية حديثة وواضحة',79,149),
+        ('design','company-profile','بروفايل شركة صغير','تصميم ملف تعريفي مختصر لشركة أو مشروع',149,299),
+        ('excel','excel-clean','تنظيف وتنسيق Excel','تنظيف الجدول وتوحيد التنسيق والقيم',49,99),
+        ('excel','excel-formulas','معادلات Excel','إضافة أو إصلاح معادلات وصيغ Excel',79,149),
+        ('excel','excel-charts','رسوم وتقرير Excel','إنشاء رسوم بيانية وتقرير مختصر من البيانات',79,149),
+        ('excel','excel-dashboard','Dashboard Excel بسيط','لوحة مؤشرات بسيطة ومترابطة داخل Excel',149,299),
+        ('excel','data-entry-300','إدخال بيانات حتى 300 صف','إدخال وتنظيم بيانات حتى 300 صف',49,99),
+        ('excel','merge-dedupe','دمج وإزالة تكرار البيانات','دمج ملفات أو جداول وإزالة السجلات المكررة',49,99),
+        ('excel','google-sheet','تنظيم Google Sheet','إعداد جدول منظم وسهل الاستخدام',79,149),
+        ('writing','product-desc-10','كتابة 10 أوصاف منتجات','أوصاف منتجات مختصرة وواضحة للبيع الإلكتروني',59,119),
+        ('writing','social-copy-10','كتابة 10 منشورات سوشال','نصوص جاهزة للنشر لوسائل التواصل',79,149),
+        ('writing','proofread-1500','تدقيق 1500 كلمة','تدقيق لغوي وإملائي حتى 1500 كلمة',49,79),
+        ('writing','rewrite-1500','إعادة صياغة 1500 كلمة','إعادة صياغة تحافظ على المعنى وتحسن الأسلوب',49,99),
+        ('translation','translate-1000','ترجمة حتى 1000 كلمة','ترجمة نص حتى 1000 كلمة بين اللغات المدعومة',59,129),
+        ('writing','transcribe-30','تفريغ صوت حتى 30 دقيقة','تحويل تسجيل صوتي إلى نص منظم',59,129),
+        ('writing','summarize-30','تلخيص حتى 30 صفحة','تلخيص محتوى طويل إلى نقاط وأفكار أساسية',59,129),
+        ('business','research-sources','جمع مصادر ومعلومات','جمع معلومات عامة ومصادر مرتبة حول موضوع محدد',59,149),
+        ('design','remove-bg-20','إزالة خلفية حتى 20 صورة','قص وإزالة الخلفيات وتسليم PNG',49,79),
+        ('design','retouch-5','تحسين 5 صور','تحسين إضاءة وألوان وتنظيف بسيط لخمس صور',59,119),
+        ('design','product-images-3','تجهيز 3 صور منتجات','تهيئة صور منتجات نظيفة ومتناسقة للمتجر',59,129),
+        ('video','reel-under-1','مونتاج Reel أقل من دقيقة','مونتاج فيديو قصير مع قص وانتقالات بسيطة',79,149),
+        ('video','subtitles-5','إضافة ترجمة لفيديو حتى 5 دقائق','إضافة نصوص أو ترجمة زمنية لفيديو قصير',59,119),
+        ('video','video-1-3','مونتاج فيديو 1–3 دقائق','مونتاج فيديو متوسط مع ترتيب المقاطع والصوت',119,299),
+        ('video','audio-clean-15','تنظيف صوت حتى 15 دقيقة','تقليل ضوضاء وتحسين مستوى الصوت',59,129),
+        ('design','thumbnail-cover','تصميم صورة مصغرة أو غلاف','غلاف أو Thumbnail جذاب بمقاس واحد',49,79),
+        ('business','upload-products-20','رفع 20 منتج','إدخال بيانات وصور 20 منتج في متجر إلكتروني',79,149),
+        ('excel','product-file-50','تجهيز ملف 50 منتج','تنظيم بيانات حتى 50 منتج في ملف جاهز',79,149),
+        ('design','quotation-design','تصميم قائمة أسعار أو عرض سعر','تصميم عرض سعر أو قائمة أسعار مرتبة',59,119),
+        ('business','content-plan-2w','خطة محتوى لأسبوعين','خطة نشر وأفكار محتوى لمدة أسبوعين',99,199),
+        ('business','competitors-5','مقارنة 5 منافسين','مقارنة عامة ومنظمة لخمس جهات منافسة',99,199),
+        ('business','businesses-30','جمع بيانات 30 نشاطًا','جمع معلومات عامة متاحة لثلاثين نشاطًا تجاريًا',79,149),
+        ('writing','meeting-summary','تلخيص اجتماع أو تسجيل','تلخيص القرارات والنقاط المهمة من اجتماع أو تسجيل',59,129),
+        ('writing','cs-replies-15','صياغة 15 رد خدمة عملاء','ردود جاهزة ومهنية لسيناريوهات خدمة العملاء',59,129),
+        ('ai','ai-prompts','إعداد Prompts أو Workflow بالذكاء الاصطناعي','صياغة تعليمات وقوالب استخدام عملية للذكاء الاصطناعي',79,149),
+        ('ai','ai-classify-data','تصنيف بيانات غير حساسة بالذكاء الاصطناعي','تنظيم وتصنيف بيانات غير حساسة وفق قواعد واضحة',79,199),
+        ('ai','no-code-automation','أتمتة No-code بسيطة','إعداد أتمتة بسيطة بين أدوات مدعومة',149,299),
+        ('business','cms-edits','تعديلات محتوى CMS بسيطة','تحديث نصوص وصور ومحتوى بسيط داخل نظام إدارة محتوى',79,199)
+    ) as v(category_slug,slug,name_ar,description_ar,min_price,max_price)
+    join categories c on c.slug=v.category_slug
+    on conflict(slug) do update set category_id=excluded.category_id,name_ar=excluded.name_ar,description_ar=excluded.description_ar,min_price=excluded.min_price,max_price=excluded.max_price,active=true;""",(),None)
+
+def ensure_roles_schema():
+    q("""create table if not exists user_roles(
+        user_id bigint not null references users(id) on delete cascade,
+        role text not null check(role in ('client','freelancer','admin')),
+        enabled boolean not null default true,
+        created_at timestamptz not null default now(),
+        primary key(user_id,role)
+    );
+    create index if not exists idx_user_roles_role on user_roles(role,user_id);
+    insert into user_roles(user_id,role,enabled)
+      select id,role,true from users
+      on conflict(user_id,role) do update set enabled=true;
+    insert into user_roles(user_id,role,enabled)
+      select user_id,'freelancer',true from freelancer_profiles
+      on conflict(user_id,role) do update set enabled=true;""",(),None)
+
+def enabled_roles(user_id):
+    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
+
+def ensure_notifications_schema():
+    q("""create table if not exists user_notifications_v2(
+        id bigserial primary key,
+        user_id bigint not null references users(id) on delete cascade,
+        order_id bigint references orders(id) on delete cascade,
+        kind text not null default 'general',

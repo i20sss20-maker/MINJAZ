@@ -29,6 +29,7 @@ SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
 LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
+LEGAL_REVIEW_STATUS=os.getenv('LEGAL_REVIEW_STATUS','draft').strip().lower()
 LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
 RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
 IS_PROD=APP_ENV=='production'
@@ -64,6 +65,7 @@ def production_blockers():
     if DB_PERSISTENCE!='persistent': blockers.append('DB_PERSISTENCE')
     if SOURCE_CONTROL in ('railway_env','none',''): blockers.append('SOURCE_CONTROL')
     if RUN_RUNTIME_SCHEMA_ENSURE: blockers.append('RUN_RUNTIME_SCHEMA_ENSURE')
+    if LEGAL_REVIEW_STATUS!='approved': blockers.append('LEGAL_REVIEW')
     if not PUBLIC_BASE_URL or not _https_url(PUBLIC_BASE_URL): blockers.append('PUBLIC_BASE_URL')
     if not CORS_ORIGINS or '*' in CORS_ORIGINS or any(not _https_url(x) for x in CORS_ORIGINS): blockers.append('CORS_ORIGINS')
     return blockers
@@ -194,4 +196,15 @@ def apply_payment_adapter_event(b):
             elif event_type=='payment.failed':
                 # A late failure after a confirmed success is informational only and must never regress the order.
                 failed_effective=o.get('payment_status')!='paid' and o.get('status')=='awaiting_payment'
-            cur.execute('update payment_a
+            cur.execute('update payment_adapter_events set processed_at=now() where provider_event_id=%s',(event_id,))
+        c.commit(); return {'duplicate':False,'event_type':event_type,'order':dict(o),'changed':changed,'workflow_started':workflow_started,'late_cancelled_payment':late_cancelled_payment,'failed_effective':failed_effective,'event_id':event_id}
+    except Exception:
+        c.rollback(); raise
+    finally:
+        c.close()
+
+def apply_kyc_adapter_event(b):
+    event_id=str(b.get('event_id') or '').strip()[:180]; provider_ref=str(b.get('provider_reference') or '').strip()[:180]; status=str(b.get('status') or '').strip()
+    try: uid=int(b.get('user_id') or 0)
+    except Exception: uid=0
+    if not event_id or not uid or not provider_ref or status not in ('pending','approved','rejected'): raise AdapterEventError(400,'invalid_kyc_event')

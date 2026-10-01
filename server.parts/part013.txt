@@ -1,4 +1,47 @@
-s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['reported_user_id'],restricted,note,u['id']),None)
+                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
+                        admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
+                        return self.sendj(200,r)
+                    note=str(b.get('admin_note') or '')[:3000] or None
+                    if st=='in_review':
+                        admin_audit(u['id'],'cancellation_in_review','cancellation',cid)
+                        return self.sendj(200,r)
+                    if st=='rejected':
+                        notify(cr['client_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id'])
+                        admin_audit(u['id'],'cancellation_rejected','cancellation',cid)
+                        return self.sendj(200,r)
+                    msg=(note or 'تم اعتماد الإلغاء')+(' · يلزم معالجة الاسترداد لدى مزود الدفع' if refund=='manual_required' else '')
+                    notify(cr['client_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id'])
+                    admin_audit(u['id'],'cancellation_approved','cancellation',cid,{'refund_status':refund})
+                    return self.sendj(200,{**r,'refund_action_required':refund=='manual_required'})
+                if p=='/api/admin/safety/reports' and method=='GET':
+                    st=(query.get('status') or [''])[0]
+                    params=[];where=''
+                    if st in ('open','in_review','resolved','dismissed'):where=' where sr.status=%s';params=[st]
+                    items=q("""select sr.*,rp.name reporter_name,ru.name reported_user_name,ru.role reported_user_role,t.title task_title,
+                        coalesce(tm.hidden,false) task_hidden,coalesce(um.interaction_restricted,false) user_restricted
+                        from safety_reports sr join users rp on rp.id=sr.reporter_id
+                        left join users ru on ru.id=sr.reported_user_id left join tasks t on t.id=sr.task_id
+                        left join task_moderation tm on tm.task_id=sr.task_id left join user_moderation um on um.user_id=sr.reported_user_id
+                        """+where+" order by case when sr.status in ('open','in_review') then 0 else 1 end,sr.created_at desc limit 300",tuple(params))
+                    return self.sendj(200,{'items':items})
+                if p=='/api/admin/safety/actions' and method=='GET':
+                    return self.sendj(200,{'items':q("select ma.*,au.name admin_name,tu.name target_user_name,t.title task_title from moderation_actions ma join users au on au.id=ma.admin_id left join users tu on tu.id=ma.target_user_id left join tasks t on t.id=ma.task_id order by ma.created_at desc limit 150")})
+                m=re.fullmatch(r'/api/admin/safety/reports/(\d+)',p)
+                if m and method=='PATCH':
+                    rid=int(m.group(1));b=self.body();sr=q('select * from safety_reports where id=%s',(rid,),'one')
+                    if not sr:return self.sendj(404,{'error':'report_not_found'})
+                    note=str(b.get('admin_note') or '')[:3000] or None
+                    st=str(b.get('status') or sr.get('status') or 'open')
+                    if st not in ('open','in_review','resolved','dismissed'):return self.sendj(400,{'error':'invalid_status'})
+                    ta=str(b.get('task_action') or '')
+                    if ta in ('hide','restore') and sr.get('task_id'):
+                        hidden=ta=='hide';q("insert into task_moderation(task_id,hidden,reason,updated_by) values(%s,%s,%s,%s) on conflict(task_id) do update set hidden=excluded.hidden,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['task_id'],hidden,note,u['id']),None)
+                        q('insert into moderation_actions(report_id,admin_id,task_id,action,note) values(%s,%s,%s,%s,%s)',(rid,u['id'],sr['task_id'],'hide_task' if hidden else 'restore_task',note),None)
+                    ua=str(b.get('user_action') or '')
+                    if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
+                        target=q('select id,role from users where id=%s',(sr['reported_user_id'],),'one')
+                        if target and target.get('role')=='admin':return self.sendj(403,{'error':'admin_not_restrictable'})
+                        restricted=ua=='restrict';q("insert into user_moderation(user_id,interaction_restricted,reason,updated_by) values(%s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['reported_user_id'],restricted,note,u['id']),None)
                         q('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',(rid,u['id'],sr['reported_user_id'],'restrict_user' if restricted else 'unrestrict_user',note),None)
                         notify(sr['reported_user_id'],'تحديث من فريق الأمان','تم تقييد التعاملات الجديدة على الحساب مؤقتًا' if restricted else 'تم رفع تقييد التعاملات الجديدة عن الحساب','safety',None,sr.get('task_id'))
                     resolved=st in ('resolved','dismissed')
