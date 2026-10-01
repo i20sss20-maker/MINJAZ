@@ -1,3 +1,10 @@
+
+def create_payout_request(fid,raw_amount,note=None):
+    try:
+        amount=money_decimal(raw_amount)
+    except Exception:
+        return None,'invalid_amount',None
+    if amount<=0:
         return None,'invalid_amount',None
     c=db_connect()
     try:
@@ -215,7 +222,3 @@ def friendly_device(user_agent):
 
 def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
     try:q("insert into account_activity(user_id,session_id,event_type,label,meta) values(%s,%s,%s,%s,%s::jsonb)",(user_id,session_id,event_type,str(label or '')[:180],json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as e:print('ACCOUNT_ACTIVITY_ERR',repr(e),flush=True)
-
-def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
-    try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
