@@ -69,7 +69,10 @@ jobs:
           order_create_start=server.index("def create_order_from_proposal_atomic")
           order_create_end=server.index("def deliver_order_atomic")
           order_create_block=server[order_create_start:order_create_end]
-          assert "for update of p,t" in order_create_block
+          task_lock="select id,client_id,status from tasks where id=%s for update"
+          proposal_lock="select * from proposals where id=%s and task_id=%s for update"
+          assert task_lock in order_create_block and proposal_lock in order_create_block
+          assert order_create_block.index(task_lock) < order_create_block.index(proposal_lock)
           assert "order_exists" in order_create_block
           assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
           assert "def deliver_order_atomic(oid,user_id,note,attachments=None):" in server
