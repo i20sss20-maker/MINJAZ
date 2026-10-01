@@ -1,0 +1,91 @@
+tion:absolute;top:-5px;left:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#ef4444;color:#fff;font-size:7px;display:grid;place-items:center;border:2px solid #fff}.notifList{display:grid;gap:8px;max-height:60vh;overflow:auto}.notifItem{border:1px solid #e6ebf1;border-radius:14px;padding:10px;background:#fff}.notifItem.unread{background:#f5f8ff;border-color:#c7d2fe}.notifItem b{font-family:Alexandria;font-size:9px}.notifItem p{font-size:8px;color:#64748b;line-height:1.6;margin:4px 0}.notifItem small{font-size:7px;color:#94a3b8}
+</style>
+<script>
+(function(){
+ async function refreshNotifBadge(){if(!me?.user)return;try{const {r,j}=await api('/api/v1/notifications');if(!r.ok)return;let b=document.getElementById('notifBtn');if(!b){b=document.createElement('button');b.id='notifBtn';b.className='notifBtn';b.setAttribute('aria-label','التنبيهات');b.onclick=notificationsModal;const chip=document.querySelector('.userChip');if(chip)chip.insertBefore(b,chip.firstChild)}b.innerHTML='🔔'+(j.unread?'<span class="notifCount">'+Math.min(Number(j.unread),99)+'</span>':'')}catch(e){}}
+ window.notificationsModal=async function(){const {r,j}=await api('/api/v1/notifications');if(!r.ok)return toast('تعذر تحميل التنبيهات');const a=j.items||[];openModal('<div class="modalHead"><div><h2>التنبيهات</h2><div style="font-size:9px;color:#64748b">'+Number(j.unread||0)+' غير مقروء</div></div><button class="x" onclick="closeModal()">×</button></div><div class="notifList">'+(a.map(x=>'<div class="notifItem '+(!x.read_at?'unread':'')+'" onclick="readNotif('+x.id+','+(x.order_id||0)+')"><div class="row space"><b>'+esc(x.title)+'</b><span class="pill gray">'+esc(x.kind||'عام')+'</span></div>'+(x.body?'<p>'+esc(x.body)+'</p>':'')+'<small>'+new Date(x.created_at).toLocaleString('ar-SA')+'</small></div>').join('')||'<div class="empty">ما عندك تنبيهات حتى الآن.</div>')+'</div><div class="actions"><button class="btn ghost" onclick="markAllNotif()">تحديد الكل كمقروء</button></div>');}
+ window.readNotif=async function(id,orderId){await api('/api/v1/notifications/'+id+'/read',{method:'POST'});closeModal();refreshNotifBadge();if(orderId)orderModal(orderId)};
+ window.markAllNotif=async function(){await api('/api/v1/notifications/read-all',{method:'POST'});closeModal();refreshNotifBadge();toast('تم تحديد التنبيهات كمقروءة')};
+ const baseBoot=window.boot;if(typeof baseBoot==='function')window.boot=async function(){await baseBoot();setTimeout(refreshNotifBadge,0)};
+ const baseGo=window.go;if(typeof baseGo==='function')window.go=async function(id){await baseGo(id);refreshNotifBadge()};
+ setTimeout(refreshNotifBadge,150);
+ window.refreshNotifBadge=refreshNotifBadge;
+})();
+</script>
+<style>
+.roleModeCard{margin-bottom:14px;background:linear-gradient(135deg,#f8fbff,#eef3ff);border:1px solid #dce6ff}.roleModeBtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.roleModeBtns .btn.on{background:#3157f6;color:#fff;border-color:#3157f6}.roleTag{display:inline-flex;align-items:center;gap:5px;font-size:8px;color:#475569;background:#fff;border:1px solid #e2e8f0;padding:5px 8px;border-radius:999px;margin:3px 0}
+</style>
+<script>
+(function(){
+ const roleName=r=>r==='client'?'عميل':r==='freelancer'?'مستقل':'إدارة';
+ const base=window.renderAccount;
+ if(typeof base==='function'){
+  window.renderAccount=async function(){
+   await base();
+   if(!me?.user||me.user.role==='admin')return;
+   let roles=me.user.roles||me.roles||[];
+   try{const x=await api('/api/v1/me/roles');if(x.r.ok)roles=x.j.roles||roles}catch(e){}
+   const host=document.getElementById('account');if(!host||host.querySelector('[data-role-mode]'))return;
+   const card=document.createElement('div');card.className='card roleModeCard';card.dataset.roleMode='1';
+   card.innerHTML='<div class="row space"><div><h2 style="font-family:Alexandria;font-size:13px;margin:0 0 4px">وضع الحساب</h2><p style="font-size:9px;color:#64748b;margin:0">نفس الحساب يقدر يستخدم مِنجاز كعميل وكمستقل بدون إنشاء حساب ثاني.</p></div><span class="pill blue">النشط: '+roleName(me.user.role)+'</span></div><div style="margin-top:8px">'+roles.map(r=>'<span class="roleTag">✓ '+roleName(r)+'</span>').join(' ')+'</div><div class="roleModeBtns"><button class="btn '+(me.user.role==='client'?'on':'ghost')+'" onclick="switchMinjazRole(\'client\')">أستخدمه كعميل</button><button class="btn '+(me.user.role==='freelancer'?'on':'ghost')+'" onclick="switchMinjazRole(\'freelancer\')">أستخدمه كمستقل</button></div>';
+   host.prepend(card);
+  };
+ }
+ window.switchMinjazRole=async function(r){
+  if(!['client','freelancer'].includes(r)||me?.user?.role===r)return;
+  const {r:res,j}=await api('/api/v1/me/active-role',{method:'PATCH',body:JSON.stringify({role:r})});
+  if(!res.ok)return toast(j?.error==='admin_role_locked'?'حساب الإدارة ثابت':'تعذر تبديل وضع الحساب');
+  toast(r==='client'?'تم التحويل لوضع العميل':'تم تفعيل وضع المستقل');
+  await boot();
+ };
+})();
+</script>
+<style>
+.templateHint{font-size:8px;color:#64748b;line-height:1.6;margin-top:5px}.templatePrice{color:#3157f6;font-weight:700}.templateBadge{font-size:8px;background:#eef3ff;color:#294bd8;padding:4px 7px;border-radius:999px}
+</style>
+<script>
+(function(){
+ let serviceTemplates=[];
+ async function loadTemplates(){if(serviceTemplates.length)return serviceTemplates;try{const x=await api('/api/v1/services');if(x.r.ok)serviceTemplates=x.j.items||[]}catch(e){}return serviceTemplates}
+ window.newTaskModal=async function(){
+  const sv=await loadTemplates();
+  openModal(`<div class="modalHead"><h2>إنشاء مهمة جديدة</h2><button class="x" onclick="closeModal()">×</button></div><div class="field full"><label>ابدأ بقالب جاهز — اختياري</label><select id="ntService" onchange="applyServiceTemplate(this.value)"><option value="">مهمة مخصصة</option>${sv.map(s=>`<option value="${s.id}">${esc(s.category_name)} — ${esc(s.name_ar)} (${money(s.min_price)}–${money(s.max_price)})</option>`).join('')}</select><div class="templateHint">القالب يعبّي القسم والميزانية المقترحة، وتقدر تعدّل كل شيء قبل النشر.</div></div><div class="form2"><div class="field full"><label>عنوان المهمة</label><input id="ntTitle" placeholder="مثال: تصميم 3 منشورات لإنستغرام"></div><div class="field full"><label>الوصف</label><textarea id="ntDesc" placeholder="اشرح المطلوب والملفات والمقاس أو أي تفاصيل مهمة"></textarea></div><div class="field"><label>القسم</label><select id="ntCat">${categories.map(c=>`<option value="${c.id}">${c.icon||''} ${esc(c.name_ar)}</option>`).join('')}</select></div><div class="field"><label>الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div><div class="field"><label>من ميزانية</label><input id="ntMin" inputmode="decimal" placeholder="49"></div><div class="field"><label>إلى ميزانية</label><input id="ntMax" inputmode="decimal" placeholder="149"></div></div><div class="field full"><label>مرفقات المهمة</label><input class="filePick" type="file" id="ntFiles" multiple accept="${window.minjazFileAccept||''}"><textarea id="ntAttachments" placeholder="أو رابط HTTPS لكل سطر" style="margin-top:6px"></textarea><div id="ntUploadState" class="uploadState"></div><div class="attachHint">حتى 5 مرفقات إجمالًا.</div></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="createTask()">نشر المهمة</button></div>`);window.minjazDescribeStorage?.('ntUploadState')
+ };
+ window.applyServiceTemplate=function(id){const s=serviceTemplates.find(x=>String(x.id)===String(id));if(!s)return;$('ntTitle').value=s.name_ar;$('ntDesc').value=s.description_ar||'';$('ntCat').value=String(s.category_id);$('ntMin').value=s.min_price||49;$('ntMax').value=s.max_price||s.min_price||49};
+ window.createTask=async function(){let attachments=[];try{attachments=await window.minjazCollectAttachments('ntFiles','ntAttachments','ntUploadState')}catch(e){return toast(e.message==='storage_not_configured'?'اربط Railway Bucket أو استخدم رابط HTTPS':'تعذر رفع المرفق')}const b={title:$('ntTitle').value,description:$('ntDesc').value,category_id:+$('ntCat').value,service_id:+($('ntService')?.value||0)||null,urgency:$('ntUrg').value,budget_min:+$('ntMin').value||null,budget_max:+$('ntMax').value||null,attachments};const {r,j}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(b)});if(!r.ok)return toast(j?.error==='budget_below_minimum'?'الحد الأدنى للمهمة 49 ريال':j?.error==='budget_above_maximum'?'الميزانية أعلى من الحد المسموح':j?.error==='invalid_budget_range'?'تأكد من نطاق الميزانية':j?.error==='invalid_due_at'||j?.error==='due_at_must_be_future'?'تأكد من الموعد النهائي':j?.error==='invalid_category'?'اختر قسمًا صحيحًا':'راجع بيانات المهمة');closeModal();toast(attachments.length?'تم نشر المهمة مع المرفقات':'تم نشر المهمة');await renderTasks()};
+})();
+</script>
+<style>
+.earningsGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:12px 0}
+.earnCard{border:1px solid #e6ebf1;border-radius:15px;padding:11px;background:#fff}
+.earnCard small{display:block;color:#64748b;font-size:8px;margin-bottom:5px}.earnCard b{font-family:Alexandria;font-size:15px}
+.payoutList{display:grid;gap:7px;margin-top:9px}.payoutRow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e6ebf1;border-radius:13px;padding:9px 10px;background:#fff}.payoutRow p{margin:3px 0 0;font-size:8px;color:#64748b}
+@media(max-width:760px){.earningsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<script>
+(function(){
+ const payoutStatus=s=>({pending:'قيد المراجعة',processing:'قيد التحويل',paid:'تم التحويل',rejected:'مرفوض',cancelled:'ملغي'}[s]||s);
+ const payoutClass=s=>s==='paid'?'green':s==='rejected'||s==='cancelled'?'red':s==='processing'?'blue':'amber';
+
+ const baseAccount=window.renderAccount;
+ if(typeof baseAccount==='function')window.renderAccount=async function(){
+   await baseAccount();
+   if(me?.user?.role!=='freelancer')return;
+   const host=document.getElementById('account');if(!host||host.querySelector('[data-earnings]'))return;
+   let e=null;try{const x=await api('/api/v1/freelancer/earnings');if(x.r.ok)e=x.j}catch(err){}
+   if(!e)return;
+   const kyc=me?.freelancer_profile?.kyc_status||'pending';
+   const sec=document.createElement('div');sec.dataset.earnings='1';
+   sec.innerHTML='<div class="sectionHead"><div><h2>الأرباح والسحب</h2><p>الرصيد محسوب من الطلبات المكتملة بعد عمولة المنصة والطلبات المعلقة.</p></div><button class="btn primary" '+((Number(e.available_balance||0)<=0||kyc!=='approved')?'disabled':'')+' onclick="payoutModal('+Number(e.available_balance||0)+')">طلب سحب</button></div>'+
+   '<div class="earningsGrid">'+
+   '<div class="earnCard"><small>صافي الأرباح</small><b>'+money(e.net_earned||0)+'</b></div>'+
+   '<div class="earnCard"><small>المتاح للسحب</small><b>'+money(e.available_balance||0)+'</b></div>'+
+   '<div class="earnCard"><small>قيد المعالجة</small><b>'+money(e.pending_payouts||0)+'</b></div>'+
+   '<div class="earnCard"><small>تم سحبه</small><b>'+money(e.paid_out||0)+'</b></div></div>'+
+   (kyc!=='approved'?'<div class="disputeBanner"><b>يلزم اعتماد التوثيق قبل السحب</b><p>تقدر تشوف أرباحك الآن، لكن إرسال طلب سحب يتفعل بعد اعتماد KYC من الإدارة.</p></div>':'')+
+   '<div class="payoutList">'+((e.payout_requests||[]).slice(0,8).map(x=>'<div class="payoutRow"><div><b>'+money(x.amount)+'</b><p>'+new Date(x.created_at).toLocaleString('ar-SA')+(x.admin_note?' · '+esc(x.admin_note):'')+'</p></div><span class="pill '+payoutClass(x.status)+'">'+payoutStatus(x.status)+'</span></div>').join('')||'<div class="card empty">ما عندك طلبات سحب حتى الآن.</div>')+'</div>';
+   host.appendChild(sec);
+ };
+
+ window.payoutModal=function(max){
+   openModal('<div class="modalHead"><div><h2>طلب سحب أرباح</h2><div style="font-size:9px;color:#64748b">المتاح: '+money(max)+'</div></div><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>المبلغ</label><input id="payoutAmount" inputmode="decimal" value="'+Nu

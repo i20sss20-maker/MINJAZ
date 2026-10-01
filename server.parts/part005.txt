@@ -1,0 +1,116 @@
+واعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':'draft_pending_legal_review','sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
+                ]})
+            if method=='GET' and p in ('/','/index.html'):
+                data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8'}[p]
+                data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
+            if p=='/favicon.ico': self._headers(204); return
+            if method=='GET' and p=='/api/v1/storage/config':
+                return self.sendj(200,{'mode':STORAGE_MODE,'direct_uploads':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'max_upload_bytes':BUCKET_STORAGE.max_bytes,'allowed_extensions':sorted(ALLOWED_TYPES)})
+            if method=='POST' and p=='/api/v1/uploads/presign':
+                u=self.require();
+                if not u:return
+                if STORAGE_MODE!='railway_bucket' or not BUCKET_READY:return self.sendj(503,{'error':'storage_not_configured'})
+                b=self.body()
+                try: meta=BUCKET_STORAGE.validate_meta(b.get('file_name'),b.get('mime_type'),b.get('size_bytes'))
+                except StorageError as e:return self.sendj(400,{'error':str(e),'max_upload_bytes':BUCKET_STORAGE.max_bytes})
+                q("delete from upload_intents where consumed_at is null and expires_at<now()-interval '24 hours'",(),None)
+                recent=q("select count(*)::int n from upload_intents where user_id=%s and created_at>now()-interval '10 minutes'",(u['id'],),'one')['n']
+                if recent>=20:return self.sendj(429,{'error':'upload_rate_limited','retry_after_seconds':600})
+                key=BUCKET_STORAGE.object_key(u['id'],meta['extension'])
+                q("insert into upload_intents(user_id,object_key,file_name,mime_type,size_bytes,expires_at) values(%s,%s,%s,%s,%s,now()+interval '20 minutes')",(u['id'],key,meta['file_name'],meta['mime_type'],meta['size_bytes']),None)
+                return self.sendj(201,{'key':key,'upload_url':BUCKET_STORAGE.presign('PUT',key,expires=900,content_type=meta['mime_type']),'headers':{'Content-Type':meta['mime_type']},'expires_in_seconds':900,'max_upload_bytes':BUCKET_STORAGE.max_bytes})
+            if method=='POST' and p=='/api/v1/uploads/complete':
+                u=self.require();
+                if not u:return
+                if STORAGE_MODE!='railway_bucket' or not BUCKET_READY:return self.sendj(503,{'error':'storage_not_configured'})
+                b=self.body();key=str(b.get('key') or '').strip().lstrip('/')
+                if not BUCKET_STORAGE.safe_key_for_user(key,u['id']):return self.sendj(403,{'error':'invalid_upload_key'})
+                intent=q("select * from upload_intents where user_id=%s and object_key=%s and expires_at>now()",(u['id'],key),'one')
+                if not intent:return self.sendj(404,{'error':'upload_intent_not_found'})
+                if intent.get('completed_at'):
+                    return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
+                try: actual=BUCKET_STORAGE.head(key)
+                except Exception as e:
+                    print('UPLOAD_HEAD_ERR',repr(e),flush=True);return self.sendj(409,{'error':'upload_not_found'})
+                if int(actual.get('size_bytes') or 0)!=int(intent['size_bytes']) or actual.get('mime_type')!=intent['mime_type']:
+                    BUCKET_STORAGE.delete(key)
+                    return self.sendj(409,{'error':'upload_verification_failed'})
+                q("update upload_intents set completed_at=now(),etag=%s where id=%s",(actual.get('etag') or None,intent['id']),None)
+                return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
+            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
+            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
+            if method=='POST' and p=='/api/v1/auth/request-otp':
+                b=self.body(); phone=normalize_phone(b.get('phone',''))
+                if not phone:return self.sendj(400,{'error':'invalid_phone'})
+                if not rate_limit_event('otp_ip',self.client_key(),20,600):return self.sendj(429,{'error':'otp_source_rate_limited','retry_after_seconds':600})
+                r=q("select count(*)::int n,max(created_at) last from otp_challenges where phone=%s and created_at>now()-interval '10 minutes'",(phone,), 'one')
+                if r['n']>=5:return self.sendj(429,{'error':'otp_rate_limited','retry_after_seconds':600})
+                if r['last'] and (datetime.now(r['last'].tzinfo)-r['last']).total_seconds()<60:return self.sendj(429,{'error':'otp_wait','retry_after_seconds':60})
+                cid=str(uuid.uuid4())
+                if SMS_MODE=='dev':
+                    if IS_PROD:return self.sendj(503,{'error':'sms_not_configured'})
+                    code=DEV_OTP; delivery='development'
+                elif SMS_MODE=='adapter':
+                    code=f'{secrets.randbelow(1000000):06d}'; delivery='adapter'
+                    try: adapter_post_json(SMS_WEBHOOK_URL,{'challenge_id':cid,'phone':phone,'code':code,'purpose':'login','expires_in_seconds':600},SMS_WEBHOOK_BEARER)
+                    except Exception as exc:
+                        operational_event('error','sms','delivery_failed',repr(exc),self.request_id(),None,'phone',sha(phone)[:16]);print('SMS_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'sms_delivery_failed'})
+                else:
+                    return self.sendj(503,{'error':'sms_not_configured'})
+                q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
+                return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,**({'dev_code':code} if delivery=='development' else {})})
+            if method=='POST' and p=='/api/v1/auth/verify-otp':
+                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
+                ch=q("select * from otp_challenges where challenge_id=%s",(cid,), 'one')
+                if not ch:return self.sendj(404,{'error':'challenge_not_found'})
+                if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
+                if ch['expires_at']<datetime.now(ch['expires_at'].tzinfo):return self.sendj(410,{'error':'otp_expired'})
+                if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
+                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
+                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
+                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
+                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
+                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
+                if not u:
+                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
+                else:
+                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
+                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
+                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
+                q('update users set role=%s where id=%s',(role,u['id']),None)
+                u=q('select * from users where id=%s',(u['id'],),'one')
+                roles=enabled_roles(u['id'])
+                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=str(self.client_address[0] if self.client_address else '')
+                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
+                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
+                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
+            if method=='POST' and p=='/api/v1/auth/logout':
+                u=self.require();
+                if not u:return
+                raw=self.headers.get('Authorization','')[7:]; q('update sessions set revoked_at=now() where token_hash=%s',(sha(raw+SECRET),),None);log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
+            if method=='GET' and p=='/api/v1/me':
+                u=self.require();
+                if not u:return
+                roles=enabled_roles(u['id'])
+                if not roles:
+                    q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
+                prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
+                return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
+            if p=='/api/v1/me/profile' and method=='PATCH':
+                u=self.require();
+                if not u:return
+                b=self.body();name=str(b.get('name') or '').strip()[:120]
+                if len(name)<2:return self.sendj(400,{'error':'invalid_name'})
+                r=q('update users set name=%s where id=%s returning id,phone,name,role,is_verified',(name,u['id']),'one');log_account_activity(u['id'],'profile_updated','تم تحديث الاسم الظاهر',u.get('session_id'));return self.sendj(200,r)
+            if p=='/api/v1/privacy/export' and method=='GET':
+                u=self.require();
+                if not u:return
+                uid=u['id'];order_ids=[x['id'] for x in q('select id from orders where client_id=%s or freelancer_id=%s order by created_at desc limit 500',(uid,uid))]
+                messages=[]
+                if order_ids:
+                    messages=q('select m.id,m.order_id,m.sender_id,m.body,m.created_at from messages 

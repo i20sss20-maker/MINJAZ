@@ -1,0 +1,10 @@
+pe||'')}</td><td>${esc(x.name||'')}</td><td>${esc(x.status||'')}</td><td>${esc((x.details||'').slice(0,100))}</td></tr>`).join('')}</tbody></table>`}
+ window.rc5AdminTab=function(v){adminState.tab=v;adminState.status='all';document.querySelectorAll('.adminTabsRc5 button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));paintAdmin()};window.rc5AdminSearch=function(v){adminState.q=v;paintAdmin()};window.rc5AdminStatus=function(v){adminState.status=v;paintAdmin()};
+ const previousAdmin=window.renderAdmin;
+ window.renderAdmin=async function(){await previousAdmin();const host=document.getElementById('admin');if(!host||host.querySelector('[data-admin-explorer-rc5]'))return;const [orders,users,support,privacy]=await Promise.all([api('/api/admin/orders'),api('/api/admin/users'),api('/api/admin/support'),api('/api/admin/privacy')]);adminData={orders:orders.j?.items||[],users:users.j?.items||[],support:support.j?.items||[],privacy:privacy.j?.items||[]};const sec=document.createElement('div');sec.dataset.adminExplorerRc5='1';sec.className='safetyPanel adminExplorerRc5';sec.innerHTML=`<div class="sectionHead"><div><h2>مستكشف التشغيل</h2><p>بحث سريع في الطلبات والحسابات والدعم والخصوصية بدون التنقل بين قوائم طويلة.</p></div><span class="pill blue">RC5</span></div><div class="adminExplorerHeadRc5"><div class="field"><label>بحث</label><input oninput="rc5AdminSearch(this.value)" placeholder="اسم، رقم طلب، حالة أو موضوع"></div><div class="field"><label>الحالة / النوع</label><select id="adminStatusRc5" onchange="rc5AdminStatus(this.value)"></select></div></div><div class="adminTabsRc5">${[['orders','الطلبات'],['users','المستخدمون'],['support','الدعم'],['privacy','الخصوصية']].map(([v,n])=>`<button data-v="${v}" class="${adminState.tab===v?'on':''}" onclick="rc5AdminTab('${v}')">${n}</button>`).join('')}</div><div id="adminResultsRc5" class="adminResultsRc5"></div>`;host.appendChild(sec);paintAdmin()};
+ document.documentElement.dataset.minjazRc=RC5_VERSION;
+})();
+</script>
+
+</body>
+</html>

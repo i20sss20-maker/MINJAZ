@@ -1,0 +1,89 @@
+            if m and method=='POST':
+                u=self.require('freelancer');
+                if not u:return
+                if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})
+                b=self.body()
+                try: price=float(b.get('price') or 0)
+                except Exception:return self.sendj(400,{'error':'invalid_price'})
+                if price<=0:return self.sendj(400,{'error':'invalid_price'})
+                if price>1_000_000:return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
+                try: delivery_hours=int(b.get('delivery_hours') or 24); revisions=int(b.get('revisions') if b.get('revisions') not in (None,'') else 1)
+                except Exception:return self.sendj(400,{'error':'invalid_proposal_terms'})
+                if delivery_hours<1 or delivery_hours>8760:return self.sendj(400,{'error':'invalid_delivery_hours','minimum':1,'maximum':8760})
+                if revisions<0 or revisions>50:return self.sendj(400,{'error':'invalid_revisions','minimum':0,'maximum':50})
+                message=str(b.get('message') or '').strip()
+                if len(message)>1200:return self.sendj(400,{'error':'proposal_message_too_long','maximum':1200})
+                t=q("select id,client_id from tasks where id=%s and status='open'",(int(m.group(1)),),'one')
+                if not t:return self.sendj(404,{'error':'task_not_found'})
+                if int(t['client_id'])==int(u['id']):return self.sendj(403,{'error':'own_task_forbidden'})
+                if task_hidden(int(m.group(1))) or interaction_restricted(u['id'],t['client_id']):return self.sendj(403,{'error':'interaction_restricted'})
+                r=q("insert into proposals(task_id,freelancer_id,price,delivery_hours,revisions,message) values(%s,%s,%s,%s,%s,%s) on conflict(task_id,freelancer_id) do update set price=excluded.price,delivery_hours=excluded.delivery_hours,revisions=excluded.revisions,message=excluded.message returning *",(int(m.group(1)),u['id'],price,delivery_hours,revisions,message or None),'one');notify(t['client_id'],'عرض جديد على مهمتك',f"السعر {price:.2f} ر.س · التسليم خلال {delivery_hours} ساعة",'proposal',None,int(m.group(1)));return self.sendj(201,r)
+            if m and method=='GET':
+                u=self.require();
+                if not u:return
+                t=q('select * from tasks where id=%s',(int(m.group(1)),),'one')
+                if not t:return self.sendj(404,{'error':'task_not_found'})
+                if u['role']=='client' and int(t['client_id'])!=int(u['id']):return self.sendj(403,{'error':'forbidden'})
+                if u['role']=='freelancer':
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s and p.freelancer_id=%s order by p.created_at",(int(m.group(1)),u['id']))
+                else:
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s order by p.created_at",(int(m.group(1)),))
+                return self.sendj(200,{'items':a})
+            if p=='/api/v1/orders' and method=='POST':
+                u=self.require('client');
+                if not u:return
+                b=self.body(); x=q("select p.*,t.client_id,t.id task_id from proposals p join tasks t on t.id=p.task_id where p.id=%s and p.status='sent' and t.status='open'",(b.get('proposal_id'),),'one')
+                if not x or int(x['client_id'])!=int(u['id']):return self.sendj(404,{'error':'proposal_not_found'})
+                if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
+                ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
+                if ex:return self.sendj(409,{'error':'order_exists'})
+                fee=round(float(x['price'])*float(FEE)/100,2); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+            if p=='/api/v1/orders' and method=='GET':
+                u=self.require();
+                if not u:return
+                col='client_id' if u['role']=='client' else 'freelancer_id'
+                a=q(f"""select o.*,t.title,t.description,t.due_at,t.urgency,c.name client_name,f.name freelancer_name,
+                    coalesce(p.delivery_hours,0) promised_hours,coalesce(p.revisions,0) revisions_allowed,
+                    (select count(*)::int from order_revision_requests rr where rr.order_id=o.id) revisions_used,
+                    greatest(coalesce(p.revisions,0)-(select count(*)::int from order_revision_requests rr where rr.order_id=o.id),0) revisions_remaining,
+                    (o.amount-o.platform_fee) net_amount,exists(select 1 from reviews rv where rv.order_id=o.id) reviewed
+                    from orders o join tasks t on t.id=o.task_id join users c on c.id=o.client_id join users f on f.id=o.freelancer_id
+                    left join proposals p on p.id=o.proposal_id where o.{col}=%s order by o.created_at desc""",(u['id'],));return self.sendj(200,{'items':a})
+            m=re.fullmatch(r'/api/v1/orders/(\d+)',p)
+            if m and method=='GET':
+                u=self.require();
+                if not u:return
+                o=q("select o.*,t.title,t.description,t.due_at,t.urgency,c.name client_name,f.name freelancer_name,coalesce(p.delivery_hours,0) promised_hours,coalesce(p.revisions,0) revisions_allowed,(select count(*)::int from order_revision_requests rr where rr.order_id=o.id) revisions_used,greatest(coalesce(p.revisions,0)-(select count(*)::int from order_revision_requests rr where rr.order_id=o.id),0) revisions_remaining,(o.amount-o.platform_fee) net_amount,rv.id review_id,rv.quality review_quality,rv.timeliness review_timeliness,rv.communication review_communication,rv.comment review_comment,rv.created_at review_created_at from orders o join tasks t on t.id=o.task_id join users c on c.id=o.client_id join users f on f.id=o.freelancer_id left join proposals p on p.id=o.proposal_id left join reviews rv on rv.order_id=o.id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)",(int(m.group(1)),u['id'],u['id']),'one');return self.sendj(404,{'error':'order_not_found'}) if not o else self.sendj(200,o)
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/(pay|deliver|revision|complete|review)',p)
+            if m and method=='POST':
+                oid=int(m.group(1)); action=m.group(2); u=self.require();
+                if not u:return
+                o=q('select * from orders where id=%s',(oid,),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                if action=='pay':
+                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
+                    if o.get('payment_status')=='paid':return self.sendj(200,{'ok':True,'already_paid':True})
+                    if o.get('status')!='awaiting_payment':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    if PAYMENT_MODE=='mock':
+                        if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
+                        q("update orders set payment_status='paid',status='in_progress' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
+                    if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
+                    if o.get('payment_checkout_url') and o.get('provider_payment_id'):
+                        return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':o['payment_checkout_url'],'provider_payment_id':o['provider_payment_id'],'reused':True})
+                    claim=q("update orders set payment_checkout_started_at=now() where id=%s and payment_status='unpaid' and status='awaiting_payment' and (payment_checkout_started_at is null or payment_checkout_started_at<now()-interval '2 minutes') returning id",(oid,),'one')
+                    if not claim:
+                        latest=q('select payment_checkout_url,provider_payment_id from orders where id=%s',(oid,),'one') or {}
+                        if latest.get('payment_checkout_url') and latest.get('provider_payment_id'):return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':latest['payment_checkout_url'],'provider_payment_id':latest['provider_payment_id'],'reused':True})
+                        return self.sendj(409,{'error':'payment_initialization_in_progress','retry_after_seconds':120})
+                    customer=q('select phone,name from users where id=%s',(u['id'],),'one') or {}
+                    payload={'order_id':oid,'amount':float(o['amount']),'currency':'SAR','customer':{'phone':customer.get('phone'),'name':customer.get('name')},'return_url':(PUBLIC_BASE_URL+'/#orders') if PUBLIC_BASE_URL else None,'webhook_contract':'minjaz-normalized-v1','webhook_url':(PUBLIC_BASE_URL+'/api/v1/integrations/payments/webhook') if PUBLIC_BASE_URL else None}
+                    try:resp=adapter_post_json(PAYMENT_CREATE_URL,payload,PAYMENT_ADAPTER_BEARER)
+                    except Exception as exc:
+                        q("update orders set payment_checkout_started_at=null where id=%s and payment_status='unpaid' and provider_payment_id is null",(oid,),None);operational_event('error','payment','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'order',oid);print('PAYMENT_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'payment_provider_unavailable'})
+                    checkout=str(resp.get('checkout_url') or '').strip(); provider_id=str(resp.get('provider_payment_id') or '').strip()[:180]
+                    if not _https_url(checkout) or not provider_id:
+                        q("update orders set payment_checkout_started_at=null where id=%s and payment_status='unpaid' and provider_payment_id is null",(oid,),None);return self.sendj(502,{'error':'invalid_payment_provider_response'})
+                    q("update orders set provider_payment_id=%s,payment_checkout_url=%s,payment_checkout_started_at=null where id=%s and payment_status='unpaid'",(provider_id,checkout,oid),None);log_order_event(oid,'payment_checkout','تم إنشاء رابط الدفع',u['id'],meta={'mode':'adapter'});return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':checkout,'provider_payment_id':provider_id})
+                if action=='deliver':
+                    if u['role']!='freelancer' or int(o['freelancer_id'])!=int(u['id']):return self.sendj(403,{'error':'freelancer_only'})
+                    if o.get('payment_status')!='paid' or o.get('status') not in ('in_pr

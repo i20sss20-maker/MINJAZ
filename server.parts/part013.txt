@@ -1,0 +1,76 @@
+s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['reported_user_id'],restricted,note,u['id']),None)
+                        q('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',(rid,u['id'],sr['reported_user_id'],'restrict_user' if restricted else 'unrestrict_user',note),None)
+                        notify(sr['reported_user_id'],'تحديث من فريق الأمان','تم تقييد التعاملات الجديدة على الحساب مؤقتًا' if restricted else 'تم رفع تقييد التعاملات الجديدة عن الحساب','safety',None,sr.get('task_id'))
+                    resolved=st in ('resolved','dismissed')
+                    r=q("update safety_reports set status=%s,admin_note=%s,resolved_by=case when %s then %s else resolved_by end,resolved_at=case when %s then now() else null end,updated_at=now() where id=%s returning *",(st,note,resolved,u['id'],resolved,rid),'one')
+                    q('insert into moderation_actions(report_id,admin_id,target_user_id,task_id,action,note) values(%s,%s,%s,%s,%s,%s)',(rid,u['id'],sr.get('reported_user_id'),sr.get('task_id'),'report_'+st,note),None)
+                    if resolved:notify(sr['reporter_id'],'تم تحديث بلاغ الأمان','تمت مراجعة البلاغ وإغلاقه' if st=='resolved' else 'تمت مراجعة البلاغ ولم يتطلب إجراء إضافيًا','safety',sr.get('order_id'),sr.get('task_id'))
+                    admin_audit(u['id'],'safety_report_updated','safety_report',rid,{'status':st,'task_action':ta,'user_action':ua})
+                    return self.sendj(200,r)
+                if p=='/api/admin/orders' and method=='GET':
+                    return self.sendj(200,{'items':q("""select o.id,o.task_id,o.client_id,o.freelancer_id,o.amount,o.platform_fee,o.status,o.payment_status,o.created_at,
+                        t.title,t.due_at,t.urgency,c.name client_name,f.name freelancer_name,
+                        coalesce(p.delivery_hours,0) promised_hours,coalesce(p.revisions,0) revisions_allowed,
+                        (select count(*)::int from order_revision_requests rr where rr.order_id=o.id) revisions_used,
+                        greatest(coalesce(p.revisions,0)-(select count(*)::int from order_revision_requests rr where rr.order_id=o.id),0) revisions_remaining
+                        from orders o join tasks t on t.id=o.task_id join users c on c.id=o.client_id join users f on f.id=o.freelancer_id
+                        left join proposals p on p.id=o.proposal_id
+                        order by case when o.status in ('awaiting_payment','in_progress','revision_requested','delivered','disputed') then 0 else 1 end,o.created_at desc limit 300""")})
+                if p=='/api/admin/users' and method=='GET':return self.sendj(200,{'items':q('select us.id,us.phone,us.name,us.role,us.is_verified,us.created_at,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status,(select array_agg(ur.role order by ur.role) from user_roles ur where ur.user_id=us.id and ur.enabled=true) roles from users us left join freelancer_profiles fp on fp.user_id=us.id order by us.created_at desc limit 300')})
+                m=re.fullmatch(r'/api/admin/freelancers/(\d+)/kyc',p)
+                if m and method=='PATCH':
+                    b=self.body();st=str(b.get('status') or '')
+                    if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
+                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one');admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
+                if p=='/api/admin/payouts' and method=='GET':
+                    items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
+                               from payout_requests pr join users us on us.id=pr.freelancer_id
+                               left join freelancer_profiles fp on fp.user_id=pr.freelancer_id
+                               order by case when pr.status in ('pending','processing') then 0 else 1 end,pr.created_at desc limit 300""")
+                    for x in items:x['balance']=freelancer_earnings(x['freelancer_id'])
+                    return self.sendj(200,{'items':items})
+                m=re.fullmatch(r'/api/admin/payouts/(\d+)',p)
+                if m and method=='PATCH':
+                    b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
+                    if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
+                    pr=q('select * from payout_requests where id=%s',(pid,),'one')
+                    if not pr:return self.sendj(404,{'error':'payout_not_found'})
+                    if pr.get('status') in ('paid','rejected','cancelled'):return self.sendj(409,{'error':'payout_finalized'})
+                    if st=='paid' and pr.get('status') not in ('pending','processing'):return self.sendj(409,{'error':'invalid_payout_state'})
+                    r=q("""update payout_requests set status=%s,admin_note=%s,updated_at=now(),resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end where id=%s returning *""",(st,str(b.get('admin_note') or '')[:1000] or None,st,pid),'one')
+                    ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
+                    notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
+                    admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st})
+                    return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id'])})
+                if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
+                m=re.fullmatch(r'/api/admin/support/(\d+)',p)
+                if m and method=='PATCH':
+                    b=self.body();r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(b.get('status') or 'in_progress',str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one');admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':b.get('status') or 'in_progress'});return self.sendj(200,r)
+                if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
+                m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
+                if m and method=='PATCH':
+                    b=self.body();st=b.get('status') or 'in_progress';r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then now() else resolved_at end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,int(m.group(1))),'one');admin_audit(u['id'],'privacy_request_updated','privacy_request',m.group(1),{'status':st});return self.sendj(200,r)
+            return self.sendj(404,{'error':'not_found'})
+        except ValueError as e:
+            code=str(e)
+            if code in ('invalid_json','too_large'):
+                return self.sendj(400,{'error':code})
+            print('BAD_REQUEST',self.request_id(),repr(e),flush=True)
+            return self.sendj(400,{'error':'invalid_request'})
+        except Exception as e:
+            operational_event('error','http','internal_error',repr(e),self.request_id(),None,'route',getattr(self,'path',''))
+            print('ERR',self.request_id(),repr(e),flush=True)
+            return self.sendj(500,{'error':'internal_error'})
+
+if __name__=='__main__':
+    # Migrations are the canonical schema source. Runtime ensure is kept only
+    # as an explicit emergency/dev compatibility switch and is OFF by default.
+    if RUN_RUNTIME_SCHEMA_ENSURE:
+        ensure_schema()
+        ensure_services_schema()
+        ensure_roles_schema()
+        ensure_timeline_schema()
+        ensure_notifications_schema()
+        ensure_engagement_schema()
+        ensure_payout_schema()
+    ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()

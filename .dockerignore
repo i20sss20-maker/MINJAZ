@@ -1,0 +1,5 @@
+minjaz_rc5_runtime.tgz
+runtime_chunks/
+*.pyc
+__pycache__/
+.git/

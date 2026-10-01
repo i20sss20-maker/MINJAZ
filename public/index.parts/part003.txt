@@ -1,0 +1,97 @@
+m&&method==='POST'){const msg={id:next('msg'),order_id:+m[1],sender_id:u.id,body:b.body,created_at:now()};d.messages.push(msg);demoSave(d);return demoResp(201,msg)}
+  if(path==='/api/v1/team'&&method==='GET'){const a=d.favorites.filter(x=>x.client_id===u.id).map(f=>{const usr=demoUser(d,f.freelancer_id),p=demoProfile(d,f.freelancer_id)||{};return {...f,freelancer_id:f.freelancer_id,name:usr?.name,...p}});return demoResp(200,{items:a})}
+  m=path.match(/^\/api\/v1\/team\/(\d+)$/);if(m&&method==='POST'){const fid=+m[1];if(!d.orders.some(x=>x.client_id===u.id&&x.freelancer_id===fid))return demoResp(403,{error:'no_shared_order'});if(!d.favorites.some(x=>x.client_id===u.id&&x.freelancer_id===fid))d.favorites.push({client_id:u.id,freelancer_id:fid,note:b.note||'',created_at:now()});demoSave(d);return demoResp(201,{ok:true})}
+  if(m&&method==='DELETE'){d.favorites=d.favorites.filter(x=>!(x.client_id===u.id&&x.freelancer_id==m[1]));demoSave(d);return demoResp(200,{ok:true})}
+  if(path==='/api/v1/support/tickets'&&method==='GET')return demoResp(200,{items:d.tickets.filter(x=>x.user_id===u.id).sort((a,b)=>b.id-a.id)});
+  if(path==='/api/v1/support/tickets'&&method==='POST'){const t={id:next('ticket'),user_id:u.id,category:b.category||'general',subject:b.subject,message:b.message,priority:b.priority||'normal',status:'open',created_at:now(),updated_at:now()};d.tickets.push(t);demoSave(d);return demoResp(201,t)}
+  if(path==='/api/v1/privacy/requests'&&method==='GET')return demoResp(200,{items:d.privacy.filter(x=>x.user_id===u.id).sort((a,b)=>b.id-a.id)});
+  if(path==='/api/v1/privacy/requests'&&method==='POST'){if(d.privacy.some(x=>x.user_id===u.id&&x.request_type===b.request_type&&['pending','in_progress'].includes(x.status)))return demoResp(409,{error:'active_request_exists'});const p={id:next('privacy'),user_id:u.id,request_type:b.request_type,details:b.details||'',status:'pending',created_at:now()};d.privacy.push(p);demoSave(d);return demoResp(201,p)}
+  if(path==='/api/admin/cancellations'&&method==='GET'){const items=(d.cancellations||[]).map(x=>{const o=d.orders.find(z=>z.id===x.order_id),t=d.tasks.find(z=>z.id===o?.task_id);return {...x,title:t?.title,payment_status:o?.payment_status,amount:o?.amount,client_name:demoUser(d,o?.client_id)?.name,freelancer_name:demoUser(d,o?.freelancer_id)?.name,requested_by_name:demoUser(d,x.requested_by)?.name}});return demoResp(200,{items})}
+  m=path.match(/^\/api\/admin\/cancellations\/(\d+)$/);if(m&&method==='PATCH'){const cr=(d.cancellations||[]).find(x=>x.id==m[1]);if(!cr)return demoResp(404,{error:'cancellation_not_found'});const o=d.orders.find(x=>x.id===cr.order_id);if(b.refund_status==='refunded'){cr.refund_status='refunded';if(o)o.payment_status='refunded';demoSave(d);return demoResp(200,cr)}if(b.status==='in_review'){cr.status='in_review'}else if(b.status==='rejected'){cr.status='rejected';cr.resolved_at=now()}else if(b.status==='approved'){cr.status='approved';cr.resolved_at=now();if(o){o.status='cancelled';d.tasks.find(x=>x.id===o.task_id).status='cancelled';if(o.payment_status==='paid'){o.payment_status='refunded';cr.refund_status='refunded'}else cr.refund_status='not_needed'}}else return demoResp(400,{error:'invalid_status'});cr.admin_note=b.admin_note||'';demoSave(d);return demoResp(200,cr)}
+  if(path==='/api/admin/summary'&&method==='GET')return demoResp(200,{users:d.users.length,tasks:d.tasks.length,orders:d.orders.length,open_support:d.tickets.filter(x=>x.status==='open').length,pending_privacy:d.privacy.filter(x=>x.status==='pending').length});
+  if(path==='/api/admin/orders'&&method==='GET')return demoResp(200,{items:d.orders.map(o=>{const t=d.tasks.find(x=>x.id===o.task_id),p=d.proposals.find(x=>x.id===o.proposal_id);return {...o,title:t?.title,due_at:t?.due_at,urgency:t?.urgency,client_name:demoUser(d,o.client_id)?.name,freelancer_name:demoUser(d,o.freelancer_id)?.name,promised_hours:p?.delivery_hours||0,revisions_allowed:p?.revisions||0,revisions_used:0,revisions_remaining:p?.revisions||0}}).sort((a,b)=>b.id-a.id)});
+  if(path==='/api/admin/users'&&method==='GET')return demoResp(200,{items:d.users.map(x=>({...x,...(demoProfile(d,x.id)||{})}))});
+  if(path==='/api/v1/freelancer/kyc/start'&&method==='POST'){const p=demoProfile(d,u.id);if(!p)return demoResp(404,{error:'not_found'});p.kyc_status='approved';demoSave(d);return demoResp(200,{ok:true,demo:true})}
+  m=path.match(/^\/api\/admin\/freelancers\/(\d+)\/kyc$/);if(m&&method==='PATCH'){const p=demoProfile(d,+m[1]);if(!p)return demoResp(404,{error:'not_found'});p.kyc_status=b.status;demoSave(d);return demoResp(200,p)}
+  if(path==='/api/admin/support'&&method==='GET')return demoResp(200,{items:d.tickets.map(x=>({...x,name:demoUser(d,x.user_id)?.name,phone:demoUser(d,x.user_id)?.phone})).sort((a,b)=>b.id-a.id)});
+  m=path.match(/^\/api\/admin\/support\/(\d+)$/);if(m&&method==='PATCH'){const t=d.tickets.find(x=>x.id==m[1]);if(!t)return demoResp(404,{error:'not_found'});Object.assign(t,{status:b.status,admin_reply:b.admin_reply,updated_at:now()});demoSave(d);return demoResp(200,t)}
+  if(path==='/api/admin/privacy'&&method==='GET')return demoResp(200,{items:d.privacy.map(x=>({...x,name:demoUser(d,x.user_id)?.name,phone:demoUser(d,x.user_id)?.phone})).sort((a,b)=>b.id-a.id)});
+  m=path.match(/^\/api\/admin\/privacy\/(\d+)$/);if(m&&method==='PATCH'){const p=d.privacy.find(x=>x.id==m[1]);if(!p)return demoResp(404,{error:'not_found'});Object.assign(p,{status:b.status,admin_note:b.admin_note,resolved_at:['completed','rejected'].includes(b.status)?now():p.resolved_at});demoSave(d);return demoResp(200,p)}
+  return demoResp(404,{error:'not_found'});
+}
+
+const $=id=>document.getElementById(id);const sameId=(a,b)=>Number(a)===Number(b);
+let role='client', token=localStorage.getItem('minjaz_token')||'', me=null, challenge='', categories=[], currentPage='home';
+let opportunityFilters={q:'',category_id:'',urgency:'',proposal:'',min_budget:'',sort:'match'};
+let offerCompareState={task:null,items:[],sort:'balanced',verifiedOnly:false};
+const statusMap={open:'مفتوحة',matched:'تم الاختيار',awaiting_payment:'بانتظار الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',completed:'مكتملة',revision_requested:'تعديل مطلوب',cancelled:'ملغاة',disputed:'نزاع',paid:'مدفوع',unpaid:'غير مدفوع'};
+const statusClass=s=>['completed','paid'].includes(s)?'green':['in_progress','matched','delivered'].includes(s)?'blue':['cancelled','disputed'].includes(s)?'red':'amber';
+function toast(s){const t=$('toast');t.textContent=s;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function money(n){return Number(n||0).toLocaleString('ar-SA',{maximumFractionDigits:2})+' ر.س'}
+function date(s){if(!s)return'—';return new Date(s).toLocaleDateString('ar-SA')}
+function H(){return {'content-type':'application/json',authorization:'Bearer '+token}}
+const DEMO_MODE=new URLSearchParams(location.search).get('demo')==='1'||location.hostname.includes('demo-live');
+let connectionWarned=false;
+async function api(path,opt={}){
+  if(DEMO_MODE)return demoApi(path,opt);
+  try{
+    const netOpt={...opt,headers:{...(opt.headers||{}),...(token?{authorization:'Bearer '+token}:{})}};
+    if(netOpt.body&&!netOpt.headers['content-type'])netOpt.headers['content-type']='application/json';
+    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),5000);netOpt.signal=ctl.signal;
+    const r=await fetch(path,netOpt);clearTimeout(timer);
+    const ct=r.headers.get('content-type')||'';
+    if(!ct.includes('application/json')||r.status>=500)throw new Error('backend_unavailable');
+    let j=null;try{j=await r.json()}catch{throw new Error('invalid_json')}
+    if(r.status===401&&token){localStorage.removeItem('minjaz_token');token='';showAuth()}
+    connectionWarned=false;
+    return {r,j};
+  }catch(e){
+    console.error('MINJAZ backend unavailable',e);
+    if(!connectionWarned){connectionWarned=true;toast('تعذر الاتصال بخدمة مِنجاز. جرّب مرة ثانية بعد قليل')}
+    return {r:{ok:false,status:0},j:{error:'backend_unavailable'}};
+  }
+}
+function setRole(r){role=r;$('roleClient').classList.toggle('on',r==='client');$('roleFreelancer').classList.toggle('on',r==='freelancer')}
+function wireOtp(){document.querySelectorAll('.otp input').forEach((x,i,a)=>x.addEventListener('input',()=>{x.value=x.value.replace(/\D/g,'').slice(0,1);if(x.value&&a[i+1])a[i+1].focus()}))}
+wireOtp();
+async function requestOtp(){
+ const phone=$('loginPhone').value.trim(),name=$('loginName').value.trim();
+ if(!phone||!name)return toast('اكتب الاسم ورقم الجوال');
+ const {r,j}=await api('/api/v1/auth/request-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})});
+ if(!r.ok)return toast(j?.error==='otp_wait'?'انتظر دقيقة قبل طلب رمز جديد':j?.error==='otp_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':'تعذر إرسال الرمز');
+ challenge=j.challenge_id;$('otpBox').classList.remove('hidden');document.querySelector('.otp input').focus();toast('تم إنشاء رمز التحقق');
+}
+async function verifyOtp(){
+ const code=[...document.querySelectorAll('.otp input')].map(x=>x.value).join('');
+ if(code.length!==4)return toast('اكتب الرمز كامل');
+ const {r,j}=await api('/api/v1/auth/verify-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
+ if(!r.ok)return toast('الرمز غير صحيح أو انتهت صلاحيته');
+ token=j.token;localStorage.setItem('minjaz_token',token);await boot();
+}
+function showAuth(){$('auth').classList.remove('hidden');$('app').classList.add('hidden')}
+async function logout(){try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}localStorage.removeItem('minjaz_token');token='';me=null;showAuth()}
+const navByRole={
+ client:[['home','⌂','الرئيسية'],['tasks','＋','مهامي'],['orders','▣','الطلبات'],['team','☆','فريقي'],['account','○','حسابي']],
+ freelancer:[['home','⌂','الرئيسية'],['tasks','⌕','المهام'],['orders','▣','أعمالي'],['account','○','حسابي']],
+ admin:[['admin','⌂','لوحة الإدارة'],['tasks','▦','المهام'],['orders','▣','الطلبات'],['account','○','الحساب']]
+};
+function buildNav(){
+ const nav=navByRole[me.user.role]||navByRole.client;
+ $('sideNav').innerHTML='<div class="navGroup"><div class="navLabel">القائمة</div>'+nav.map(x=>`<button class="navBtn ${x[0]===currentPage?'on':''}" data-nav="${x[0]}" onclick="go('${x[0]}')"><span class="navIcon">${x[1]}</span>${x[2]}</button>`).join('')+'</div>';
+ $('mobileNav').style.gridTemplateColumns=`repeat(${nav.length},1fr)`;
+ $('mobileNav').innerHTML=nav.map(x=>`<button class="${x[0]===currentPage?'on':''}" data-nav="${x[0]}" onclick="go('${x[0]}')"><span>${x[1]}</span>${x[2]}</button>`).join('');
+}
+async function boot(){
+ if(!token)return showAuth();
+ const {r,j}=await api('/api/v1/me');if(!r.ok)return showAuth();
+ me=j;$('auth').classList.add('hidden');$('app').classList.remove('hidden');
+ $('userName').textContent=me.user.name;$('avatar').textContent=(me.user.name||'م')[0];$('userRole').textContent=me.user.role==='client'?'عميل':me.user.role==='freelancer'?'مستقل':'إدارة';
+ const c=await api('/api/v1/categories');categories=c.r.ok?c.j.items:[];
+ currentPage=me.user.role==='admin'?'admin':'home';buildNav();await go(currentPage);
+}
+async function go(id){
+ currentPage=id;document.querySelectorAll('.page').forEach(x=>x.classList.toggle('on',x.id===id));document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('on',x.dataset.nav===id));
+ const titles={home:['الرئيسية','نظرة سريعة على مِنجاز'],tasks:['المهام','طلبات وعروض العمل'],orders:['الطلبات','التنفيذ والمحادثات'],team:['فريقي','المستقلون الموثوقون'],account:['حسابي','الإعدادات والدعم والخصوصية'],admin:['لوحة الإدارة','المستخدمون والتشغيل']};
+ $('pageTitle').textContent=titles[id]?.[0]||'مِنجاز';$('pageSub').textContent=titles[id]?.[1]||'';
+ if(id==='home')await renderHome();if(id==='tasks')await renderTa

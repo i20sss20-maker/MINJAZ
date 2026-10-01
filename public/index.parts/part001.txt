@@ -1,0 +1,124 @@
+fc;text-align:center}.orderStep b{display:block;font-family:Alexandria;font-size:8px}.orderStep small{font-size:7px;color:var(--muted)}.orderStep.done{background:#ecfdf3;border-color:#bbf7d0;color:#15803d}.orderStep.current{background:#eef3ff;border-color:#c7d2fe;color:#3157f6;box-shadow:0 7px 18px #3157f612}.orderAlert{border-radius:13px;padding:10px 11px;margin:0 0 12px;font-size:9px;line-height:1.7}.orderAlert.disputed{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}.orderAlert.cancelled{background:#f8fafc;color:#64748b;border:1px solid var(--line)}.orderFacts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}.orderFact{border:1px solid var(--line);border-radius:13px;padding:9px;background:#fff}.orderFact b{display:block;font-family:Alexandria;font-size:10px}.orderFact small{font-size:7px;color:var(--muted)}@media(max-width:760px){.orderStepper{grid-template-columns:repeat(5,minmax(60px,1fr));overflow-x:auto;padding-bottom:3px}.orderFacts{grid-template-columns:1fr 1fr}.orderFact:last-child{grid-column:1/-1}}
+.chat{height:280px;overflow:auto;background:#f8fafc;border:1px solid var(--line);border-radius:15px;padding:10px;display:flex;flex-direction:column;gap:8px}.bubble{max-width:82%;padding:9px 11px;border-radius:13px;background:#fff;border:1px solid var(--line);font-size:10px;line-height:1.7}.bubble.me{align-self:flex-start;background:#eef3ff;border-color:#d8e1ff}.bubble small{display:block;color:var(--muted);font-size:7px;margin-top:3px}.chatSend{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}.chatSend input{border:1px solid var(--line);border-radius:12px;padding:10px}
+.mobileNav{display:none}
+.kpiGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.table{width:100%;border-collapse:collapse;font-size:10px}.table th,.table td{text-align:right;padding:10px;border-bottom:1px solid #eef2f6}.table th{color:#64748b;font-size:8px}
+.oppToolbar{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px;margin:0 0 12px;display:grid;grid-template-columns:minmax(190px,1.6fr) repeat(4,minmax(110px,.75fr)) auto;gap:8px;align-items:end}.oppToolbar .field{margin:0}.oppToolbar label{font-size:8px}.oppToolbar input,.oppToolbar select{min-height:39px}.matchHint{margin-top:7px;color:#64748b;font-size:8px}.matchHint b{color:#3157f6}.profileNudge{margin:12px 0 0;background:#fff;border:1px solid #dbe4ff;border-radius:16px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}.profileNudge b{font-family:Alexandria;font-size:10px}.profileNudge p{font-size:8px;color:#64748b;margin:3px 0 0}
+@media(max-width:1100px){.oppToolbar{grid-template-columns:repeat(3,1fr)}.oppToolbar .searchWide{grid-column:span 2}}
+@media(max-width:980px){.shell{grid-template-columns:1fr}.side{display:none}.content{padding:18px 16px 94px}.topbar{height:64px;padding:0 16px}.mobileNav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;background:#fffffff2;backdrop-filter:blur(14px);border-top:1px solid var(--line);z-index:30;padding:7px max(7px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(7px,env(safe-area-inset-left))}.mobileNav button{border:0;background:transparent;color:#64748b;font-size:8px;padding:5px 2px}.mobileNav button span{display:block;font-size:18px;margin-bottom:1px}.mobileNav button.on{color:#3157f6}.hero{grid-template-columns:1fr}.grid,.grid.two{grid-template-columns:1fr 1fr}.categories{grid-template-columns:repeat(2,1fr)}.kpiGrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:720px){.oppToolbar{grid-template-columns:1fr 1fr}.oppToolbar .searchWide{grid-column:1/-1}.profileNudge{align-items:flex-start;flex-direction:column}.auth{grid-template-columns:1fr}.authArt{display:none}.authPanel{padding:25px 18px}.authPanel h1{font-size:24px}.grid,.grid.two{grid-template-columns:1fr}.form2{grid-template-columns:1fr}.full{grid-column:auto}.hero{padding:19px}.hero h2{font-size:20px}.heroStats{grid-template-columns:1fr 1fr}.rowCard{grid-template-columns:1fr}.money{text-align:right}.userChip div:last-child{display:none}.content{padding-top:14px}.modal{padding:16px;border-radius:20px}}
+</style>
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="connectionBanner" class="connectionBanner hidden" role="status" aria-live="polite"></div>
+
+<section id="auth" class="auth">
+  <div class="authPanel">
+    <div class="brand"><div class="mark">≋</div><span>مِنجاز <small style="font-family:inherit;color:#94a3b8;font-weight:500">MINJAZ</small></span></div>
+    <h1>مهمتك، لها من ينجزها.</h1>
+    <p>اكتب المهمة مرة واحدة. يوصل طلبك للمستقلين المناسبين، وتختار العرض الأنسب وتتابع التنفيذ من مكان واحد.</p>
+    <div class="roleSwitch">
+      <button id="roleClient" class="on" onclick="setRole('client')">أحتاج إنجاز مهمة</button>
+      <button id="roleFreelancer" onclick="setRole('freelancer')">أنا مستقل</button>
+    </div>
+    <div class="field"><label>الاسم</label><input id="loginName" placeholder="مثال: صالح"></div>
+    <div class="field"><label>رقم الجوال</label><input id="loginPhone" inputmode="tel" placeholder="+9665xxxxxxxx"></div>
+    <button id="sendOtpBtn" class="btn primary wide" onclick="requestOtp()">إرسال رمز التحقق</button>
+    <div id="otpBox" class="hidden" style="margin-top:14px">
+      <div class="field"><label>رمز التحقق</label><div class="otp"><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1"></div></div>
+      <button class="btn primary wide" onclick="verifyOtp()">دخول</button>
+      <div class="devHint">نسخة Beta: رمز التحقق التجريبي <b>1234</b>.</div>
+    </div>
+  </div>
+  <div class="authArt">
+    <div class="brand"><div class="mark">≋</div><span>MINJAZ</span></div>
+    <div class="artCopy">
+      <h2>من الطلب إلى الإنجاز، بخطوات واضحة.</h2>
+      <p>مِنجاز مصمم للمهام الرقمية السريعة: تصميم، ملفات، بيانات، كتابة، ترجمة، فيديو وأعمال صغيرة.</p>
+      <div class="artCards">
+        <div class="artCard"><b>طلب واحد</b><small>اكتب المطلوب والميزانية والمدة.</small></div>
+        <div class="artCard"><b>عروض مناسبة</b><small>المستقلون يرسلون عروضهم بشكل خاص.</small></div>
+        <div class="artCard"><b>متابعة واضحة</b><small>محادثة وتسليم وتقييم داخل الطلب.</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="app" class="shell hidden">
+  <aside class="side">
+    <div class="brand"><div class="mark">≋</div><span>مِنجاز</span></div>
+    <div id="sideNav"></div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="topTitle"><h1 id="pageTitle">الرئيسية</h1><small id="pageSub">لوحة مِنجاز</small></div>
+      <div class="userChip"><div class="avatar" id="avatar">م</div><div><b id="userName">—</b><small id="userRole">—</small></div><button class="btn ghost" onclick="logout()">خروج</button></div>
+    </header>
+    <div class="content">
+      <div id="pageLoading" class="pageLoading hidden" aria-hidden="true"><div class="loadingCard"><span class="loadingSpinner"></span><div><b>جاري التحميل</b><small id="pageLoadingText">نجهز الصفحة…</small></div></div></div>
+      <section id="home" class="page on"></section>
+      <section id="tasks" class="page"></section>
+      <section id="orders" class="page"></section>
+      <section id="notifications" class="page"></section>
+      <section id="freelancers" class="page"></section>
+      <section id="team" class="page"></section>
+      <section id="account" class="page"></section>
+      <section id="admin" class="page"></section>
+    </div>
+  </main>
+  <nav id="mobileNav" class="mobileNav"></nav>
+</div>
+
+<div id="modalOverlay" class="overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal" class="modal" role="dialog" aria-modal="true" tabindex="-1"></div>
+</div>
+
+<script>
+
+const DEMO_KEY='minjaz_demo_db_v2';
+function demoLoad(){
+  let d=null;try{d=JSON.parse(localStorage.getItem(DEMO_KEY)||'null')}catch{}
+  if(d)return d;
+  d={seq:{user:5,task:2,proposal:4,order:1,msg:2,ticket:1,privacy:1},
+    users:[
+      {id:1,phone:'+966500000001',name:'مدير مِنجاز',role:'admin',is_verified:true},
+      {id:2,phone:'+966511111111',name:'نورة',role:'client',is_verified:true},
+      {id:3,phone:'+966522222222',name:'عبدالله',role:'freelancer',is_verified:true},
+      {id:4,phone:'+966533333333',name:'سارة',role:'freelancer',is_verified:true},
+      {id:5,phone:'+966544444444',name:'خالد',role:'freelancer',is_verified:true}
+    ],
+    profiles:{'3':{user_id:3,bio:'مصمم ومختص عروض تقديمية، أركز على الهويات والمنشورات السريعة.',skills:['تصميم','PowerPoint','Canva'],rating:4.9,completed_tasks:12,on_time_rate:96,avg_response_minutes:8,is_available:true,kyc_status:'approved'},'4':{user_id:4,bio:'مصممة محتوى بصري للمتاجر والحسابات الاجتماعية مع تسليم مرتب للملفات.',skills:['تصميم','سوشيال ميديا','Illustrator'],rating:4.8,completed_tasks:31,on_time_rate:98,avg_response_minutes:14,is_available:true,kyc_status:'approved'},'5':{user_id:5,bio:'أصمم منشورات بسيطة وسريعة مع اهتمام بالمقاسات والهوية.',skills:['Canva','تصميم'],rating:4.6,completed_tasks:7,on_time_rate:91,avg_response_minutes:22,is_available:false,kyc_status:'pending'}},
+    tokens:{},
+    categories:[
+      {id:1,slug:'design',name_ar:'تصميم',icon:'🎨'},{id:2,slug:'writing',name_ar:'كتابة ومحتوى',icon:'✍️'},
+      {id:3,slug:'excel',name_ar:'Excel وبيانات',icon:'📊'},{id:4,slug:'files',name_ar:'Word وPDF',icon:'📄'},
+      {id:5,slug:'video',name_ar:'فيديو وصوت',icon:'🎬'},{id:6,slug:'translation',name_ar:'ترجمة',icon:'🌐'},
+      {id:7,slug:'business',name_ar:'أعمال',icon:'💼'},{id:8,slug:'ai',name_ar:'ذكاء اصطناعي',icon:'✨'}
+    ],
+    tasks:[
+      {id:1,client_id:2,category_id:1,title:'تصميم 3 منشورات لمتجر',description:'أحتاج 3 منشورات بمقاس إنستغرام وهوية عصرية.',budget_min:79,budget_max:149,urgency:'normal',status:'open',created_at:new Date().toISOString(),proposal_count:1}
+    ],
+    proposals:[
+      {id:1,task_id:1,freelancer_id:3,price:110,delivery_hours:18,revisions:2,message:'أقدر أسلمك 3 تصاميم متناسقة مع تعديلين.',status:'sent',created_at:new Date().toISOString()},
+      {id:2,task_id:1,freelancer_id:4,price:135,delivery_hours:12,revisions:3,message:'أجهز لك اتجاهين بصريين ثم نعتمد واحد وأكمل الثلاثة منشورات.',status:'sent',created_at:new Date(Date.now()-1000*60*12).toISOString()},
+      {id:3,task_id:1,freelancer_id:5,price:85,delivery_hours:30,revisions:1,message:'أقدر أنجز المطلوب بسعر اقتصادي وتسليم خلال يوم تقريبًا.',status:'sent',created_at:new Date(Date.now()-1000*60*35).toISOString()}
+    ],
+    orders:[],messages:[],deliveries:[],reviews:[],favorites:[],tickets:[],privacy:[],cancellations:[]
+  };
+  localStorage.setItem(DEMO_KEY,JSON.stringify(d));return d;
+}
+function demoSave(d){localStorage.setItem(DEMO_KEY,JSON.stringify(d))}
+function demoResp(status,j){return {r:{ok:status>=200&&status<300,status},j}}
+function demoAuth(d){
+  const t=localStorage.getItem('minjaz_token')||'';const uid=d.tokens[t];return d.users.find(x=>x.id===uid)||null;
+}
+function demoBody(opt){try{return opt?.body?JSON.parse(opt.body):{}}catch{return{}}}
+function demoCategory(d,id){return d.categories.find(x=>+x.id===+id)}
+function demoUser(d,id){return d.users.find(x=>+x.id===+id)}
+function demoProfile(d,id){return d.profiles[String(id)]||null}
+function matchNorm(v){return String(v||'').trim().toLowerCase().replace(/[^0-9a-zA-Z\u0600-\u06FF+#. ]+/g,' ').replace(/\s+/g,' ').trim()}
+function opportunityScore(task,skills){
+  const clean=(skills||[]).map(x=>String(x||'').trim()).filter(Boolean);if(!clean.length)return {score:0,matched:[]};
+  const title=matchNorm(task.title),desc=matchNorm(task.description),category=matchNorm(task.category_name),service=matchNorm(task.service_name),hay=[title,desc,category,service].filter(Boolean).join(' ');
+  let categoryHit=false,serviceHit=false;const matched=[];for(const raw of clean){const sk=matchNorm(raw);if(!sk)continue;if(hay.includes(sk))matched.push(raw);if(category&&(category.includes(sk)||sk

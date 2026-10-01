@@ -1,0 +1,187 @@
+import os, json, hashlib, secrets, uuid, re, hmac
+import urllib.request, urllib.error
+from decimal import Decimal
+from datetime import datetime, date
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+from storage import RailwayBucketStorage, StorageError, ALLOWED_TYPES
+import psycopg2
+import psycopg2.extras
+
+PORT=int(os.getenv('PORT','3000'))
+SECRET=os.getenv('AUTH_SECRET','dev-secret-change-me')
+DEV_OTP=os.getenv('DEV_OTP','1234')
+FEE=Decimal(os.getenv('PLATFORM_FEE_PERCENT','15'))
+ADMIN_PHONE=os.getenv('ADMIN_PHONE','').strip()
+PAYMENT_MODE=os.getenv('PAYMENT_MODE','mock')
+DB_PERSISTENCE=os.getenv('DB_PERSISTENCE','volume_missing')
+SMS_MODE=os.getenv('SMS_MODE','dev')
+STORAGE_MODE=os.getenv('STORAGE_MODE','postgres_dev')
+BUCKET_STORAGE=RailwayBucketStorage()
+BUCKET_READY=BUCKET_STORAGE.ready
+KYC_MODE=os.getenv('KYC_MODE','manual')
+SOURCE_CONTROL=os.getenv('SOURCE_CONTROL','railway_env')
+VERSION=os.getenv('MINJAZ_VERSION','0.5.5-rc5')
+APP_ENV=os.getenv('APP_ENV','beta').strip().lower()
+SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
+LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
+LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
+LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
+LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
+RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
+IS_PROD=APP_ENV=='production'
+PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL','').strip().rstrip('/')
+SMS_WEBHOOK_URL=os.getenv('SMS_WEBHOOK_URL','').strip()
+SMS_WEBHOOK_BEARER=os.getenv('SMS_WEBHOOK_BEARER','').strip()
+PAYMENT_CREATE_URL=os.getenv('PAYMENT_CREATE_URL','').strip()
+PAYMENT_ADAPTER_BEARER=os.getenv('PAYMENT_ADAPTER_BEARER','').strip()
+PAYMENT_WEBHOOK_SECRET=os.getenv('PAYMENT_WEBHOOK_SECRET','').strip()
+KYC_START_URL=os.getenv('KYC_START_URL','').strip()
+KYC_ADAPTER_BEARER=os.getenv('KYC_ADAPTER_BEARER','').strip()
+KYC_WEBHOOK_SECRET=os.getenv('KYC_WEBHOOK_SECRET','').strip()
+_cors_raw=os.getenv('CORS_ORIGINS',os.getenv('CORS_ORIGIN','https://minjaz-unified-production.up.railway.app'))
+CORS_ORIGINS={x.strip().rstrip('/') for x in _cors_raw.split(',') if x.strip()}
+
+def _https_url(v):
+    try:
+        u=urlparse(str(v or ''))
+        return u.scheme=='https' and bool(u.netloc)
+    except Exception:
+        return False
+
+def production_blockers():
+    blockers=[]
+    if SECRET=='dev-secret-change-me' or len(SECRET)<32: blockers.append('AUTH_SECRET')
+    if SMS_MODE!='adapter' or not _https_url(SMS_WEBHOOK_URL) or len(SMS_WEBHOOK_BEARER)<16: blockers.append('SMS_ADAPTER')
+    if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL) or len(PAYMENT_ADAPTER_BEARER)<16 or len(PAYMENT_WEBHOOK_SECRET)<32: blockers.append('PAYMENT_ADAPTER')
+    if STORAGE_MODE!='railway_bucket' or not BUCKET_READY: blockers.append('STORAGE_MODE')
+    if KYC_MODE!='adapter' or not _https_url(KYC_START_URL) or len(KYC_ADAPTER_BEARER)<16 or len(KYC_WEBHOOK_SECRET)<32: blockers.append('KYC_ADAPTER')
+    if DB_PERSISTENCE!='persistent': blockers.append('DB_PERSISTENCE')
+    if SOURCE_CONTROL in ('railway_env','none',''): blockers.append('SOURCE_CONTROL')
+    if RUN_RUNTIME_SCHEMA_ENSURE: blockers.append('RUN_RUNTIME_SCHEMA_ENSURE')
+    if not PUBLIC_BASE_URL or not _https_url(PUBLIC_BASE_URL): blockers.append('PUBLIC_BASE_URL')
+    if not CORS_ORIGINS or '*' in CORS_ORIGINS or any(not _https_url(x) for x in CORS_ORIGINS): blockers.append('CORS_ORIGINS')
+    return blockers
+
+if IS_PROD:
+    _prod_blockers=production_blockers()
+    if _prod_blockers:
+        raise RuntimeError('Production safety guard blocked startup: '+','.join(_prod_blockers))
+HTML_PATH=os.getenv('HTML_PATH',os.path.join(os.path.dirname(__file__),'public','index.html'))
+_storage_ep=urlparse(BUCKET_STORAGE.endpoint) if BUCKET_STORAGE.endpoint else None
+STORAGE_CSP_CONNECT=(f" {_storage_ep.scheme}://*.{_storage_ep.netloc}" if _storage_ep and _storage_ep.scheme in ('http','https') and _storage_ep.netloc and BUCKET_STORAGE.url_style=='virtual' else (f" {_storage_ep.scheme}://{_storage_ep.netloc}" if _storage_ep and _storage_ep.scheme in ('http','https') and _storage_ep.netloc else ''))
+
+DATABASE_URL=os.getenv('DATABASE_URL','').strip()
+DB=dict(host=os.getenv('PGHOST'),port=int(os.getenv('PGPORT','5432')),user=os.getenv('PGUSER'),password=os.getenv('PGPASSWORD'),dbname=os.getenv('PGDATABASE'))
+MISSING_DB_ENV=[] if DATABASE_URL else [k for k,v in [('PGHOST',DB['host']),('PGUSER',DB['user']),('PGPASSWORD',DB['password']),('PGDATABASE',DB['dbname'])] if not v]
+if MISSING_DB_ENV:
+    raise RuntimeError('Missing database configuration: set DATABASE_URL or '+','.join(MISSING_DB_ENV))
+
+def db_connect():
+    return psycopg2.connect(DATABASE_URL) if DATABASE_URL else psycopg2.connect(**DB)
+
+def conn():
+    c=db_connect()
+    c.autocommit=True
+    return c
+
+def sha(s): return hashlib.sha256(str(s).encode()).hexdigest()
+def normalize_phone(value):
+    raw=str(value or '').strip()
+    digits=re.sub(r'\D','',raw)
+    if digits.startswith('00966'): digits=digits[2:]
+    if digits.startswith('966') and len(digits)==12 and digits[3]=='5': return '+'+digits
+    if digits.startswith('05') and len(digits)==10: return '+966'+digits[1:]
+    if digits.startswith('5') and len(digits)==9: return '+966'+digits
+    if raw.startswith('+') and len(digits)>=9: return '+'+digits
+    return ''
+def as_json(v):
+    if isinstance(v, Decimal): return float(v)
+    if isinstance(v, (datetime,date)): return v.isoformat()
+    return v
+
+def adapter_post_json(url,payload,bearer='',timeout=8):
+    if not _https_url(url):
+        raise RuntimeError('adapter_url_invalid')
+    data=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+    headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':f'MINJAZ/{VERSION}'}
+    if bearer: headers['Authorization']='Bearer '+bearer
+    req=urllib.request.Request(url,data=data,headers=headers,method='POST')
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as resp:
+            raw=resp.read(262144)
+            if resp.status<200 or resp.status>=300:
+                raise RuntimeError('adapter_http_'+str(resp.status))
+            return json.loads(raw or b'{}')
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError('adapter_http_'+str(exc.code)) from exc
+    except (urllib.error.URLError,TimeoutError,ValueError) as exc:
+        raise RuntimeError('adapter_unavailable') from exc
+
+def rate_limit_event(kind,key,limit,window_seconds):
+    key_hash=sha(str(key)+':'+SECRET)
+    c=db_connect(); c.autocommit=False
+    try:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Serialize each rate-limit bucket so concurrent requests cannot all pass the count-before-insert window.
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'rate:{kind}:{key_hash}',))
+            cur.execute("delete from security_rate_events where created_at<now()-interval '2 days'")
+            cur.execute("select count(*)::int n from security_rate_events where kind=%s and key_hash=%s and created_at>now()-(%s || ' seconds')::interval",(kind,key_hash,int(window_seconds)))
+            row=cur.fetchone() or {'n':0}
+            if int(row.get('n') or 0)>=int(limit):
+                c.commit(); return False
+            cur.execute('insert into security_rate_events(kind,key_hash) values(%s,%s)',(kind,key_hash))
+        c.commit(); return True
+    except Exception:
+        c.rollback(); raise
+    finally:
+        c.close()
+
+class AdapterEventError(Exception):
+    def __init__(self,status,code):
+        super().__init__(code); self.status=int(status); self.code=str(code)
+
+def apply_payment_adapter_event(b):
+    event_id=str(b.get('event_id') or '').strip()[:180]; event_type=str(b.get('type') or '').strip()[:80]; provider_payment_id=str(b.get('provider_payment_id') or '').strip()[:180]
+    try: oid=int(b.get('order_id') or 0)
+    except Exception: oid=0
+    if not event_id or not oid or not provider_payment_id or event_type not in ('payment.succeeded','payment.failed'): raise AdapterEventError(400,'invalid_payment_event')
+    c=db_connect(); c.autocommit=False
+    try:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',('payment:'+event_id,))
+            cur.execute('select * from payment_adapter_events where provider_event_id=%s for update',(event_id,)); ev=cur.fetchone()
+            if ev and ev.get('processed_at'):
+                c.commit(); return {'duplicate':True,'event_type':event_type,'order':None,'changed':False}
+            if ev and (int(ev['order_id'])!=oid or ev['event_type']!=event_type or (ev.get('provider_payment_id') or '')!=(provider_payment_id or '')):
+                raise AdapterEventError(409,'payment_event_conflict')
+            cur.execute('select * from orders where id=%s for update',(oid,)); o=cur.fetchone()
+            if not o: raise AdapterEventError(404,'order_not_found')
+            if o.get('provider_payment_id') and provider_payment_id and o.get('provider_payment_id')!=provider_payment_id: raise AdapterEventError(409,'provider_payment_mismatch')
+            amount=b.get('amount')
+            if amount is not None:
+                try:
+                    if Decimal(str(amount)).quantize(Decimal('0.01'))!=Decimal(str(o['amount'])).quantize(Decimal('0.01')): raise AdapterEventError(409,'amount_mismatch')
+                except AdapterEventError: raise
+                except Exception: raise AdapterEventError(400,'invalid_amount')
+            if not ev:
+                cur.execute('insert into payment_adapter_events(provider_event_id,order_id,event_type,provider_payment_id,payload) values(%s,%s,%s,%s,%s::jsonb)',(event_id,oid,event_type,provider_payment_id or None,json.dumps(b,ensure_ascii=False)))
+            changed=False; workflow_started=False; late_cancelled_payment=False; failed_effective=False
+            if event_type=='payment.succeeded' and o.get('payment_status')!='paid':
+                if o.get('status')=='awaiting_payment':
+                    cur.execute("update orders set payment_status='paid',status='in_progress',provider_payment_id=%s,payment_checkout_started_at=null where id=%s",(provider_payment_id,oid))
+                    cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s and status='matched'",(o['task_id'],)); changed=True; workflow_started=True
+                elif o.get('status')=='cancelled':
+                    # A provider can confirm payment after a cancellation raced with checkout. Preserve the cancellation,
+                    # record the financial fact, and force refund review instead of restarting work.
+                    cur.execute("update orders set payment_status='paid',provider_payment_id=%s,payment_checkout_started_at=null where id=%s",(provider_payment_id,oid))
+                    cur.execute("update order_cancellation_requests set refund_status='manual_required',updated_at=now() where order_id=%s and status='approved' and refund_status in ('not_needed','pending')",(oid,))
+                    changed=True; late_cancelled_payment=True
+                else:
+                    # Do not silently move an unexpected workflow state. Record payment for reconciliation only.
+                    cur.execute("update orders set payment_status='paid',provider_payment_id=%s,payment_checkout_started_at=null where id=%s",(provider_payment_id,oid))
+                    changed=True
+            elif event_type=='payment.failed':
+                # A late failure after a confirmed success is informational only and must never regress the order.
+                failed_effective=o.get('payment_status')!='paid' and o.get('status')=='awaiting_payment'
+            cur.execute('update payment_a
