@@ -1,123 +1,126 @@
-client':
-                    a=q("select t.*,c.name_ar category_name,(select count(*)::int from proposals p where p.task_id=t.id) proposal_count from tasks t left join categories c on c.id=t.category_id where t.client_id=%s order by t.created_at desc limit 200",(u['id'],))
-                elif u['role']=='freelancer':
-                    a=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,
-                                 exists(select 1 from proposals p where p.task_id=t.id and p.freelancer_id=%s) has_proposal,
-                                 exists(select 1 from task_invitations ti where ti.task_id=t.id and ti.freelancer_id=%s and ti.status in ('sent','viewed')) invited,
-                                 exists(select 1 from favorite_tasks ft where ft.task_id=t.id and ft.freelancer_id=%s) favorited
-                          from tasks t
-                          left join categories c on c.id=t.category_id
-                          left join services s on s.id=t.service_id
-                          where t.status='open' and t.client_id<>%s
-                            and not exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=t.client_id) or (ub.blocker_id=t.client_id and ub.blocked_id=%s))
-                            and not exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,t.client_id))
-                            and not exists(select 1 from task_moderation tm where tm.task_id=t.id and tm.hidden=true)
-                          order by t.created_at desc limit 300""",(u['id'],u['id'],u['id'],u['id'],u['id'],u['id'],u['id']))
-                    prof=q('select skills from freelancer_profiles where user_id=%s',(u['id'],),'one') or {}
-                    skills=prof.get('skills') or []
-                    for item in a:
-                        score,matched=opportunity_relevance(item,skills)
-                        item['match_score']=score; item['matched_skills']=matched
-                    qtext=_match_text((query.get('q') or [''])[0])
-                    cat_raw=(query.get('category_id') or [''])[0]
-                    urgency=(query.get('urgency') or [''])[0]
-                    bid=(query.get('proposal') or [''])[0]
-                    try: cat_id=int(cat_raw) if cat_raw else None
-                    except Exception: cat_id=None
-                    try: min_budget=float((query.get('min_budget') or [''])[0]) if (query.get('min_budget') or [''])[0] else None
-                    except Exception: min_budget=None
-                    if qtext:
-                        a=[x for x in a if qtext in _match_text(' '.join([str(x.get('title') or ''),str(x.get('description') or ''),str(x.get('category_name') or ''),str(x.get('service_name') or '')]))]
-                    if cat_id is not None:a=[x for x in a if int(x.get('category_id') or 0)==cat_id]
-                    if urgency in ('normal','urgent'):a=[x for x in a if x.get('urgency')==urgency]
-                    if bid=='sent':a=[x for x in a if bool(x.get('has_proposal'))]
-                    elif bid=='new':a=[x for x in a if not bool(x.get('has_proposal'))]
-                    if min_budget is not None:
-                        a=[x for x in a if float(x.get('budget_max') or x.get('budget_min') or 0)>=min_budget]
-                    sort=(query.get('sort') or ['match'])[0]
-                    if sort=='budget_desc':a.sort(key=lambda x:float(x.get('budget_max') or x.get('budget_min') or 0),reverse=True)
-                    elif sort=='latest':a.sort(key=lambda x:str(x.get('created_at') or ''),reverse=True)
-                    else:a.sort(key=lambda x:(int(x.get('match_score') or 0),str(x.get('created_at') or '')),reverse=True)
-                    try: limit=max(1,min(int((query.get('limit') or ['200'])[0]),200))
-                    except Exception: limit=200
-                    a=a[:limit]
-                else:
-                    a=q('select t.*,c.name_ar category_name from tasks t left join categories c on c.id=t.category_id order by t.created_at desc limit 300')
-                return self.sendj(200,{'items':a})
-            if p=='/api/v1/tasks' and method=='POST':
+                return self.sendj(200,{'ok':True,'verification_url':verification_url,'provider_reference':provider_ref})
+            if method=='PATCH' and p=='/api/v1/freelancer/profile':
+                u=self.require('freelancer');
+                if not u:return
+                b=self.body(); bio=b.get('bio'); skills=b.get('skills') if isinstance(b.get('skills'),list) else None; avail=b.get('is_available') if 'is_available' in b else None
+                q('update freelancer_profiles set bio=coalesce(%s,bio),skills=coalesce(%s::text[],skills),is_available=coalesce(%s,is_available) where user_id=%s',(None if bio is None else str(bio)[:500],skills,avail,u['id']),None)
+                return self.sendj(200,q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one'))
+            if p=='/api/v1/client/profile':
                 u=self.require('client');
                 if not u:return
-                if q("select count(*)::int n from tasks where client_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=20:return self.sendj(429,{'error':'task_rate_limited','retry_after_seconds':3600})
-                b=self.body(); title=str(b.get('title','')).strip(); desc=str(b.get('description','')).strip()
-                if not title or not desc:return self.sendj(400,{'error':'missing_fields'})
-                if len(title)<5:return self.sendj(400,{'error':'title_too_short','minimum':5})
-                if len(title)>180:return self.sendj(400,{'error':'title_too_long','maximum':180})
-                if len(desc)<20:return self.sendj(400,{'error':'description_too_short','minimum':20})
-                if len(desc)>6000:return self.sendj(400,{'error':'description_too_long','maximum':6000})
-                sid=b.get('service_id') or None; category_id=b.get('category_id') or None
-                if sid:
-                    svc=q('select id,category_id from services where id=%s and active=true',(sid,),'one')
-                    if not svc:return self.sendj(400,{'error':'invalid_service'})
-                    category_id=svc['category_id']; sid=svc['id']
-                else:
-                    try: category_id=int(category_id)
-                    except Exception:return self.sendj(400,{'error':'invalid_category'})
-                    if not q('select 1 from categories where id=%s and is_active=true',(category_id,),'one'):return self.sendj(400,{'error':'invalid_category'})
-                urgency=str(b.get('urgency') or 'normal').strip().lower()
-                if urgency not in ('normal','urgent'):return self.sendj(400,{'error':'invalid_urgency'})
-                try:
-                    bmin=money_decimal(b.get('budget_min')) if b.get('budget_min') not in (None,'') else None; bmax=money_decimal(b.get('budget_max')) if b.get('budget_max') not in (None,'') else None
-                except Exception:return self.sendj(400,{'error':'invalid_budget'})
-                if (bmin is not None and bmin<Decimal('49')) or (bmax is not None and bmax<Decimal('49')):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
-                if (bmin is not None and bmin>Decimal('1000000')) or (bmax is not None and bmax>Decimal('1000000')):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
-                if bmin is not None and bmax is not None and bmax<bmin:return self.sendj(400,{'error':'invalid_budget_range'})
-                due_raw=str(b.get('due_at') or '').strip() or None
-                if due_raw:
-                    try:
-                        due_dt=datetime.fromisoformat(due_raw.replace('Z','+00:00'))
-                        now_dt=datetime.now(due_dt.tzinfo) if due_dt.tzinfo else datetime.now()
-                        if due_dt<=now_dt:return self.sendj(400,{'error':'due_at_must_be_future'})
-                    except (ValueError,TypeError):return self.sendj(400,{'error':'invalid_due_at'})
-                r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,due_at,status) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],category_id,sid,title,desc,bmin,bmax,urgency,due_raw),'one'); insert_attachments(u['id'],b.get('attachments'),task_id=r['id']); return self.sendj(201,r)
-            m=re.fullmatch(r'/api/v1/tasks/(\d+)',p)
+                if method=='GET':
+                    prof=q('select user_id,company_name,bio,city,sector,updated_at from client_profiles where user_id=%s',(u['id'],),'one') or {'user_id':u['id'],'company_name':None,'bio':None,'city':None,'sector':None}
+                    stats=q("select count(*)::int tasks_created,(select count(*)::int from orders where client_id=%s and status='completed') completed_orders from tasks where client_id=%s",(u['id'],u['id']),'one') or {}
+                    return self.sendj(200,{**prof,'stats':stats})
+                if method=='PATCH':
+                    b=self.body();company=str(b.get('company_name') or '').strip()[:160] or None;bio=str(b.get('bio') or '').strip()[:1000] or None;city=str(b.get('city') or '').strip()[:120] or None;sector=str(b.get('sector') or '').strip()[:120] or None
+                    r=q("""insert into client_profiles(user_id,company_name,bio,city,sector) values(%s,%s,%s,%s,%s)
+                          on conflict(user_id) do update set company_name=excluded.company_name,bio=excluded.bio,city=excluded.city,sector=excluded.sector,updated_at=now()
+                          returning user_id,company_name,bio,city,sector,updated_at""",(u['id'],company,bio,city,sector),'one')
+                    return self.sendj(200,r)
+            if method=='GET' and p=='/api/v1/freelancers':
+                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id order by fp.rating desc,fp.completed_tasks desc limit 300")
+                viewer=auth(self.headers)
+                if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
+                qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
+                if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
+                if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or []))]
+                if avail=='1':a=[x for x in a if bool(x.get('is_available'))]
+                if verified=='1':a=[x for x in a if x.get('kyc_status')=='approved']
+                sort=(query.get('sort') or ['rating'])[0]
+                if sort=='completed':a.sort(key=lambda x:(int(x.get('completed_tasks') or 0),float(x.get('rating') or 0)),reverse=True)
+                elif sort=='response':a.sort(key=lambda x:(int(x.get('avg_response_minutes') or 999999),-float(x.get('rating') or 0)))
+                else:a.sort(key=lambda x:(float(x.get('rating') or 0),int(x.get('completed_tasks') or 0)),reverse=True)
+                try:limit=max(1,min(int((query.get('limit') or ['100'])[0]),200))
+                except Exception:limit=100
+                return self.sendj(200,{'items':a[:limit]})
+            m=re.fullmatch(r'/api/v1/freelancers/(\d+)/public',p)
             if m and method=='GET':
-                u=self.require();
+                fid=int(m.group(1))
+                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s",(fid,),'one')
+                if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
+                fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
+                viewer=auth(self.headers)
+                if viewer:
+                    fp['blocked_by_me']=bool(q('select 1 from user_blocks where blocker_id=%s and blocked_id=%s',(viewer['id'],fid),'one'))
+                    fp['interaction_restricted']=interaction_restricted(viewer['id'],fid)
+                return self.sendj(200,fp)
+            if p=='/api/v1/freelancer/portfolio':
+                u=self.require('freelancer');
                 if not u:return
-                tid=int(m.group(1));t=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,cu.name client_name,cu.created_at client_joined_at,
-                    (select count(*)::int from tasks tx where tx.client_id=t.client_id) client_tasks_count,
-                    (select count(*)::int from orders ox where ox.client_id=t.client_id and ox.status='completed') client_completed_orders,
-                    cp.company_name client_company,cp.city client_city,cp.sector client_sector
-                    from tasks t left join categories c on c.id=t.category_id left join services s on s.id=t.service_id join users cu on cu.id=t.client_id left join client_profiles cp on cp.user_id=t.client_id where t.id=%s""",(tid,),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                if u['role']=='client' and int(t['client_id'])!=int(u['id']):return self.sendj(403,{'error':'forbidden'})
-                if u['role']=='freelancer':
-                    shared=q('select 1 from orders where task_id=%s and freelancer_id=%s',(tid,u['id']),'one')
-                    if t.get('status')!='open' and not shared:return self.sendj(403,{'error':'forbidden'})
-                    if not shared and (task_hidden(tid) or interaction_restricted(u['id'],t['client_id'])):return self.sendj(403,{'error':'interaction_restricted'})
-                    t['has_proposal']=bool(q('select 1 from proposals where task_id=%s and freelancer_id=%s',(tid,u['id']),'one'))
-                    t['client_blocked_by_me']=bool(q('select 1 from user_blocks where blocker_id=%s and blocked_id=%s',(u['id'],t['client_id']),'one'))
-                    t['invited']=bool(q("select 1 from task_invitations where task_id=%s and freelancer_id=%s and status in ('sent','viewed')",(tid,u['id']),'one'))
-                    t['favorited']=bool(q('select 1 from favorite_tasks where task_id=%s and freelancer_id=%s',(tid,u['id']),'one'))
-                    if t['invited']:q("update task_invitations set status='viewed',updated_at=now() where task_id=%s and freelancer_id=%s and status='sent'",(tid,u['id']),None)
-                    t['proposal']=q('select id,price,delivery_hours,revisions,message,status,created_at from proposals where task_id=%s and freelancer_id=%s',(tid,u['id']),'one')
-                t['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where task_id=%s order by created_at',(tid,)))
-                return self.sendj(200,t)
-            m=re.fullmatch(r'/api/v1/tasks/(\d+)/attachments',p)
-            if m and method=='GET':
-                u=self.require();
+                if method=='GET':return self.sendj(200,{'items':q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
+                if method=='POST':
+                    b=self.body();title=str(b.get('title') or '').strip();desc=str(b.get('description') or '').strip();url=str(b.get('external_url') or '').strip()
+                    if len(title)<3:return self.sendj(400,{'error':'invalid_title'})
+                    if url and not url.startswith('https://'):return self.sendj(400,{'error':'https_url_required'})
+                    n=q('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(u['id'],),'one')['n']
+                    if n>=12:return self.sendj(409,{'error':'portfolio_limit'})
+                    r=q('insert into freelancer_portfolio_items(freelancer_id,title,description,external_url) values(%s,%s,%s,%s) returning id,title,description,external_url,created_at',(u['id'],title[:160],desc[:1500] or None,url[:1000] or None),'one');return self.sendj(201,r)
+            m=re.fullmatch(r'/api/v1/freelancer/portfolio/(\d+)',p)
+            if m and method=='DELETE':
+                u=self.require('freelancer');
                 if not u:return
-                tid=int(m.group(1));t=q('select client_id,status from tasks where id=%s',(tid,),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                if u['role']=='client' and int(t['client_id'])!=int(u['id']):return self.sendj(403,{'error':'forbidden'})
-                if u['role']=='freelancer' and t.get('status')!='open':
-                    ok=q('select 1 from orders where task_id=%s and freelancer_id=%s',(tid,u['id']),'one')
-                    if not ok:return self.sendj(403,{'error':'forbidden'})
-                return self.sendj(200,{'items':public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where task_id=%s order by created_at',(tid,)))})
-            m=re.fullmatch(r'/api/v1/tasks/(\d+)/repeat',p)
+                q('delete from freelancer_portfolio_items where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
+            m=re.fullmatch(r'/api/v1/freelancers/(\d+)/invite',p)
             if m and method=='POST':
                 u=self.require('client');
                 if not u:return
-                t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
+                fid=int(m.group(1));b=self.body();tid=int(b.get('task_id') or 0)
+                fp=q('select user_id from freelancer_profiles where user_id=%s',(fid,),'one')
+                if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                if interaction_restricted(u['id'],fid):return self.sendj(403,{'error':'interaction_restricted'})
+                t=q("select id,title from tasks where id=%s and client_id=%s and status='open'",(tid,u['id']),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
-                r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
-            m=re.fullmatch(r'/api/v1/tasks/(\d+)/proposals',p)
+                if task_hidden(tid):return self.sendj(403,{'error':'task_hidden'})
+                note=str(b.get('note') or '').strip()[:500] or None
+                r=q("insert into task_invitations(task_id,client_id,freelancer_id,note) values(%s,%s,%s,%s) on conflict(task_id,freelancer_id) do update set note=excluded.note,status='sent',updated_at=now() returning *",(tid,u['id'],fid,note),'one')
+                notify(fid,'دعوة خاصة لمهمة',t['title']+((' · '+note) if note else ''),'task_invite',None,tid)
+                return self.sendj(201,r)
+            if p=='/api/v1/freelancer/earnings' and method=='GET':
+                u=self.require('freelancer');
+                if not u:return
+                bal=freelancer_earnings(u['id'])
+                bal['payout_requests']=q("select id,amount,status,note,admin_note,created_at,updated_at,resolved_at from payout_requests where freelancer_id=%s order by created_at desc limit 100",(u['id'],))
+                return self.sendj(200,bal)
+            if p=='/api/v1/freelancer/payouts':
+                u=self.require('freelancer');
+                if not u:return
+                if method=='GET':
+                    return self.sendj(200,{'items':q("select id,amount,status,note,admin_note,created_at,updated_at,resolved_at from payout_requests where freelancer_id=%s order by created_at desc limit 100",(u['id'],)),'balance':freelancer_earnings(u['id'])})
+                if method=='POST':
+                    b=self.body();r,err,available=create_payout_request(u['id'],b.get('amount'),b.get('note'))
+                    if err=='kyc_required':return self.sendj(403,{'error':err})
+                    if err=='insufficient_balance':return self.sendj(409,{'error':err,'available_balance':float(available)})
+                    if err:return self.sendj(400,{'error':err})
+                    notify(u['id'],'تم استلام طلب السحب',f"المبلغ {float(r['amount']):.2f} ر.س قيد المراجعة",'payout',None)
+                    return self.sendj(201,{'item':r,'balance':freelancer_earnings(u['id'])})
+            if p=='/api/v1/freelancer/favorite-tasks' and method=='GET':
+                u=self.require('freelancer');
+                if not u:return
+                return self.sendj(200,{'items':q("select ft.task_id,ft.created_at,t.title,t.description,t.status,t.budget_min,t.budget_max,t.urgency,c.name_ar category_name from favorite_tasks ft join tasks t on t.id=ft.task_id left join categories c on c.id=t.category_id where ft.freelancer_id=%s and not exists(select 1 from task_moderation tm where tm.task_id=t.id and tm.hidden=true) and not exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=t.client_id) or (ub.blocker_id=t.client_id and ub.blocked_id=%s)) and not exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,t.client_id)) order by ft.created_at desc",(u['id'],u['id'],u['id'],u['id']))})
+            m=re.fullmatch(r'/api/v1/freelancer/favorite-tasks/(\d+)',p)
+            if m:
+                u=self.require('freelancer');
+                if not u:return
+                tid=int(m.group(1));t=q('select id,status,client_id from tasks where id=%s',(tid,),'one')
+                if not t:return self.sendj(404,{'error':'task_not_found'})
+                if int(t['client_id'])==int(u['id']):return self.sendj(403,{'error':'own_task_forbidden'})
+                if method=='POST' and (task_hidden(tid) or interaction_restricted(u['id'],t['client_id'])):return self.sendj(403,{'error':'interaction_restricted'})
+                if method=='POST':q('insert into favorite_tasks(freelancer_id,task_id) values(%s,%s) on conflict do nothing',(u['id'],tid),None);return self.sendj(201,{'ok':True,'task_id':tid})
+                if method=='DELETE':q('delete from favorite_tasks where freelancer_id=%s and task_id=%s',(u['id'],tid),None);return self.sendj(200,{'ok':True,'task_id':tid})
+            if p=='/api/v1/freelancer/saved-searches':
+                u=self.require('freelancer');
+                if not u:return
+                if method=='GET':return self.sendj(200,{'items':q('select id,name,filters,created_at,updated_at from saved_task_searches where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
+                if method=='POST':
+                    b=self.body();name=str(b.get('name') or '').strip()[:80];filters=b.get('filters') if isinstance(b.get('filters'),dict) else {}
+                    if not name:return self.sendj(400,{'error':'name_required'})
+                    allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
+                    if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
+                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
+            m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
+            if m and method=='DELETE':
+                u=self.require('freelancer');
+                if not u:return
+                q('delete from saved_task_searches where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
