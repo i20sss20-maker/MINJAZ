@@ -1,0 +1,34 @@
+name: Stage Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check MINJAZ stage from public internet
+        env:
+          BASE: https://minjaz-stage-source-production.up.railway.app
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$BASE/health" -o health.json
+          python3 - <<'PY'
+          import json
+          h=json.load(open("health.json"))
+          assert h.get("ok") is True, h
+          assert h.get("version")=="0.5.5-rc5", h
+          print("HEALTH_OK", h.get("version"))
+          PY
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$BASE/" -o index.html
+          test "$(wc -c < index.html)" -gt 290000
+          grep -Eqi '<!doctype html|<html' index.html
+          test "$(tr -d '\r\n ' < index.html)" != "OK"
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/manifest.webmanifest" -o manifest.webmanifest
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/sw.js" -o sw.js
+          test -s manifest.webmanifest
+          test -s sw.js
+          echo "PUBLIC_STAGE_OK index_bytes=$(wc -c < index.html) manifest_bytes=$(wc -c < manifest.webmanifest) sw_bytes=$(wc -c < sw.js)"
