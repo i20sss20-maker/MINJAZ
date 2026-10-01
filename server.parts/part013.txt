@@ -1,3 +1,4 @@
+                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
                         admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
                         return self.sendj(200,r)
                     note=str(b.get('admin_note') or '')[:3000] or None
