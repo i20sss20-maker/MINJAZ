@@ -3,6 +3,7 @@ import urllib.request, urllib.error
 from decimal import Decimal
 from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
 from storage import RailwayBucketStorage, StorageError, ALLOWED_TYPES
 import psycopg2
@@ -24,6 +25,7 @@ SOURCE_CONTROL=os.getenv('SOURCE_CONTROL','railway_env')
 VERSION=os.getenv('MINJAZ_VERSION','0.5.5-rc5')
 APP_ENV=os.getenv('APP_ENV','beta').strip().lower()
 SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
+SESSION_COOKIE_NAME=(os.getenv('SESSION_COOKIE_NAME','minjaz_session').strip() or 'minjaz_session')[:80]
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
 LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
