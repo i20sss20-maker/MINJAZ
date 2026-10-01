@@ -1,3 +1,10 @@
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),None,'client_only'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            allowed=int(o.get('revisions_allowed') or 0)
+            cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
+            used=int(cur.fetchone()['used'] or 0)
             if used>=allowed:
                 c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
             cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
@@ -205,10 +212,3 @@ def freelancer_earnings(fid):
     pending=Decimal(str(p.get('pending_payouts') or 0))
     available=max(Decimal('0'),net-paid-pending)
     return {'gross_earned':float(Decimal(str(totals.get('gross_earned') or 0))),'platform_fees':float(Decimal(str(totals.get('platform_fees') or 0))),'net_earned':float(net),'paid_out':float(paid),'pending_payouts':float(pending),'available_balance':float(available),'completed_orders':int(totals.get('completed_orders') or 0)}
-
-def create_payout_request(fid,raw_amount,note=None):
-    try:
-        amount=money_decimal(raw_amount)
-    except Exception:
-        return None,'invalid_amount',None
-    if amount<=0:
