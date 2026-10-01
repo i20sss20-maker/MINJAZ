@@ -1,3 +1,18 @@
+    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
+
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '').strip()
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw,'bearer'
+    cookie=str(headers.get('Cookie') or '')
+    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    return (m.group(1),'cookie') if m else ('','')
+
+def auth(headers):
+    raw,transport=session_token_from_headers(headers)
+    if not raw:return None
+    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
              from sessions s join users u on u.id=s.user_id
@@ -145,20 +160,3 @@ def ensure_roles_schema():
         role text not null check(role in ('client','freelancer','admin')),
         enabled boolean not null default true,
         created_at timestamptz not null default now(),
-        primary key(user_id,role)
-    );
-    create index if not exists idx_user_roles_role on user_roles(role,user_id);
-    insert into user_roles(user_id,role,enabled)
-      select id,role,true from users
-      on conflict(user_id,role) do update set enabled=true;
-    insert into user_roles(user_id,role,enabled)
-      select user_id,'freelancer',true from freelancer_profiles
-      on conflict(user_id,role) do update set enabled=true;""",(),None)
-
-def enabled_roles(user_id):
-    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
-
-def ensure_notifications_schema():
-    q("""create table if not exists user_notifications_v2(
-        id bigserial primary key,
-        user_id bigint not null references users(id) on delete cascade,
