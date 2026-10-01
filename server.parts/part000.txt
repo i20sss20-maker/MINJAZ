@@ -205,3 +205,6 @@ def apply_payment_adapter_event(b):
 
 def apply_kyc_adapter_event(b):
     event_id=str(b.get('event_id') or '').strip()[:180]; provider_ref=str(b.get('provider_reference') or '').strip()[:180]; status=str(b.get('status') or '').strip()
+    try: uid=int(b.get('user_id') or 0)
+    except Exception: uid=0
+    if not event_id or not uid or not provider_ref or status not in ('pending','approved','rejected'): raise AdapterEventError(400,'invalid_kyc_event')
