@@ -73,7 +73,13 @@ jobs:
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
           assert "def create_order_atomic(proposal_id,client_id):" in server
           assert "def pay_mock_atomic(oid,user_id):" in server
+          assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
+          review_start=server.index("def upsert_review_atomic")
           create_start=server.index("def create_order_atomic")
+          review_block=server[review_start:create_start]
+          assert "from orders o where o.id=%s for update" in review_block
+          assert "select * from reviews where order_id=%s for update" in review_block
+          assert "'state':'unchanged'" in review_block
           pay_mock_start=server.index("def pay_mock_atomic")
           create_block=server[create_start:pay_mock_start]
           pay_mock_block=server[pay_mock_start:server.index("def deliver_order_atomic")]
