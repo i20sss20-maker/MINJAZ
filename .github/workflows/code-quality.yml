@@ -36,6 +36,9 @@ jobs:
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
           ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
+          cat server.parts/part*.txt > /tmp/minjaz-server-from-parts.py
+          cmp -s server.py /tmp/minjaz-server-from-parts.py
+          echo "SERVER_PARTS_EXACT_MATCH_OK"
 
       - name: Verify auth and demo safety invariants
         run: |
@@ -62,6 +65,17 @@ jobs:
           assert "from decimal import Decimal, ROUND_HALF_UP" in server
           assert "def money_decimal(value):" in server
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
+          assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
+          assert "def deliver_order_atomic(oid,user_id,note,attachments=None):" in server
+          assert "def request_revision_atomic(oid,user_id,note):" in server
+          assert "def complete_order_atomic(oid,user_id):" in server
+          assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
+          assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          for name in ("deliver_order_atomic","request_revision_atomic","complete_order_atomic","open_dispute_atomic","open_cancellation_atomic"):
+              start=server.index("def "+name)
+              end=server.find("\ndef ",start+5)
+              block=server[start:end if end!=-1 else len(server)]
+              assert "for update of o,t" in block
           assert "def update_payout_status(pid,status,admin_note=None):" in server
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")
