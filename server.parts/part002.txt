@@ -254,6 +254,155 @@ def update_privacy_request(pid,status,admin_note=None):
     finally:
         c.close()
 
+def transition_order_delivery(oid,freelancer_id,note):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and o.freelancer_id=%s for update of o,t""",(int(oid),int(freelancer_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),'active_cancellation_exists'
+            cur.execute('insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *',(int(oid),int(freelancer_id),str(note)[:5000]))
+            delivery=dict(cur.fetchone())
+            cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
+            cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in delivery.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def transition_order_revision(oid,client_id,note):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
+                           from orders o join tasks t on t.id=o.task_id left join proposals p on p.id=o.proposal_id
+                           where o.id=%s and o.client_id=%s for update of o,t""",(int(oid),int(client_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            if cur.fetchone():
+                c.rollback();return None,dict(o),None,'active_cancellation_exists'
+            cur.execute('select count(*)::int used from order_revision_requests where order_id=%s',(int(oid),))
+            used=int((cur.fetchone() or {}).get('used') or 0); allowed=int(o.get('revisions_allowed') or 0)
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+            sequence=used+1
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(client_id),sequence,str(note)[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(client_id),('طلب تعديل '+str(sequence)+'/'+str(allowed)+': '+str(note))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':sequence,'remaining':max(allowed-sequence,0)},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def transition_order_complete(oid,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and o.client_id=%s for update of o,t""",(int(oid),int(client_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            if cur.fetchone():
+                c.rollback();return dict(o),'active_cancellation_exists'
+            cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
+            cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_order_dispute(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and (o.client_id=%s or o.freelancer_id=%s) for update of o,t""",(int(oid),int(user_id),int(user_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested','delivered'):
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            cancellation=cur.fetchone()
+            if cancellation:
+                c.rollback();return None,dict(o),dict(cancellation),'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),dict(active),'active_dispute_exists'
+            cur.execute("""insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status)
+                           values(%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),str(reason)[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
+            d=dict(cur.fetchone())
+            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
+            c.commit()
+            return {k:as_json(v) for k,v in d.items()},dict(o),None,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def create_order_cancellation(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s and (o.client_id=%s or o.freelancer_id=%s) for update of o,t""",(int(oid),int(user_id),int(user_id)))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled','disputed'):
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            dispute=cur.fetchone()
+            if dispute:
+                c.rollback();return None,dict(o),dict(dispute),'active_dispute_exists'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();return None,dict(o),dict(active),'active_cancellation_exists'
+            refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
+            cur.execute("""insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status)
+                           values(%s,%s,%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),str(reason)[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
+            cr=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in cr.items()},dict(o),None,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
