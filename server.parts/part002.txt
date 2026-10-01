@@ -47,7 +47,7 @@ def freelancer_earnings(fid):
 
 def create_payout_request(fid,raw_amount,note=None):
     try:
-        amount=Decimal(str(raw_amount)).quantize(Decimal('0.01'))
+        amount=money_decimal(raw_amount)
     except Exception:
         return None,'invalid_amount',None
     if amount<=0:
