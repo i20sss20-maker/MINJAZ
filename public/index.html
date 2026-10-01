@@ -266,7 +266,7 @@ function toast(s){const t=$('toast');t.textContent=s;t.classList.add('show');set
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function money(n){return Number(n||0).toLocaleString('ar-SA',{maximumFractionDigits:2})+' ر.س'}
 function date(s){if(!s)return'—';return new Date(s).toLocaleDateString('ar-SA')}
-function H(){return {'content-type':'application/json',authorization:'Bearer '+token}}
+function H(){return {'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})}}
 const demoRequested=new URLSearchParams(location.search).get('demo')==='1';
 const demoHostAllowed=location.hostname.includes('demo-live')||location.hostname.includes('preview')||location.hostname.includes('stage')||['localhost','127.0.0.1'].includes(location.hostname);
 const DEMO_MODE=location.hostname.includes('demo-live')||(demoRequested&&demoHostAllowed);
@@ -274,14 +274,14 @@ let connectionWarned=false;
 async function api(path,opt={}){
   if(DEMO_MODE)return demoApi(path,opt);
   try{
-    const netOpt={...opt,headers:{...(opt.headers||{}),...(token?{authorization:'Bearer '+token}:{})}};
+    const netOpt={credentials:'same-origin',...opt,headers:{...(opt.headers||{}),...(token?{authorization:'Bearer '+token}:{})}};
     if(netOpt.body&&!netOpt.headers['content-type'])netOpt.headers['content-type']='application/json';
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),5000);netOpt.signal=ctl.signal;
     const r=await fetch(path,netOpt);clearTimeout(timer);
     const ct=r.headers.get('content-type')||'';
     if(!ct.includes('application/json')||r.status>=500)throw new Error('backend_unavailable');
     let j=null;try{j=await r.json()}catch{throw new Error('invalid_json')}
-    if(r.status===401&&token){localStorage.removeItem('minjaz_token');token='';showAuth()}
+    if(r.status===401&&(token||me)){localStorage.removeItem('minjaz_token');token='';me=null;showAuth()}
     connectionWarned=false;
     return {r,j};
   }catch(e){
@@ -352,7 +352,8 @@ async function verifyOtp(){
   return toast(j?.error==='too_many_attempts'?'تم تجاوز عدد المحاولات، اطلب رمزًا جديدًا':j?.error==='otp_expired'?'انتهت صلاحية الرمز':'الرمز غير صحيح أو انتهت صلاحيته');
  }
  clearInterval(otpCooldownTimer);otpCooldownTimer=null;otpCooldownUntil=0;
- token=j.token;localStorage.setItem('minjaz_token',token);await boot();
+ if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}
+ await boot();
 }
 function showAuth(){$('auth').classList.remove('hidden');$('app').classList.add('hidden')}
 async function logout(){try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}localStorage.removeItem('minjaz_token');token='';me=null;showAuth()}
@@ -368,7 +369,12 @@ function buildNav(){
  $('mobileNav').innerHTML=nav.map(x=>`<button class="${x[0]===currentPage?'on':''}" data-nav="${x[0]}" onclick="go('${x[0]}')"><span>${x[1]}</span>${x[2]}</button>`).join('');
 }
 async function boot(){
- if(!token)return showAuth();
+ if(DEMO_MODE&&!token)return showAuth();
+ if(!DEMO_MODE&&token){
+  const upgrade=await api('/api/v1/auth/session-cookie',{method:'POST'});
+  if(upgrade.r.ok){localStorage.removeItem('minjaz_token');token=''}
+  else if(upgrade.r.status===401)return showAuth();
+ }
  const {r,j}=await api('/api/v1/me');if(!r.ok)return showAuth();
  me=j;$('auth').classList.add('hidden');$('app').classList.remove('hidden');
  $('userName').textContent=me.user.name;$('avatar').textContent=(me.user.name||'م')[0];$('userRole').textContent=me.user.role==='client'?'عميل':me.user.role==='freelancer'?'مستقل':'إدارة';
