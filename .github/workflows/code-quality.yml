@@ -66,15 +66,19 @@ jobs:
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")
           cancellation_helper_start=server.index("def admin_transition_cancellation")
+          privacy_helper_start=server.index("def update_privacy_request")
           payout_block=server[payout_start:dispute_helper_start]
           dispute_helper=server[dispute_helper_start:cancellation_helper_start]
-          cancellation_helper=server[cancellation_helper_start:server.index("def friendly_device")]
+          cancellation_helper=server[cancellation_helper_start:privacy_helper_start]
+          privacy_helper=server[privacy_helper_start:server.index("def friendly_device")]
           assert "select * from payout_requests where id=%s for update" in payout_block
           assert "payout_finalized" in payout_block
           assert "for update of d,o" in dispute_helper
           assert "dispute_finalized" in dispute_helper
           assert "for update of cr,o" in cancellation_helper
           assert "cancellation_finalized" in cancellation_helper
+          assert "select * from privacy_requests where id=%s for update" in privacy_helper
+          assert "privacy_request_finalized" in privacy_helper
           pay_start=server.index("def apply_payment_adapter_event")
           kyc_start=server.index("def apply_kyc_adapter_event")
           pay_block=server[pay_start:kyc_start]
