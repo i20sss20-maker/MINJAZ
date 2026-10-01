@@ -148,19 +148,26 @@ def create_order_from_proposal_atomic(proposal_id,client_id):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
-                           from proposals p join tasks t on t.id=p.task_id
-                           where p.id=%s for update of p,t""",(proposal_id,))
-            x=cur.fetchone()
-            if not x or int(x['client_id'])!=int(client_id):
+            # Always lock the shared task before any proposal row. Concurrent acceptance
+            # of different proposals for the same task then follows one lock order and
+            # cannot deadlock when the winner rejects the remaining proposals.
+            cur.execute('select task_id from proposals where id=%s',(proposal_id,))
+            ref=cur.fetchone()
+            if not ref:
                 c.rollback();return None,None,'proposal_not_found'
-            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(ref['task_id'],))
+            task=cur.fetchone()
+            if not task or int(task['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id from orders where task_id=%s',(task['id'],))
             existing=cur.fetchone()
             if existing:
-                c.rollback();y=dict(x);y['existing_order_id']=existing['id'];return None,y,'order_exists'
-            if x.get('status')!='sent' or x.get('task_status')!='open':
-                c.rollback();return None,dict(x),'proposal_not_found'
-            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true',(x['task_id'],))
+                c.rollback();return None,{'task_id':task['id'],'existing_order_id':existing['id']},'order_exists'
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(proposal_id,task['id']))
+            x=cur.fetchone()
+            if not x or x.get('status')!='sent' or task.get('status')!='open':
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true',(task['id'],))
             if cur.fetchone():
                 c.rollback();return None,dict(x),'interaction_restricted'
             cur.execute("""select 1 where
@@ -172,12 +179,13 @@ def create_order_from_proposal_atomic(proposal_id,client_id):
             fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
             cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
                            values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
-                        (x['task_id'],x['id'],client_id,x['freelancer_id'],x['price'],fee))
+                        (task['id'],x['id'],client_id,x['freelancer_id'],x['price'],fee))
             order=dict(cur.fetchone())
-            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
-            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],task['id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(task['id'],))
         c.commit()
-        return {k:as_json(v) for k,v in order.items()},dict(x),None
+        result_x=dict(x);result_x['task_id']=task['id']
+        return {k:as_json(v) for k,v in order.items()},result_x,None
     except Exception:
         c.rollback();raise
     finally:
@@ -223,10 +231,3 @@ def request_revision_atomic(oid,user_id,note):
             o=cur.fetchone()
             if not o:
                 c.rollback();return None,None,None,'order_not_found'
-            if int(o['client_id'])!=int(user_id):
-                c.rollback();return None,dict(o),None,'client_only'
-            if o.get('status')!='delivered':
-                c.rollback();return None,dict(o),None,'invalid_order_state'
-            allowed=int(o.get('revisions_allowed') or 0)
-            cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
-            used=int(cur.fetchone()['used'] or 0)
