@@ -1,4 +1,4 @@
-import os, json, hashlib, secrets, uuid, re, hmac
+import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
 import urllib.request, urllib.error
 from decimal import Decimal
 from datetime import datetime, date
@@ -30,6 +30,7 @@ LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
 LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
 RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
 IS_PROD=APP_ENV=='production'
+ON_RAILWAY=bool(os.getenv('RAILWAY_ENVIRONMENT_ID') or os.getenv('RAILWAY_SERVICE_ID'))
 PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL','').strip().rstrip('/')
 SESSION_COOKIE_NAME='minjaz_session'
 SESSION_COOKIE_MAX_AGE=SESSION_TTL_DAYS*86400
