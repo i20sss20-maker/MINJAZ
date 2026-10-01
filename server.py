@@ -482,6 +482,32 @@ def create_payout_request(fid,raw_amount,note=None):
     finally:
         c.close()
 
+def update_payout_status(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'payout_not_found'
+            current=str(pr.get('status') or '')
+            if current in ('paid','rejected','cancelled'):
+                c.rollback();return None,dict(pr),'payout_finalized'
+            if status=='paid' and current not in ('pending','processing'):
+                c.rollback();return None,dict(pr),'invalid_payout_state'
+            cur.execute("""update payout_requests
+                           set status=%s,admin_note=%s,updated_at=now(),
+                               resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end
+                           where id=%s returning *""",
+                        (status,str(admin_note or '')[:1000] or None,status,int(pid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
@@ -1806,14 +1832,12 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
                     if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
-                    pr=q('select * from payout_requests where id=%s',(pid,),'one')
-                    if not pr:return self.sendj(404,{'error':'payout_not_found'})
-                    if pr.get('status') in ('paid','rejected','cancelled'):return self.sendj(409,{'error':'payout_finalized'})
-                    if st=='paid' and pr.get('status') not in ('pending','processing'):return self.sendj(409,{'error':'invalid_payout_state'})
-                    r=q("""update payout_requests set status=%s,admin_note=%s,updated_at=now(),resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end where id=%s returning *""",(st,str(b.get('admin_note') or '')[:1000] or None,st,pid),'one')
+                    r,pr,err=update_payout_status(pid,st,b.get('admin_note'))
+                    if err=='payout_not_found':return self.sendj(404,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
                     ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
                     notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
-                    admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st})
+                    admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st,'previous_status':pr.get('status')})
                     return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id'])})
                 if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/support/(\d+)',p)
