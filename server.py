@@ -353,6 +353,82 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def create_order_atomic(proposal_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select p.task_id,t.client_id
+                           from proposals p join tasks t on t.id=p.task_id
+                           where p.id=%s""",(int(proposal_id),))
+            seed=cur.fetchone()
+            if not seed or int(seed['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(seed['task_id'],))
+            task=cur.fetchone()
+            if not task or int(task['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+            x=cur.fetchone()
+            if not x:
+                c.rollback();return None,None,'proposal_not_found'
+            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
+            if x.get('status')!='sent' or task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s',(task['id'],))
+                exists=cur.fetchone()
+                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            restricted=cur.fetchone()
+            if hidden or restricted:
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'order_exists'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
+                           values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
+                        (x['task_id'],x['id'],int(client_id),x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback();return None,None,'order_exists'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def pay_mock_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,False,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),False,'client_only'
+            if o.get('payment_status')=='paid':
+                c.rollback();return dict(o),False,None
+            if o.get('payment_status')!='unpaid' or o.get('status')!='awaiting_payment':
+                c.rollback();return dict(o),False,'invalid_order_state'
+            cur.execute("update orders set payment_status='paid',status='in_progress' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return dict(o),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
@@ -1736,12 +1812,15 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
                 if not u:return
-                b=self.body(); x=q("select p.*,t.client_id,t.id task_id from proposals p join tasks t on t.id=p.task_id where p.id=%s and p.status='sent' and t.status='open'",(b.get('proposal_id'),),'one')
-                if not x or int(x['client_id'])!=int(u['id']):return self.sendj(404,{'error':'proposal_not_found'})
-                if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
-                ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
-                if ex:return self.sendj(409,{'error':'order_exists'})
-                fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100')); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+                b=self.body()
+                try: proposal_id=int(b.get('proposal_id'))
+                except Exception:return self.sendj(400,{'error':'proposal_id_required'})
+                r,x,err=create_order_atomic(proposal_id,u['id'])
+                if err=='proposal_not_found':return self.sendj(404,{'error':err})
+                if err=='interaction_restricted':return self.sendj(403,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id'])
+                return self.sendj(201,r)
             if p=='/api/v1/orders' and method=='GET':
                 u=self.require();
                 if not u:return
@@ -1770,7 +1849,12 @@ class H(BaseHTTPRequestHandler):
                     if o.get('status')!='awaiting_payment':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
                     if PAYMENT_MODE=='mock':
                         if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
-                        q("update orders set payment_status='paid',status='in_progress' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
+                        locked,changed,err=pay_mock_atomic(oid,u['id'])
+                        if err=='order_not_found':return self.sendj(404,{'error':err})
+                        if err=='client_only':return self.sendj(403,{'error':err})
+                        if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                        if not changed:return self.sendj(200,{'ok':True,'mode':'mock','already_paid':True})
+                        log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(locked['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
                     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
                     if o.get('payment_checkout_url') and o.get('provider_payment_id'):
                         return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':o['payment_checkout_url'],'provider_payment_id':o['provider_payment_id'],'reused':True})

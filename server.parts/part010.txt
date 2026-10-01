@@ -28,12 +28,15 @@
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
                 if not u:return
-                b=self.body(); x=q("select p.*,t.client_id,t.id task_id from proposals p join tasks t on t.id=p.task_id where p.id=%s and p.status='sent' and t.status='open'",(b.get('proposal_id'),),'one')
-                if not x or int(x['client_id'])!=int(u['id']):return self.sendj(404,{'error':'proposal_not_found'})
-                if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
-                ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
-                if ex:return self.sendj(409,{'error':'order_exists'})
-                fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100')); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+                b=self.body()
+                try: proposal_id=int(b.get('proposal_id'))
+                except Exception:return self.sendj(400,{'error':'proposal_id_required'})
+                r,x,err=create_order_atomic(proposal_id,u['id'])
+                if err=='proposal_not_found':return self.sendj(404,{'error':err})
+                if err=='interaction_restricted':return self.sendj(403,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id'])
+                return self.sendj(201,r)
             if p=='/api/v1/orders' and method=='GET':
                 u=self.require();
                 if not u:return
@@ -62,7 +65,12 @@
                     if o.get('status')!='awaiting_payment':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
                     if PAYMENT_MODE=='mock':
                         if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
-                        q("update orders set payment_status='paid',status='in_progress' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
+                        locked,changed,err=pay_mock_atomic(oid,u['id'])
+                        if err=='order_not_found':return self.sendj(404,{'error':err})
+                        if err=='client_only':return self.sendj(403,{'error':err})
+                        if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                        if not changed:return self.sendj(200,{'ok':True,'mode':'mock','already_paid':True})
+                        log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(locked['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
                     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
                     if o.get('payment_checkout_url') and o.get('provider_payment_id'):
                         return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':o['payment_checkout_url'],'provider_payment_id':o['provider_payment_id'],'reused':True})

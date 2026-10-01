@@ -146,6 +146,82 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def create_order_atomic(proposal_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select p.task_id,t.client_id
+                           from proposals p join tasks t on t.id=p.task_id
+                           where p.id=%s""",(int(proposal_id),))
+            seed=cur.fetchone()
+            if not seed or int(seed['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(seed['task_id'],))
+            task=cur.fetchone()
+            if not task or int(task['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+            x=cur.fetchone()
+            if not x:
+                c.rollback();return None,None,'proposal_not_found'
+            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
+            if x.get('status')!='sent' or task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s',(task['id'],))
+                exists=cur.fetchone()
+                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            restricted=cur.fetchone()
+            if hidden or restricted:
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'order_exists'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
+                           values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
+                        (x['task_id'],x['id'],int(client_id),x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback();return None,None,'order_exists'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def pay_mock_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,False,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),False,'client_only'
+            if o.get('payment_status')=='paid':
+                c.rollback();return dict(o),False,None
+            if o.get('payment_status')!='unpaid' or o.get('status')!='awaiting_payment':
+                c.rollback();return dict(o),False,'invalid_order_state'
+            cur.execute("update orders set payment_status='paid',status='in_progress' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return dict(o),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
