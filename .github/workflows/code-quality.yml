@@ -71,6 +71,16 @@ jobs:
           assert "def complete_order_atomic(oid,user_id):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          assert "def create_order_atomic(proposal_id,client_id):" in server
+          assert "def pay_mock_atomic(oid,user_id):" in server
+          create_start=server.index("def create_order_atomic")
+          pay_mock_start=server.index("def pay_mock_atomic")
+          create_block=server[create_start:pay_mock_start]
+          pay_mock_block=server[pay_mock_start:server.index("def deliver_order_atomic")]
+          assert "for update of p,t" in create_block
+          assert "order_exists" in create_block
+          assert "for update of o,t" in pay_mock_block
+          assert "payment_status='paid',status='in_progress'" in pay_mock_block
           for name in ("deliver_order_atomic","request_revision_atomic","complete_order_atomic","open_dispute_atomic","open_cancellation_atomic"):
               start=server.index("def "+name)
               end=server.find("\ndef ",start+5)
@@ -195,6 +205,12 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_order_transition_concurrency.py
+
+      - name: Run order creation and payment concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_order_create_payment_concurrency.py
 
       - name: Show server logs on failure
         if: failure()
