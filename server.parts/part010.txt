@@ -1,3 +1,10 @@
+                b=self.body()
+                try: price=money_decimal(b.get('price') or 0)
+                except Exception:return self.sendj(400,{'error':'invalid_price'})
+                if price<=0:return self.sendj(400,{'error':'invalid_price'})
+                if price>Decimal('1000000'):return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
+                try: delivery_hours=int(b.get('delivery_hours') or 24); revisions=int(b.get('revisions') if b.get('revisions') not in (None,'') else 1)
+                except Exception:return self.sendj(400,{'error':'invalid_proposal_terms'})
                 if delivery_hours<1 or delivery_hours>8760:return self.sendj(400,{'error':'invalid_delivery_hours','minimum':1,'maximum':8760})
                 if revisions<0 or revisions>50:return self.sendj(400,{'error':'invalid_revisions','minimum':0,'maximum':50})
                 message=str(b.get('message') or '').strip()
@@ -94,10 +101,3 @@
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
                     notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
                     return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0)})
-                if action=='complete':
-                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
-                    locked,err=complete_order_atomic(oid,u['id'])
-                    if err=='order_not_found':return self.sendj(404,{'error':err})
-                    if err=='client_only':return self.sendj(403,{'error':err})
-                    if err in ('active_cancellation_exists','active_dispute_exists'):
-                        return self.sendj(409,{'error':err,'id':locked.get('active_cancellation_id') or locked.get('active_dispute_id')})
