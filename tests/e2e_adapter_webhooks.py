@@ -37,7 +37,14 @@ def signed(path,payload,secret,expected=(200,)):
     return out
 
 def login(phone,role,name):
-    ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
+    ch=None
+    for attempt in range(3):
+        ch=call("POST","/api/v1/auth/request-otp",{"phone":phone},expected=(201,429))
+        if ch.get("challenge_id"):break
+        if ch.get("error") in ("otp_wait","otp_rate_limited","otp_source_rate_limited") and attempt<2:
+            time.sleep(min(65,int(ch.get("retry_after_seconds") or 60)+1))
+            continue
+        raise AssertionError(("otp_request_failed",ch))
     code=ch.get("dev_code") or "1234"
     out=call("POST","/api/v1/auth/verify-otp",{"challenge_id":ch["challenge_id"],"code":code,"role":role,"name":name})
     assert out.get("token"),out
