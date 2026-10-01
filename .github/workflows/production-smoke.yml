@@ -1,0 +1,49 @@
+name: Production Smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify MINJAZ production candidate
+        env:
+          BASE: https://minjaz-app-prod-production.up.railway.app
+        run: |
+          set -euo pipefail
+          health=""
+          for i in $(seq 1 25); do
+            if health=$(curl -fsS --max-time 12 "$BASE/health" 2>/dev/null); then
+              if echo "$health" | jq -e '.ok==true and .database==true and .version=="0.5.5-rc5"' >/dev/null; then
+                break
+              fi
+            fi
+            sleep 3
+          done
+          echo "$health" | jq -e '.ok==true and .database==true and .version=="0.5.5-rc5"' >/dev/null
+
+          readiness=$(curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/readiness")
+          echo "$readiness" | jq -e '.ready_for_beta==true' >/dev/null
+
+          services=$(curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/api/v1/services")
+          echo "$services" | jq -e '(.items|length)>=50' >/dev/null
+
+          curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/" -o index.html
+          test "$(wc -c < index.html)" -gt 290000
+          grep -q 'applyServiceTemplate' index.html
+          grep -q 'switchMinjazRole' index.html
+
+          curl -fsS -D headers.txt -o /dev/null -H "Origin: $BASE" "$BASE/health"
+          grep -qi "access-control-allow-origin: $BASE" headers.txt
+          grep -qi "x-frame-options: DENY" headers.txt
+          grep -qi "content-security-policy:" headers.txt
+
+          code=$(curl -sS -o unauth.json -w "%{http_code}" "$BASE/api/v1/me")
+          test "$code" = "401"
+          jq -e '.error=="unauthorized" and (.request_id|length)>0' unauth.json >/dev/null
+
+          echo "MINJAZ_PRODUCTION_SMOKE_OK"
