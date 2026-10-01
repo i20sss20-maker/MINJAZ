@@ -230,6 +230,60 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def create_order_from_proposal(client_id,proposal_id):
+    try:
+        pid=int(proposal_id)
+        cid=int(client_id)
+    except Exception:
+        return None,None,'proposal_not_found'
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # The task row is the serialization point: only one proposal can win for a task.
+            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
+                           from proposals p join tasks t on t.id=p.task_id
+                           where p.id=%s for update of t,p""",(pid,))
+            x=cur.fetchone()
+            if not x or int(x['client_id'])!=cid:
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id,proposal_id from orders where task_id=%s',(x['task_id'],))
+            existing=cur.fetchone()
+            if existing:
+                c.rollback();return None,dict(x),'order_exists'
+            if x.get('task_status')!='open' or x.get('status')!='sent':
+                c.rollback();return None,dict(x),'proposal_not_found'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where
+                    (ub.blocker_id=%s and ub.blocked_id=%s) or
+                    (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um
+                    where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",
+                (cid,x['freelancer_id'],x['freelancer_id'],cid,cid,x['freelancer_id']))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(
+                               task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status
+                           ) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid')
+                           returning *""",
+                        (x['task_id'],x['id'],cid,x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("""update proposals
+                           set status=case when id=%s then 'accepted' else 'rejected' end
+                           where task_id=%s""",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
