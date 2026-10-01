@@ -1,3 +1,20 @@
+        primary key(user_id,role)
+    );
+    create index if not exists idx_user_roles_role on user_roles(role,user_id);
+    insert into user_roles(user_id,role,enabled)
+      select id,role,true from users
+      on conflict(user_id,role) do update set enabled=true;
+    insert into user_roles(user_id,role,enabled)
+      select user_id,'freelancer',true from freelancer_profiles
+      on conflict(user_id,role) do update set enabled=true;""",(),None)
+
+def enabled_roles(user_id):
+    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
+
+def ensure_notifications_schema():
+    q("""create table if not exists user_notifications_v2(
+        id bigserial primary key,
+        user_id bigint not null references users(id) on delete cascade,
         order_id bigint references orders(id) on delete cascade,
         kind text not null default 'general',
         title text not null,
@@ -161,12 +178,3 @@ class H(BaseHTTPRequestHandler):
                 return self.sendj(200,{'ok':True})
             if method=='POST' and p=='/api/v1/integrations/payments/webhook':
                 if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
-                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
-                expected=hmac.new(PAYMENT_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
-                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
-                try:b=json.loads(raw or b'{}')
-                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
-                try:result=apply_payment_adapter_event(b)
-                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
-                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
-                o=result['order']; event_id=result['event_id']
