@@ -55,6 +55,10 @@ jobs:
           assert "HttpOnly; SameSite=Strict" in server
           assert "/api/v1/auth/session-cookie" in server
           assert "session_token_from_headers" in server
+          assert "ON_RAILWAY=bool(os.getenv('RAILWAY_ENVIRONMENT_ID') or os.getenv('RAILWAY_SERVICE_ID'))" in server
+          assert "self.headers.get('X-Real-IP')" in server
+          assert "ipaddress.ip_address" in server
+          assert "ip=self.client_ip()" in server
           assert "credentials:'same-origin'" in ui
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")

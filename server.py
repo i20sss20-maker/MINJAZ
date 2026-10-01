@@ -1,4 +1,4 @@
-import os, json, hashlib, secrets, uuid, re, hmac
+import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
 import urllib.request, urllib.error
 from decimal import Decimal
 from datetime import datetime, date
@@ -31,6 +31,7 @@ LEGAL_REVIEW_STATUS=os.getenv('LEGAL_REVIEW_STATUS','draft').strip().lower()
 LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
 RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
 IS_PROD=APP_ENV=='production'
+ON_RAILWAY=bool(os.getenv('RAILWAY_ENVIRONMENT_ID') or os.getenv('RAILWAY_SERVICE_ID'))
 PUBLIC_BASE_URL=os.getenv('PUBLIC_BASE_URL','').strip().rstrip('/')
 SESSION_COOKIE_NAME='minjaz_session'
 SESSION_COOKIE_MAX_AGE=SESSION_TTL_DAYS*86400
@@ -753,8 +754,17 @@ class H(BaseHTTPRequestHandler):
             incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
             self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
         return self._request_id
+    def client_ip(self):
+        candidates=[]
+        if ON_RAILWAY:candidates.append(str(self.headers.get('X-Real-IP') or '').strip())
+        candidates.append(str(self.client_address[0] if self.client_address else '').strip())
+        for value in candidates:
+            if not value:continue
+            try:return str(ipaddress.ip_address(value))
+            except ValueError:continue
+        return ''
     def client_key(self):
-        ip=str(self.client_address[0] if self.client_address else '')
+        ip=self.client_ip()
         return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
     def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
     def _queue_cookie(self,value):
@@ -949,7 +959,7 @@ class H(BaseHTTPRequestHandler):
                 q('update users set role=%s where id=%s',(role,u['id']),None)
                 u=q('select * from users where id=%s',(u['id'],),'one')
                 roles=enabled_roles(u['id'])
-                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=str(self.client_address[0] if self.client_address else '')
+                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
                 ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
                 self.set_session_cookie(raw)
                 log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
