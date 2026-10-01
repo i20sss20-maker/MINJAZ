@@ -1,0 +1,101 @@
+ogress','revision_requested'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    b=self.body(); note=str(b.get('note') or '').strip()
+                    if not note:return self.sendj(400,{'error':'note_required'})
+                    d=q('insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *',(oid,u['id'],note[:5000]),'one'); insert_attachments(u['id'],b.get('attachments'),order_id=oid,delivery_id=d['id']); q("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(oid,),None); q("update orders set status='delivered' where id=%s",(oid,),None);q("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid);return self.sendj(201,{'ok':True,'delivery':d})
+                if action=='revision':
+                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
+                    if o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    b=self.body(); note=str(b.get('note') or '').strip()
+                    if not note:return self.sendj(400,{'error':'note_required'})
+                    lim=q('select coalesce(p.revisions,0)::int allowed,(select count(*)::int from order_revision_requests rr where rr.order_id=o.id) used from orders o left join proposals p on p.id=o.proposal_id where o.id=%s',(oid,),'one')
+                    allowed=int(lim.get('allowed') or 0); used=int(lim.get('used') or 0)
+                    if used>=allowed:return self.sendj(409,{'error':'revision_limit_reached','allowed':allowed,'used':used})
+                    rr=q("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(oid,u['id'],used+1,note[:3000]),'one')
+                    q("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(oid,u['id'],('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+note)[:4000]),None)
+                    q("update orders set status='revision_requested' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid);return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(allowed-(used+1),0)})
+                if action=='complete':
+                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
+                    if o.get('payment_status')!='paid' or o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    q("update orders set status='completed',completed_at=now() where id=%s",(oid,),None);q("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],),None);refresh_freelancer(o['freelancer_id']);notify(o['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid);return self.sendj(200,{'ok':True})
+                if action=='review':
+                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
+                    if o.get('status')!='completed':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    b=self.body(); vals=[int(b.get(k) or 0) for k in ('quality','timeliness','communication')]
+                    if any(x<1 or x>5 for x in vals):return self.sendj(400,{'error':'invalid_rating'})
+                    q("insert into reviews(order_id,reviewer_id,reviewee_id,quality,timeliness,communication,comment) values(%s,%s,%s,%s,%s,%s,%s) on conflict(order_id) do update set quality=excluded.quality,timeliness=excluded.timeliness,communication=excluded.communication,comment=excluded.comment",(oid,u['id'],o['freelancer_id'],*vals,str(b.get('comment') or '')[:2000] or None),None);refresh_freelancer(o['freelancer_id']);notify(o['freelancer_id'],'وصلك تقييم جديد',str(b.get('comment') or 'تم تحديث تقييمك')[:220],'review',oid);return self.sendj(201,{'ok':True})
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/dispute',p)
+            if m:
+                u=self.require()
+                if not u:return
+                oid=int(m.group(1))
+                o=q('select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                if method=='GET':
+                    return self.sendj(200,{'item':q('select d.*,us.name opened_by_name from order_disputes d join users us on us.id=d.opened_by where d.order_id=%s order by d.created_at desc limit 1',(oid,),'one')})
+                if method=='POST':
+                    if o.get('status') in ('completed','cancelled'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    active=q("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(oid,),'one')
+                    if active:return self.sendj(409,{'error':'active_dispute_exists','id':active['id']})
+                    b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
+                    if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
+                    d=q("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status')),'one')
+                    q("update orders set status='disputed' where id=%s",(oid,),None);q("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],),None)
+                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
+                    return self.sendj(201,d)
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
+            if m:
+                u=self.require()
+                if not u:return
+                oid=int(m.group(1))
+                o=q('select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                if method=='GET':
+                    return self.sendj(200,{'item':q('select cr.*,us.name requested_by_name from order_cancellation_requests cr join users us on us.id=cr.requested_by where cr.order_id=%s order by cr.created_at desc limit 1',(oid,),'one')})
+                if method=='POST':
+                    if o.get('status') in ('completed','cancelled','disputed'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
+                    active=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
+                    if active:return self.sendj(409,{'error':'active_cancellation_exists','id':active['id']})
+                    b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
+                    if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
+                    refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
+                    cr=q("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund),'one')
+                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{o.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
+                    return self.sendj(201,cr)
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
+            if m and method=='GET':
+                u=self.require();
+                if not u:return
+                oid=int(m.group(1));o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                return self.sendj(200,{'items':order_timeline(oid)})
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/revisions',p)
+            if m and method=='GET':
+                u=self.require();
+                if not u:return
+                oid=int(m.group(1));o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                return self.sendj(200,{'items':q('select rr.*,us.name requested_by_name from order_revision_requests rr join users us on us.id=rr.requested_by where rr.order_id=%s order by rr.sequence_no',(oid,))})
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/(attachments|deliveries)',p)
+            if m and method=='GET':
+                u=self.require();
+                if not u:return
+                oid=int(m.group(1));kind=m.group(2);o=q('select * from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                if kind=='attachments':return self.sendj(200,{'items':public_attachments(q('select a.*,us.name uploaded_by_name from attachments a join users us on us.id=a.uploaded_by where a.order_id=%s order by a.created_at',(oid,)))})
+                ds=q('select * from deliveries where order_id=%s order by created_at desc',(oid,))
+                for d in ds:d['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where delivery_id=%s order by created_at',(d['id'],)))
+                return self.sendj(200,{'items':ds})
+            m=re.fullmatch(r'/api/v1/orders/(\d+)/messages',p)
+            if m:
+                u=self.require();
+                if not u:return
+                oid=int(m.group(1)); o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                if method=='GET':
+                    msgs=q('select m.*,us.name sender_name,us.role sender_role from messages m join users us on us.id=m.sender_id where m.order_id=%s order by m.created_at',(oid,))
+                    for msg in msgs: msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
+                    return self.sendj(200,{'items':msgs})
+                if method=='POST':
+                    if q("select count(*)::int n from messages where sender_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=180:return self.sendj(429,{'error':'message_rate_limited','retry_after_seconds':3600})
+                    b=self.body(); txt=str(b.get('body') or '').strip(); atts=clean_attachments(b.get('attachments'),uploaded_by=u['id'])
+                    if not txt and not atts:
