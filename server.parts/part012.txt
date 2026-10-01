@@ -1,3 +1,6 @@
+                if method=='POST':
+                    b=self.body();cat=str(b.get('category') or 'other')
+                    if cat not in ('spam','fraud','harassment','unsafe','prohibited_service','impersonation','other'):return self.sendj(400,{'error':'invalid_category'})
                     details=str(b.get('details') or '').strip()[:3000]
                     if len(details)<8:return self.sendj(400,{'error':'details_required'})
                     recent=q("select count(*)::int n from safety_reports where reporter_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']
@@ -100,8 +103,3 @@
                     if err:return self.sendj(400,{'error':err})
                     if mark_refunded:
                         notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
-                        admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
-                        return self.sendj(200,r)
-                    note=str(b.get('admin_note') or '')[:3000] or None
-                    if st=='in_review':
-                        admin_audit(u['id'],'cancellation_in_review','cancellation',cid)
