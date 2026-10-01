@@ -51,9 +51,9 @@
     <div class="field"><label>رقم الجوال</label><input id="loginPhone" inputmode="tel" placeholder="+9665xxxxxxxx"></div>
     <button id="sendOtpBtn" class="btn primary wide" onclick="requestOtp()">إرسال رمز التحقق</button>
     <div id="otpBox" class="hidden" style="margin-top:14px">
-      <div class="field"><label>رمز التحقق</label><div class="otp"><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1"></div></div>
+      <div class="field"><label>رمز التحقق</label><div class="otp" id="otpInputs"><input maxlength="1" inputmode="numeric" autocomplete="one-time-code"><input maxlength="1" inputmode="numeric"><input maxlength="1" inputmode="numeric"><input maxlength="1" inputmode="numeric"></div></div>
       <button class="btn primary wide" onclick="verifyOtp()">دخول</button>
-      <div class="devHint">نسخة Beta: رمز التحقق التجريبي <b>1234</b>.</div>
+      <div class="devHint hidden" id="devOtpHint"></div>
     </div>
   </div>
   <div class="authArt">
@@ -154,7 +154,7 @@ async function demoApi(path,opt={}){
   const d=demoLoad(),method=(opt.method||'GET').toUpperCase(),b=demoBody(opt),u=demoAuth(d);
   const now=()=>new Date().toISOString(),next=k=>++d.seq[k];
   if(path==='/api/v1/categories')return demoResp(200,{items:d.categories});
-  if(path==='/api/v1/auth/request-otp'&&method==='POST')return demoResp(201,{challenge_id:'demo-'+Date.now(),delivery:'development',dev_code:'1234'});
+  if(path==='/api/v1/auth/request-otp'&&method==='POST')return demoResp(201,{challenge_id:'demo-'+Date.now(),delivery:'development',code_length:4,dev_code:'1234'});
   if(path==='/api/v1/auth/verify-otp'&&method==='POST'){
     if(String(b.code)!=='1234')return demoResp(401,{error:'invalid_code'});
     const phone=String(document.getElementById('loginPhone')?.value||'').trim(),name=String(b.name||'مستخدم'),wantRole=b.role||'client';
@@ -266,7 +266,9 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function money(n){return Number(n||0).toLocaleString('ar-SA',{maximumFractionDigits:2})+' ر.س'}
 function date(s){if(!s)return'—';return new Date(s).toLocaleDateString('ar-SA')}
 function H(){return {'content-type':'application/json',authorization:'Bearer '+token}}
-const DEMO_MODE=new URLSearchParams(location.search).get('demo')==='1'||location.hostname.includes('demo-live');
+const demoRequested=new URLSearchParams(location.search).get('demo')==='1';
+const demoHostAllowed=location.hostname.includes('demo-live')||location.hostname.includes('preview')||location.hostname.includes('stage')||['localhost','127.0.0.1'].includes(location.hostname);
+const DEMO_MODE=location.hostname.includes('demo-live')||(demoRequested&&demoHostAllowed);
 let connectionWarned=false;
 async function api(path,opt={}){
   if(DEMO_MODE)return demoApi(path,opt);
@@ -288,18 +290,36 @@ async function api(path,opt={}){
   }
 }
 function setRole(r){role=r;$('roleClient').classList.toggle('on',r==='client');$('roleFreelancer').classList.toggle('on',r==='freelancer')}
-function wireOtp(){document.querySelectorAll('.otp input').forEach((x,i,a)=>x.addEventListener('input',()=>{x.value=x.value.replace(/\D/g,'').slice(0,1);if(x.value&&a[i+1])a[i+1].focus()}))}
+let otpLength=4;
+function renderOtpInputs(length){
+ otpLength=Math.max(4,Math.min(Number(length)||6,8));
+ const host=$('otpInputs');if(!host)return;
+ host.innerHTML=Array.from({length:otpLength},(_,i)=>`<input maxlength="1" inputmode="numeric" ${i===0?'autocomplete="one-time-code"':''} aria-label="رقم ${i+1} من رمز التحقق">`).join('');
+ wireOtp();
+}
+function wireOtp(){
+ const inputs=[...document.querySelectorAll('.otp input')];
+ inputs.forEach((x,i,a)=>{
+  x.oninput=()=>{x.value=x.value.replace(/\D/g,'').slice(0,1);if(x.value&&a[i+1])a[i+1].focus()};
+  x.onkeydown=e=>{if(e.key==='Backspace'&&!x.value&&a[i-1])a[i-1].focus()};
+  x.onpaste=e=>{const digits=(e.clipboardData?.getData('text')||'').replace(/\D/g,'').slice(0,a.length);if(!digits)return;e.preventDefault();digits.split('').forEach((d,j)=>{if(a[j])a[j].value=d});(a[Math.min(digits.length,a.length)-1]||x).focus()};
+ });
+}
 wireOtp();
 async function requestOtp(){
  const phone=$('loginPhone').value.trim(),name=$('loginName').value.trim();
  if(!phone||!name)return toast('اكتب الاسم ورقم الجوال');
  const {r,j}=await api('/api/v1/auth/request-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})});
  if(!r.ok)return toast(j?.error==='otp_wait'?'انتظر دقيقة قبل طلب رمز جديد':j?.error==='otp_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':'تعذر إرسال الرمز');
- challenge=j.challenge_id;$('otpBox').classList.remove('hidden');document.querySelector('.otp input').focus();toast('تم إنشاء رمز التحقق');
+ challenge=j.challenge_id;
+ renderOtpInputs(j?.code_length||String(j?.dev_code||'').length||6);
+ const hint=$('devOtpHint');
+ if(hint){if(j?.dev_code){hint.innerHTML='نسخة Beta: رمز التحقق التجريبي <b>'+esc(j.dev_code)+'</b>.';hint.classList.remove('hidden')}else{hint.textContent='';hint.classList.add('hidden')}}
+ $('otpBox').classList.remove('hidden');document.querySelector('.otp input')?.focus();toast(j?.delivery==='adapter'?'تم إرسال رمز التحقق':'تم إنشاء رمز التحقق');
 }
 async function verifyOtp(){
  const code=[...document.querySelectorAll('.otp input')].map(x=>x.value).join('');
- if(code.length!==4)return toast('اكتب الرمز كامل');
+ if(code.length!==otpLength)return toast('اكتب الرمز كامل');
  const {r,j}=await api('/api/v1/auth/verify-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
  if(!r.ok)return toast('الرمز غير صحيح أو انتهت صلاحيته');
  token=j.token;localStorage.setItem('minjaz_token',token);await boot();
