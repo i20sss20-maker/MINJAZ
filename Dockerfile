@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir psycopg2-binary
 COPY migrate.py storage.py server.py /app/
 COPY database /app/database
 COPY public /app/public
+COPY tests /app/tests
 
 RUN set -eux; \
     test "$(wc -c < server.py)" -gt 160000; \
