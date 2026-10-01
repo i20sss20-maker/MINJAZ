@@ -1,125 +1,180 @@
-واعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':'draft_pending_legal_review','sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
-                ]})
-            if method=='GET' and p in ('/','/index.html'):
-                data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8'}[p]
-                data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
-            if p=='/favicon.ico': self._headers(204); return
-            if method=='GET' and p=='/api/v1/storage/config':
-                return self.sendj(200,{'mode':STORAGE_MODE,'direct_uploads':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'max_upload_bytes':BUCKET_STORAGE.max_bytes,'allowed_extensions':sorted(ALLOWED_TYPES)})
-            if method=='POST' and p=='/api/v1/uploads/presign':
-                u=self.require();
-                if not u:return
-                if STORAGE_MODE!='railway_bucket' or not BUCKET_READY:return self.sendj(503,{'error':'storage_not_configured'})
-                b=self.body()
-                try: meta=BUCKET_STORAGE.validate_meta(b.get('file_name'),b.get('mime_type'),b.get('size_bytes'))
-                except StorageError as e:return self.sendj(400,{'error':str(e),'max_upload_bytes':BUCKET_STORAGE.max_bytes})
-                q("delete from upload_intents where consumed_at is null and expires_at<now()-interval '24 hours'",(),None)
-                recent=q("select count(*)::int n from upload_intents where user_id=%s and created_at>now()-interval '10 minutes'",(u['id'],),'one')['n']
-                if recent>=20:return self.sendj(429,{'error':'upload_rate_limited','retry_after_seconds':600})
-                key=BUCKET_STORAGE.object_key(u['id'],meta['extension'])
-                q("insert into upload_intents(user_id,object_key,file_name,mime_type,size_bytes,expires_at) values(%s,%s,%s,%s,%s,now()+interval '20 minutes')",(u['id'],key,meta['file_name'],meta['mime_type'],meta['size_bytes']),None)
-                return self.sendj(201,{'key':key,'upload_url':BUCKET_STORAGE.presign('PUT',key,expires=900,content_type=meta['mime_type']),'headers':{'Content-Type':meta['mime_type']},'expires_in_seconds':900,'max_upload_bytes':BUCKET_STORAGE.max_bytes})
-            if method=='POST' and p=='/api/v1/uploads/complete':
-                u=self.require();
-                if not u:return
-                if STORAGE_MODE!='railway_bucket' or not BUCKET_READY:return self.sendj(503,{'error':'storage_not_configured'})
-                b=self.body();key=str(b.get('key') or '').strip().lstrip('/')
-                if not BUCKET_STORAGE.safe_key_for_user(key,u['id']):return self.sendj(403,{'error':'invalid_upload_key'})
-                intent=q("select * from upload_intents where user_id=%s and object_key=%s and expires_at>now()",(u['id'],key),'one')
-                if not intent:return self.sendj(404,{'error':'upload_intent_not_found'})
-                if intent.get('completed_at'):
-                    return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
-                try: actual=BUCKET_STORAGE.head(key)
-                except Exception as e:
-                    print('UPLOAD_HEAD_ERR',repr(e),flush=True);return self.sendj(409,{'error':'upload_not_found'})
-                if int(actual.get('size_bytes') or 0)!=int(intent['size_bytes']) or actual.get('mime_type')!=intent['mime_type']:
-                    BUCKET_STORAGE.delete(key)
-                    return self.sendj(409,{'error':'upload_verification_failed'})
-                q("update upload_intents set completed_at=now(),etag=%s where id=%s",(actual.get('etag') or None,intent['id']),None)
-                return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
-            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
-            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
-            if method=='POST' and p=='/api/v1/auth/request-otp':
-                b=self.body(); phone=normalize_phone(b.get('phone',''))
-                if not phone:return self.sendj(400,{'error':'invalid_phone'})
-                if not rate_limit_event('otp_ip',self.client_key(),20,600):return self.sendj(429,{'error':'otp_source_rate_limited','retry_after_seconds':600})
-                r=q("select count(*)::int n,max(created_at) last,extract(epoch from (now()-max(created_at)))::float8 age_seconds from otp_challenges where phone=%s and created_at>now()-interval '10 minutes'",(phone,), 'one')
-                if r['n']>=5:return self.sendj(429,{'error':'otp_rate_limited','retry_after_seconds':600})
-                if r['last'] and float(r.get('age_seconds') or 999999)<60:return self.sendj(429,{'error':'otp_wait','retry_after_seconds':60})
-                cid=str(uuid.uuid4())
-                if SMS_MODE=='dev':
-                    if IS_PROD:return self.sendj(503,{'error':'sms_not_configured'})
-                    code=DEV_OTP; delivery='development'
-                elif SMS_MODE=='adapter':
-                    code=f'{secrets.randbelow(1000000):06d}'; delivery='adapter'
-                    try: adapter_post_json(SMS_WEBHOOK_URL,{'challenge_id':cid,'phone':phone,'code':code,'purpose':'login','expires_in_seconds':600},SMS_WEBHOOK_BEARER)
-                    except Exception as exc:
-                        operational_event('error','sms','delivery_failed',repr(exc),self.request_id(),None,'phone',sha(phone)[:16]);print('SMS_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'sms_delivery_failed'})
-                else:
-                    return self.sendj(503,{'error':'sms_not_configured'})
-                q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
-                return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
-            if method=='POST' and p=='/api/v1/auth/verify-otp':
-                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
-                ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
-                if not ch:return self.sendj(404,{'error':'challenge_not_found'})
-                if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
-                if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
-                if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
-                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
-                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
-                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
-                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
-                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
-                if not u:
-                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
-                else:
-                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
-                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                u=q('select * from users where id=%s',(u['id'],),'one')
-                roles=enabled_roles(u['id'])
-                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
-                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
-                self.set_session_cookie(raw)
-                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
-                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
-            if method=='POST' and p=='/api/v1/auth/session-cookie':
-                u=self.require();
-                if not u:return
-                raw,transport=session_token_from_headers(self.headers)
-                if not raw:return self.sendj(401,{'error':'unauthorized'})
-                self.set_session_cookie(raw)
-                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
-                return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
-            if method=='POST' and p=='/api/v1/auth/logout':
-                u=self.require();
-                if not u:return
-                q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
-            if method=='GET' and p=='/api/v1/me':
-                u=self.require();
-                if not u:return
-                roles=enabled_roles(u['id'])
-                if not roles:
-                    q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
-                prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
-                return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
-            if p=='/api/v1/me/profile' and method=='PATCH':
-                u=self.require();
-                if not u:return
-                b=self.body();name=str(b.get('name') or '').strip()[:120]
-                if len(name)<2:return self.sendj(400,{'error':'invalid_name'})
-                r=q('update users set name=%s where id=%s returning id,phone,name,role,is_verified',(name,u['id']),'one');log_account_activity(u['id'],'profile_updated','تم تحديث الاسم الظاهر',u.get('session_id'));return self.sendj(200,r)
-            if p=='/api/v1/privacy/export' and method=='GET':
-                u=self.require();
-                if not u:return
-                uid=u['id'];order_ids=[x['id'] for x in q('select id from orders where client_id=%s or freelancer_id=%s order by created_at desc limit 500',(uid,uid))]
-                messages=[]
-                if order_ids:
-                    messages=q('select m.id,m.order_id,m.sender_id,m.body,m.created_at from messages 
+        primary key(user_id,role)
+    );
+    create index if not exists idx_user_roles_role on user_roles(role,user_id);
+    insert into user_roles(user_id,role,enabled)
+      select id,role,true from users
+      on conflict(user_id,role) do update set enabled=true;
+    insert into user_roles(user_id,role,enabled)
+      select user_id,'freelancer',true from freelancer_profiles
+      on conflict(user_id,role) do update set enabled=true;""",(),None)
+
+def enabled_roles(user_id):
+    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
+
+def ensure_notifications_schema():
+    q("""create table if not exists user_notifications_v2(
+        id bigserial primary key,
+        user_id bigint not null references users(id) on delete cascade,
+        order_id bigint references orders(id) on delete cascade,
+        kind text not null default 'general',
+        title text not null,
+        body text,
+        read_at timestamptz,
+        created_at timestamptz not null default now()
+    );
+    create index if not exists idx_user_notifications_v2_user on user_notifications_v2(user_id,created_at desc);
+    create index if not exists idx_user_notifications_v2_unread on user_notifications_v2(user_id,read_at,created_at desc);""",(),None)
+
+def ensure_engagement_schema():
+    q("""create table if not exists client_profiles(
+        user_id bigint primary key references users(id) on delete cascade,
+        company_name text,bio text,city text,sector text,updated_at timestamptz not null default now()
+    );
+    create table if not exists favorite_tasks(
+        freelancer_id bigint not null references users(id) on delete cascade,
+        task_id bigint not null references tasks(id) on delete cascade,
+        created_at timestamptz not null default now(),
+        primary key(freelancer_id,task_id)
+    );
+    create index if not exists idx_favorite_tasks_freelancer on favorite_tasks(freelancer_id,created_at desc);
+    create table if not exists saved_task_searches(
+        id bigserial primary key,freelancer_id bigint not null references users(id) on delete cascade,
+        name text not null,filters jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
+    );
+    create index if not exists idx_saved_task_searches_freelancer on saved_task_searches(freelancer_id,created_at desc);
+    alter table user_notifications_v2 add column if not exists task_id bigint references tasks(id) on delete cascade;
+    create index if not exists idx_user_notifications_v2_task on user_notifications_v2(user_id,task_id,created_at desc) where task_id is not null;""",(),None)
+
+def notify(user_id,title,body=None,kind='general',order_id=None,task_id=None):
+    try:
+        q("insert into user_notifications_v2(user_id,order_id,task_id,kind,title,body) values(%s,%s,%s,%s,%s,%s)",(user_id,order_id,task_id,kind,title[:180],(body or '')[:1200] or None),None)
+    except Exception as e:
+        print('NOTIFY_ERR',repr(e),flush=True)
+
+def notify_admins(title,body=None,kind='admin',order_id=None,task_id=None):
+    try:
+        for a in q("select id from users where role='admin' order by id"):
+            notify(a['id'],title,body,kind,order_id,task_id)
+    except Exception:
+        pass
+
+def interaction_restricted(a,b):
+    try:
+        a=int(a);b=int(b)
+    except Exception:
+        return True
+    if a==b:return False
+    return bool(q("""select 1 where
+        exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+        or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+        limit 1""",(a,b,b,a,a,b),'one'))
+
+def task_hidden(task_id):
+    try:return bool(q('select 1 from task_moderation where task_id=%s and hidden=true',(int(task_id),),'one'))
+    except Exception:return False
+
+class H(BaseHTTPRequestHandler):
+    server_version=f'MINJAZ/{VERSION}'
+    def request_id(self):
+        if not hasattr(self,'_request_id'):
+            incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
+            self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
+        return self._request_id
+    def client_ip(self):
+        candidates=[]
+        if ON_RAILWAY:candidates.append(str(self.headers.get('X-Real-IP') or '').strip())
+        candidates.append(str(self.client_address[0] if self.client_address else '').strip())
+        for value in candidates:
+            if not value:continue
+            try:return str(ipaddress.ip_address(value))
+            except ValueError:continue
+        return ''
+    def client_key(self):
+        ip=self.client_ip()
+        return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
+    def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
+    def _queue_cookie(self,value):
+        if not hasattr(self,'_set_cookie_headers'):self._set_cookie_headers=[]
+        self._set_cookie_headers.append(value)
+    def set_session_cookie(self,raw):
+        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
+        self._queue_cookie(f"{SESSION_COOKIE_NAME}={raw}; Path=/; Max-Age={SESSION_COOKIE_MAX_AGE}; HttpOnly; SameSite=Strict{secure}")
+    def clear_session_cookie(self):
+        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
+        self._queue_cookie(f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{secure}")
+    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
+        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
+        self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
+        csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        if IS_PROD: csp+='; upgrade-insecure-requests'
+        self.send_header('Content-Security-Policy',csp)
+        if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
+        origin=(self.headers.get('Origin') or '').rstrip('/')
+        if origin and origin in CORS_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
+        for cookie in getattr(self,'_set_cookie_headers',[]):self.send_header('Set-Cookie',cookie)
+        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
+    def sendj(self,status,obj):
+        if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
+        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
+    def raw_body(self):
+        if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
+        n=int(self.headers.get('Content-Length','0') or 0)
+        if n>2_000_000: raise ValueError('too_large')
+        self._raw_body_cache=self.rfile.read(n) if n else b''
+        return self._raw_body_cache
+    def body(self):
+        raw=self.raw_body()
+        try:
+            return json.loads(raw or b'{}')
+        except json.JSONDecodeError as exc:
+            raise ValueError('invalid_json') from exc
+    def require(self,role=None):
+        u=auth(self.headers)
+        if not u: self.sendj(401,{'error':'unauthorized'}); return None
+        if role and u.get('role')!=role: self.sendj(403,{'error':role+'_only'}); return None
+        return u
+    def do_OPTIONS(self): self._headers(204)
+    def do_GET(self): self.route('GET')
+    def do_POST(self): self.route('POST')
+    def do_PATCH(self): self.route('PATCH')
+    def do_DELETE(self): self.route('DELETE')
+    def route(self,method):
+        try:
+            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p=='/health':
+                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'environment':APP_ENV,'now':now,'version':VERSION})
+            if method=='GET' and p=='/readiness':
+                checks=[
+                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
+                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
+                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
+                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
+                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
+                    {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
+                    {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
+                    {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
+                    {'key':'legal_review','ok':LEGAL_REVIEW_STATUS=='approved','value':LEGAL_REVIEW_STATUS,'required':True},
+                    {'key':'public_base_url','ok':_https_url(PUBLIC_BASE_URL),'value':PUBLIC_BASE_URL or 'missing','required':True},
+                    {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
+                    {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
+                    {'key':'operational_telemetry','ok':True,'value':'operational_events enabled','required':False},
+                    {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
+                ]
+                commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
+                status=503 if IS_PROD and not commercial else 200
+                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION})
+            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
+                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
+                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
+                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
+                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
+                try:b=json.loads(raw or b'{}')
+                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
+                try:result=apply_kyc_adapter_event(b)
+                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
+                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
+                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
+                return self.sendj(200,{'ok':True})
+            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
+                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})

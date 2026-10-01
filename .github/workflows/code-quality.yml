@@ -36,6 +36,9 @@ jobs:
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
           ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
+          cat server.parts/part*.txt > /tmp/minjaz-server-from-parts.py
+          cmp -s server.py /tmp/minjaz-server-from-parts.py
+          echo "SERVER_PARTS_EXACT_MATCH_OK"
 
       - name: Verify auth and demo safety invariants
         run: |
@@ -62,6 +65,17 @@ jobs:
           assert "from decimal import Decimal, ROUND_HALF_UP" in server
           assert "def money_decimal(value):" in server
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
+          assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
+          assert "def deliver_order_atomic(oid,user_id,note,attachments=None):" in server
+          assert "def request_revision_atomic(oid,user_id,note):" in server
+          assert "def complete_order_atomic(oid,user_id):" in server
+          assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
+          assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          for name in ("deliver_order_atomic","request_revision_atomic","complete_order_atomic","open_dispute_atomic","open_cancellation_atomic"):
+              start=server.index("def "+name)
+              end=server.find("\ndef ",start+5)
+              block=server[start:end if end!=-1 else len(server)]
+              assert "for update of o,t" in block
           assert "def update_payout_status(pid,status,admin_note=None):" in server
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")
@@ -114,3 +128,74 @@ jobs:
 
       - name: Quality gate passed
         run: echo "MINJAZ_CODE_QUALITY_OK"
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minjaz
+          POSTGRES_PASSWORD: minjaz
+          POSTGRES_DB: minjaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U minjaz -d minjaz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
+      AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
+      APP_ENV: beta
+      SMS_MODE: dev
+      DEV_OTP: "1234"
+      PAYMENT_MODE: mock
+      KYC_MODE: manual
+      DB_PERSISTENCE: persistent
+      SOURCE_CONTROL: github
+      STORAGE_MODE: postgres_dev
+      RUN_RUNTIME_SCHEMA_ENSURE: "0"
+      PUBLIC_BASE_URL: http://127.0.0.1:3000
+      CORS_ORIGINS: http://127.0.0.1:3000
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependency
+        run: pip install psycopg2-binary
+
+      - name: Apply database migrations
+        run: python migrate.py
+
+      - name: Start MINJAZ test server
+        run: |
+          set -euo pipefail
+          python -u server.py > /tmp/minjaz-ci.log 2>&1 &
+          echo $! > /tmp/minjaz-ci.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "MINJAZ_CI_SERVER_READY"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/minjaz-ci.log
+          exit 1
+
+      - name: Run order transition concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_order_transition_concurrency.py
+
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/minjaz-ci.log || true
