@@ -113,6 +113,49 @@ def run():
     payment_notes=[x for x in notes if int(x.get("order_id") or 0)==int(order["id"])]
     assert len(payment_notes)==1,payment_notes
 
+    # Complete the same order and verify concurrent identical reviews are idempotent.
+    call("POST",f"/api/v1/orders/{order['id']}/deliver",{"note":"تسليم لاختبار ثبات التقييم."},winner_token)
+    call("POST",f"/api/v1/orders/{order['id']}/complete",{},ct)
+    review_payload={"quality":5,"timeliness":4,"communication":5,"comment":"تقييم ثابت لاختبار التزامن"}
+    review_barrier=Barrier(2)
+    def review(_):
+        review_barrier.wait()
+        return raw_call("POST",f"/api/v1/orders/{order['id']}/review",review_payload,ct)
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        review_results=list(ex.map(review,(1,2)))
+
+    assert sorted(x[0] for x in review_results)==[200,201],review_results
+    review_bodies=[x[1] for x in review_results]
+    assert sum(1 for x in review_bodies if x.get("state")=="created")==1,review_bodies
+    assert sum(1 for x in review_bodies if x.get("state")=="unchanged")==1,review_bodies
+
+    review_notes=call("GET","/api/v1/notifications?kind=review&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    review_notes=[x for x in review_notes if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(review_notes)==1,review_notes
+    assert review_notes[0].get("title")=="وصلك تقييم جديد",review_notes
+
+    same=call("POST",f"/api/v1/orders/{order['id']}/review",review_payload,ct,expected=(200,))
+    assert same.get("state")=="unchanged" and same.get("updated") is False,same
+    review_notes_same=call("GET","/api/v1/notifications?kind=review&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    review_notes_same=[x for x in review_notes_same if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(review_notes_same)==1,review_notes_same
+
+    updated=call("POST",f"/api/v1/orders/{order['id']}/review",{
+        "quality":4,"timeliness":4,"communication":5,"comment":"تم تعديل التقييم مرة واحدة"
+    },ct,expected=(200,))
+    assert updated.get("state")=="updated" and updated.get("updated") is True,updated
+    review_notes_updated=call("GET","/api/v1/notifications?kind=review&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    review_notes_updated=[x for x in review_notes_updated if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(review_notes_updated)==2,review_notes_updated
+    assert any(x.get("title")=="تم تحديث تقييمك" for x in review_notes_updated),review_notes_updated
+
+    reviewed_order=call("GET",f"/api/v1/orders/{order['id']}",token=ct,expected=(200,))
+    assert int(reviewed_order["review_quality"])==4,reviewed_order
+    assert int(reviewed_order["review_timeliness"])==4,reviewed_order
+    assert int(reviewed_order["review_communication"])==5,reviewed_order
+    assert reviewed_order["review_comment"]=="تم تعديل التقييم مرة واحدة",reviewed_order
+
     return {
         "ok":True,"version":health.get("version"),
         "single_order_under_concurrency":True,
@@ -120,6 +163,11 @@ def run():
         "mock_payment_idempotent":True,
         "single_payment_event":True,
         "single_payment_notification":True,
+        "concurrent_identical_review_idempotent":True,
+        "single_initial_review_notification":True,
+        "unchanged_review_no_side_effect":True,
+        "review_update_supported":True,
+        "single_review_update_notification":True,
         "order_id":order["id"],"task_id":task["id"],"winning_proposal":winner_label
     }
 
