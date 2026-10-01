@@ -1,3 +1,23 @@
+        ('design','quotation-design','تصميم قائمة أسعار أو عرض سعر','تصميم عرض سعر أو قائمة أسعار مرتبة',59,119),
+        ('business','content-plan-2w','خطة محتوى لأسبوعين','خطة نشر وأفكار محتوى لمدة أسبوعين',99,199),
+        ('business','competitors-5','مقارنة 5 منافسين','مقارنة عامة ومنظمة لخمس جهات منافسة',99,199),
+        ('business','businesses-30','جمع بيانات 30 نشاطًا','جمع معلومات عامة متاحة لثلاثين نشاطًا تجاريًا',79,149),
+        ('writing','meeting-summary','تلخيص اجتماع أو تسجيل','تلخيص القرارات والنقاط المهمة من اجتماع أو تسجيل',59,129),
+        ('writing','cs-replies-15','صياغة 15 رد خدمة عملاء','ردود جاهزة ومهنية لسيناريوهات خدمة العملاء',59,129),
+        ('ai','ai-prompts','إعداد Prompts أو Workflow بالذكاء الاصطناعي','صياغة تعليمات وقوالب استخدام عملية للذكاء الاصطناعي',79,149),
+        ('ai','ai-classify-data','تصنيف بيانات غير حساسة بالذكاء الاصطناعي','تنظيم وتصنيف بيانات غير حساسة وفق قواعد واضحة',79,199),
+        ('ai','no-code-automation','أتمتة No-code بسيطة','إعداد أتمتة بسيطة بين أدوات مدعومة',149,299),
+        ('business','cms-edits','تعديلات محتوى CMS بسيطة','تحديث نصوص وصور ومحتوى بسيط داخل نظام إدارة محتوى',79,199)
+    ) as v(category_slug,slug,name_ar,description_ar,min_price,max_price)
+    join categories c on c.slug=v.category_slug
+    on conflict(slug) do update set category_id=excluded.category_id,name_ar=excluded.name_ar,description_ar=excluded.description_ar,min_price=excluded.min_price,max_price=excluded.max_price,active=true;""",(),None)
+
+def ensure_roles_schema():
+    q("""create table if not exists user_roles(
+        user_id bigint not null references users(id) on delete cascade,
+        role text not null check(role in ('client','freelancer','admin')),
+        enabled boolean not null default true,
+        created_at timestamptz not null default now(),
         primary key(user_id,role)
     );
     create index if not exists idx_user_roles_role on user_roles(role,user_id);
@@ -162,19 +182,3 @@ class H(BaseHTTPRequestHandler):
                     {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
                 ]
                 commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
-                status=503 if IS_PROD and not commercial else 200
-                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION})
-            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
-                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
-                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
-                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
-                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
-                try:b=json.loads(raw or b'{}')
-                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
-                try:result=apply_kyc_adapter_event(b)
-                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
-                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
-                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
-                return self.sendj(200,{'ok':True})
-            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
-                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
