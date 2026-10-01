@@ -1,3 +1,19 @@
+                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
+                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
+                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
+                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
+                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
+                if not u:
+                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
+                else:
+                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
+                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
+                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
+                q('update users set role=%s where id=%s',(role,u['id']),None)
+                u=q('select * from users where id=%s',(u['id'],),'one')
+                roles=enabled_roles(u['id'])
+                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
+                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
                 self.set_session_cookie(raw)
                 log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
                 user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
@@ -131,13 +147,3 @@
                 if not u:return
                 if KYC_MODE!='adapter' or not _https_url(KYC_START_URL):return self.sendj(503,{'error':'kyc_provider_not_configured'})
                 fp=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one')
-                if not fp:return self.sendj(404,{'error':'freelancer_profile_not_found'})
-                if fp.get('kyc_status')=='approved':return self.sendj(200,{'ok':True,'already_verified':True})
-                if fp.get('kyc_status')=='pending' and fp.get('kyc_verification_url') and fp.get('kyc_provider_reference'):
-                    return self.sendj(200,{'ok':True,'verification_url':fp['kyc_verification_url'],'provider_reference':fp['kyc_provider_reference'],'reused':True})
-                claim=q("update freelancer_profiles set kyc_started_at=now() where user_id=%s and kyc_status<>'approved' and (kyc_started_at is null or kyc_started_at<now()-interval '2 minutes') returning user_id",(u['id'],),'one')
-                if not claim:return self.sendj(409,{'error':'kyc_initialization_in_progress','retry_after_seconds':120})
-                payload={'user_id':u['id'],'phone':u.get('phone'),'name':u.get('name'),'return_url':(PUBLIC_BASE_URL+'/#account') if PUBLIC_BASE_URL else None,'webhook_contract':'minjaz-kyc-v1','webhook_url':(PUBLIC_BASE_URL+'/api/v1/integrations/kyc/webhook') if PUBLIC_BASE_URL else None}
-                try:resp=adapter_post_json(KYC_START_URL,payload,KYC_ADAPTER_BEARER)
-                except Exception as exc:
-                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);operational_event('error','kyc','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'user',u.get('id'));print('KYC_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'kyc_provider_unavailable'})
