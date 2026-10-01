@@ -27,6 +27,7 @@ SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
 LEGAL_MARKETPLACE_VERSION=os.getenv('LEGAL_MARKETPLACE_VERSION','2026-09-beta1')
+LEGAL_REVIEW_STATUS=os.getenv('LEGAL_REVIEW_STATUS','draft').strip().lower()
 LAUNCH_GUARD=os.getenv('COMMERCIAL_LAUNCH_GUARD','0').strip()=='1'
 RUN_RUNTIME_SCHEMA_ENSURE=os.getenv('RUN_RUNTIME_SCHEMA_ENSURE','0').strip()=='1'
 IS_PROD=APP_ENV=='production'
@@ -59,6 +60,7 @@ def production_blockers():
     if DB_PERSISTENCE!='persistent': blockers.append('DB_PERSISTENCE')
     if SOURCE_CONTROL in ('railway_env','none',''): blockers.append('SOURCE_CONTROL')
     if RUN_RUNTIME_SCHEMA_ENSURE: blockers.append('RUN_RUNTIME_SCHEMA_ENSURE')
+    if LEGAL_REVIEW_STATUS!='approved': blockers.append('LEGAL_REVIEW')
     if not PUBLIC_BASE_URL or not _https_url(PUBLIC_BASE_URL): blockers.append('PUBLIC_BASE_URL')
     if not CORS_ORIGINS or '*' in CORS_ORIGINS or any(not _https_url(x) for x in CORS_ORIGINS): blockers.append('CORS_ORIGINS')
     return blockers
@@ -795,6 +797,7 @@ class H(BaseHTTPRequestHandler):
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
                     {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
                     {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
+                    {'key':'legal_review','ok':LEGAL_REVIEW_STATUS=='approved','value':LEGAL_REVIEW_STATUS,'required':True},
                     {'key':'public_base_url','ok':_https_url(PUBLIC_BASE_URL),'value':PUBLIC_BASE_URL or 'missing','required':True},
                     {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
                     {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
@@ -838,9 +841,9 @@ class H(BaseHTTPRequestHandler):
                 return self.sendj(200,{'ok':True})
             if method=='GET' and p=='/api/v1/legal/documents':
                 return self.sendj(200,{'documents':[
-                    {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':'draft_pending_legal_review','sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
-                    {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':'draft_pending_legal_review','sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
-                    {'key':'marketplace_rules','title':'قواعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':'draft_pending_legal_review','sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
+                    {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
+                    {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
+                    {'key':'marketplace_rules','title':'قواعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
                 ]})
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
