@@ -1,3 +1,19 @@
+                status=503 if IS_PROD and not commercial else 200
+                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION})
+            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
+                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
+                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
+                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
+                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
+                try:b=json.loads(raw or b'{}')
+                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
+                try:result=apply_kyc_adapter_event(b)
+                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
+                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
+                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
+                return self.sendj(200,{'ok':True})
+            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
+                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
                 raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
                 expected=hmac.new(PAYMENT_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
                 if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
@@ -91,19 +107,3 @@
                 if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
                 if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
                 if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
-                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
-                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
-                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
-                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
-                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
-                if not u:
-                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
-                else:
-                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
-                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                u=q('select * from users where id=%s',(u['id'],),'one')
-                roles=enabled_roles(u['id'])
-                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
-                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
