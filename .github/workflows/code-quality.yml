@@ -1,0 +1,42 @@
+name: Code Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile backend sources
+        run: |
+          set -euo pipefail
+          python3 -m py_compile server.py migrate.py storage.py
+
+      - name: Verify deployable source layout
+        run: |
+          set -euo pipefail
+          test "$(wc -c < server.py)" -gt 160000
+          test "$(wc -c < public/index.html)" -gt 290000
+          test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 10
+          grep -q "ThreadingHTTPServer" server.py
+          grep -q "/health" server.py
+          grep -q "/readiness" server.py
+          grep -q "dispute_finalized" server.py
+          grep -q "privacy_request_finalized" server.py
+          grep -q "kyc_managed_by_provider" server.py
+          grep -qi "<!doctype html" public/index.html
+
+      - name: Compile E2E test suites
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/e2e_marketplace.py tests/e2e_operations.py tests/e2e_integrity.py
+
+      - name: Quality gate passed
+        run: echo "MINJAZ_CODE_QUALITY_OK"
