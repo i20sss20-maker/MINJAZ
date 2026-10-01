@@ -1,3 +1,6 @@
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
+                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0)})
                 if action=='complete':
                     if u['role']!='client':return self.sendj(403,{'error':'client_only'})
                     locked,err=complete_order_atomic(oid,u['id'])
@@ -128,8 +131,3 @@
                 b=self.body();reason=str(b.get('reason') or '').strip()[:500] or None
                 q('insert into user_blocks(blocker_id,blocked_id,reason) values(%s,%s,%s) on conflict(blocker_id,blocked_id) do update set reason=excluded.reason,created_at=now()',(u['id'],target,reason),None)
                 return self.sendj(201,{'ok':True,'user_id':target,'name':tu['name']})
-            if p=='/api/v1/safety/reports':
-                u=self.require();
-                if not u:return
-                if method=='GET':
-                    return self.sendj(200,{'items':q("select sr.*,ru.name reported_user_name,t.title task_title from safety_reports sr left join users ru on ru.id=sr.reported_user_id left join tasks t on t.id=sr.task_id where sr.reporter_id=%s order by sr.created_at desc limit 100",(u['id'],))})
