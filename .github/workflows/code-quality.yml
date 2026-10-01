@@ -75,6 +75,14 @@ jobs:
           assert "dispute_finalized" in dispute_helper
           assert "for update of cr,o" in cancellation_helper
           assert "cancellation_finalized" in cancellation_helper
+          assert "def create_order_from_proposal(client_id,proposal_id):" in server
+          order_helper_start=server.index("def create_order_from_proposal")
+          order_helper_end=server.index("def friendly_device")
+          order_helper=server[order_helper_start:order_helper_end]
+          assert "for update of t,p" in order_helper
+          assert "'order_exists'" in order_helper
+          assert "create_order_from_proposal(u['id'],b.get('proposal_id'))" in server
+          assert "ex=q('select id from orders where task_id=%s'" not in server
           pay_start=server.index("def apply_payment_adapter_event")
           kyc_start=server.index("def apply_kyc_adapter_event")
           pay_block=server[pay_start:kyc_start]
