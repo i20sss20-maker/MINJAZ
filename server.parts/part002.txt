@@ -1,5 +1,3 @@
-            if active_dispute:
-                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
             cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
             cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
         c.commit();return dict(o),None
@@ -210,3 +208,6 @@ def update_payout_status(pid,status,admin_note=None):
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'payout_not_found'
