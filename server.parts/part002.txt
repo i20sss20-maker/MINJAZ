@@ -1,3 +1,39 @@
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def complete_order_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),'client_only'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
             cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
             cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
         c.commit();return dict(o),None
@@ -176,38 +212,3 @@ def create_payout_request(fid,raw_amount,note=None):
     except Exception:
         return None,'invalid_amount',None
     if amount<=0:
-        return None,'invalid_amount',None
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select id from users where id=%s for update',(fid,))
-            if not cur.fetchone():
-                c.rollback();return None,'user_not_found',None
-            cur.execute('select kyc_status from freelancer_profiles where user_id=%s',(fid,))
-            fp=cur.fetchone()
-            if not fp or fp.get('kyc_status')!='approved':
-                c.rollback();return None,'kyc_required',None
-            cur.execute("""select coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned from orders where freelancer_id=%s""",(fid,))
-            net=Decimal(str(cur.fetchone()['net_earned'] or 0))
-            cur.execute("""select coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts from payout_requests where freelancer_id=%s""",(fid,))
-            pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0));available=max(Decimal('0'),net-paid-pending)
-            if amount>available:
-                c.rollback();return None,'insufficient_balance',available
-            cur.execute("insert into payout_requests(freelancer_id,amount,note,status) values(%s,%s,%s,'pending') returning *",(fid,amount,str(note or '')[:500] or None))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},None,max(Decimal('0'),available-amount)
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_payout_status(pid,status,admin_note=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
-            pr=cur.fetchone()
-            if not pr:
-                c.rollback();return None,None,'payout_not_found'
