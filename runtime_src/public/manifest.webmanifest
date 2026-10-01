@@ -1,0 +1,20 @@
+{
+  "name": "مِنجاز — MINJAZ",
+  "short_name": "مِنجاز",
+  "description": "منصة مهام رقمية قصيرة: اكتب مهمتك، استقبل عروضًا خاصة، وتابع التنفيذ من مكان واحد.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
