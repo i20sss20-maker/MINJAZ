@@ -1,4 +1,129 @@
-ate index if not exists idx_attachments_delivery on attachments(delivery_id,created_at);
+            cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
+            cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_dispute_atomic(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
+                c.rollback();return None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_dispute_exists'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,'active_cancellation_exists'
+            cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
+            d=dict(cur.fetchone())
+            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_cancellation_atomic(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
+                c.rollback();return None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled','disputed'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_id']=active_dispute['id'];return None,x,'active_dispute_exists'
+            refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
+            cur.execute("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
+            cr=dict(cur.fetchone())
+        c.commit();return {k:as_json(v) for k,v in cr.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def operational_event(level,area,code,message=None,request_id=None,user_id=None,entity_type=None,entity_id=None,meta=None):
+    """Best-effort operational telemetry. Never let observability break the product path."""
+    try:
+        q("insert into operational_events(request_id,level,area,code,message,user_id,entity_type,entity_id,meta) values(%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
+          (str(request_id or '')[:80] or None,str(level or 'error')[:16],str(area or 'app')[:80],str(code or 'unknown')[:120],str(message or '')[:500] or None,user_id,str(entity_type or '')[:80] or None,str(entity_id or '')[:120] or None,json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as exc:
+        print('OP_EVENT_ERR',repr(exc),flush=True)
+
+def operational_snapshot():
+    try:
+        counts=q("""select
+          count(*) filter(where created_at>now()-interval '15 minutes')::int events_15m,
+          count(*) filter(where level in ('error','critical') and created_at>now()-interval '15 minutes')::int errors_15m,
+          count(*) filter(where level in ('error','critical') and created_at>now()-interval '24 hours')::int errors_24h,
+          max(created_at) last_event_at
+          from operational_events""",(), 'one') or {}
+        recent=q("select id,request_id,level,area,code,message,entity_type,entity_id,meta,created_at from operational_events order by created_at desc limit 80")
+        return {'counts':counts,'recent':recent}
+    except Exception as exc:
+        return {'counts':{'events_15m':0,'errors_15m':0,'errors_24h':0,'last_event_at':None},'recent':[],'telemetry_error':str(exc)[:120]}
+
+def ensure_schema():
+    q("""create table if not exists order_disputes(
+        id bigserial primary key,
+        order_id bigint not null references orders(id) on delete cascade,
+        opened_by bigint not null references users(id),
+        reason text not null,
+        details text,
+        status text not null default 'open',
+        previous_order_status text,
+        previous_task_status text,
+        resolution_action text,
+        resolution_note text,
+        resolved_by bigint references users(id),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        resolved_at timestamptz
+    );
+    create index if not exists idx_order_disputes_order on order_disputes(order_id,created_at desc);
+    create index if not exists idx_order_disputes_status on order_disputes(status,created_at desc);
+    create table if not exists attachments(
+        id bigserial primary key,
+        uploaded_by bigint not null references users(id),
+        task_id bigint references tasks(id) on delete cascade,
+        order_id bigint references orders(id) on delete cascade,
+        message_id bigint references messages(id) on delete cascade,
+        delivery_id bigint references deliveries(id) on delete cascade,
+        file_name text not null,
+        file_url text not null,
+        mime_type text not null default 'application/octet-stream',
+        size_bytes bigint not null default 0,
+        storage_mode text not null default 'external_link',
+        created_at timestamptz not null default now(),
+        check(task_id is not null or order_id is not null or message_id is not null or delivery_id is not null)
+    );
+    create index if not exists idx_attachments_task on attachments(task_id,created_at);
+    create index if not exists idx_attachments_order on attachments(order_id,created_at);
+    create index if not exists idx_attachments_message on attachments(message_id,created_at);
+    create index if not exists idx_attachments_delivery on attachments(delivery_id,created_at);
     create table if not exists order_revision_requests(
         id bigserial primary key,
         order_id bigint not null references orders(id) on delete cascade,
@@ -86,276 +211,3 @@ def update_payout_status(pid,status,admin_note=None):
             pr=cur.fetchone()
             if not pr:
                 c.rollback();return None,None,'payout_not_found'
-            current=str(pr.get('status') or '')
-            if current in ('paid','rejected','cancelled'):
-                c.rollback();return None,dict(pr),'payout_finalized'
-            if status=='paid' and current not in ('pending','processing'):
-                c.rollback();return None,dict(pr),'invalid_payout_state'
-            cur.execute("""update payout_requests
-                           set status=%s,admin_note=%s,updated_at=now(),
-                               resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end
-                           where id=%s returning *""",
-                        (status,str(admin_note or '')[:1000] or None,status,int(pid)))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(pr),None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def admin_transition_dispute(did,admin_id,status,action='',resolution_note=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select d.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
-                           from order_disputes d join orders o on o.id=d.order_id
-                           where d.id=%s for update of d,o""",(int(did),))
-            d=cur.fetchone()
-            if not d:
-                c.rollback();return None,None,None,'dispute_not_found'
-            current=str(d.get('status') or '')
-            if current=='resolved':
-                c.rollback();return None,dict(d),None,'dispute_finalized'
-            if current not in ('open','in_review'):
-                c.rollback();return None,dict(d),None,'invalid_dispute_state'
-            note=str(resolution_note or '')[:3000] or None
-            if status=='in_review':
-                cur.execute("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(note,int(did)))
-                row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(d),'not_needed',None
-            if status!='resolved':
-                c.rollback();return None,dict(d),None,'invalid_status'
-            action=str(action or '')
-            if action not in ('resume','cancel'):
-                c.rollback();return None,dict(d),None,'invalid_resolution_action'
-            cur.execute('select id,status from tasks where id=%s for update',(d['task_id'],))
-            task=cur.fetchone()
-            if not task:
-                c.rollback();return None,dict(d),None,'task_not_found'
-            refund='not_needed'
-            if action=='resume':
-                prev_order_status=d.get('previous_order_status') or 'in_progress'
-                prev_task_status=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
-                if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
-                if prev_task_status in ('disputed','completed','cancelled'):prev_task_status='in_progress'
-                cur.execute('update orders set status=%s where id=%s',(prev_order_status,d['order_id']))
-                cur.execute('update tasks set status=%s,updated_at=now() where id=%s',(prev_task_status,d['task_id']))
-            else:
-                if d.get('payment_status')=='paid':
-                    if PAYMENT_MODE=='mock':
-                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(d['order_id'],))
-                        refund='refunded'
-                    else:
-                        cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
-                        refund='manual_required'
-                else:
-                    cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
-                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],))
-            cur.execute("""update order_disputes
-                           set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,
-                               resolved_at=now(),updated_at=now()
-                           where id=%s returning *""",
-                        (action,note,int(admin_id),int(did)))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(d),refund,None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_refunded=False):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select cr.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
-                           from order_cancellation_requests cr join orders o on o.id=cr.order_id
-                           where cr.id=%s for update of cr,o""",(int(cid),))
-            cr=cur.fetchone()
-            if not cr:
-                c.rollback();return None,None,None,'cancellation_not_found'
-            note=str(admin_note or '')[:3000] or None
-            if mark_refunded:
-                if cr.get('status')!='approved' or cr.get('refund_status') not in ('manual_required','pending'):
-                    c.rollback();return None,dict(cr),None,'refund_not_markable'
-                cur.execute("update orders set payment_status='refunded' where id=%s",(cr['order_id'],))
-                cur.execute("""update order_cancellation_requests
-                               set refund_status='refunded',admin_note=coalesce(%s,admin_note),updated_at=now()
-                               where id=%s returning *""",(note,int(cid)))
-                row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),'refunded',None
-            current=str(cr.get('status') or '')
-            if status=='in_review':
-                if current not in ('pending','in_review'):
-                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
-                cur.execute("update order_cancellation_requests set status='in_review',admin_note=%s,updated_at=now() where id=%s returning *",(note,int(cid)))
-                row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
-            if status=='rejected':
-                if current not in ('pending','in_review'):
-                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
-                cur.execute("""update order_cancellation_requests
-                               set status='rejected',admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now()
-                               where id=%s returning *""",(note,int(admin_id),int(cid)))
-                row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
-            if status=='approved':
-                if current not in ('pending','in_review'):
-                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
-                cur.execute('select id,status from tasks where id=%s for update',(cr['task_id'],))
-                if not cur.fetchone():
-                    c.rollback();return None,dict(cr),None,'task_not_found'
-                refund='not_needed'
-                if cr.get('payment_status')=='paid':
-                    if PAYMENT_MODE=='mock':
-                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(cr['order_id'],))
-                        refund='refunded'
-                    else:
-                        cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
-                        refund='manual_required'
-                else:
-                    cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
-                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],))
-                cur.execute("""update order_cancellation_requests
-                               set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
-                                   resolved_at=now(),updated_at=now()
-                               where id=%s returning *""",
-                            (refund,note,int(admin_id),int(cid)))
-                row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),refund,None
-            c.rollback();return None,dict(cr),None,'invalid_status'
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_privacy_request(pid,status,admin_note=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
-            pr=cur.fetchone()
-            if not pr:
-                c.rollback();return None,None,'privacy_request_not_found'
-            current=str(pr.get('status') or '')
-            if current in ('completed','rejected') and status!=current:
-                c.rollback();return None,dict(pr),'privacy_request_finalized'
-            cur.execute("""update privacy_requests
-                           set status=%s,admin_note=%s,
-                               resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
-                           where id=%s returning *""",
-                        (status,str(admin_note or '')[:3000] or None,status,int(pid)))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(pr),None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def friendly_device(user_agent):
-    ua=str(user_agent or '')[:500]; low=ua.lower()
-    if 'ipad' in low:return 'iPad'
-    if 'iphone' in low:return 'iPhone'
-    if 'android' in low and ('tv' in low or 'aft' in low):return 'Android TV'
-    if 'android' in low:return 'Android'
-    if 'windows' in low:return 'Windows'
-    if 'macintosh' in low or 'mac os' in low:return 'Mac'
-    if 'linux' in low:return 'Linux'
-    return 'متصفح'
-
-
-def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
-    try:q("insert into account_activity(user_id,session_id,event_type,label,meta) values(%s,%s,%s,%s,%s::jsonb)",(user_id,session_id,event_type,str(label or '')[:180],json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as e:print('ACCOUNT_ACTIVITY_ERR',repr(e),flush=True)
-
-def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
-    try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
-    except Exception as e:print('ADMIN_AUDIT_ERR',repr(e),flush=True)
-
-def legal_versions(): return {'terms':LEGAL_TERMS_VERSION,'privacy':LEGAL_PRIVACY_VERSION,'marketplace_rules':LEGAL_MARKETPLACE_VERSION}
-
-def legal_status(user_id):
-    accepted={(x['document'],x['version']) for x in q('select document,version from legal_acceptances where user_id=%s',(user_id,))}
-    docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
-    return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
-
-def onboarding_status(user_id,role):
-    legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
-    if role=='freelancer':
-        fp=q('select bio,skills,is_available from freelancer_profiles where user_id=%s',(user_id,),'one') or {}; portfolio=q('select count(*)::int n from freelancer_portfolio where freelancer_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إضافة نبذة مهنية','done':bool(str(fp.get('bio') or '').strip()),'required':True},{'key':'skills','label':'إضافة 3 مهارات على الأقل','done':len(fp.get('skills') or [])>=3,'required':True},{'key':'availability','label':'تحديد حالة التوفر','done':bool(fp.get('is_available')),'required':False},{'key':'portfolio','label':'إضافة نموذج عمل','done':int(portfolio.get('n') or 0)>0,'required':False}]
-    else:
-        cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
-    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
-
-def session_token_from_headers(headers):
-    h=str(headers.get('Authorization') or '').strip()
-    if h.startswith('Bearer '):
-        raw=h[7:].strip()
-        if raw:return raw,'bearer'
-    cookie=str(headers.get('Cookie') or '')
-    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
-    return (m.group(1),'cookie') if m else ('','')
-
-def auth(headers):
-    raw,transport=session_token_from_headers(headers)
-    if not raw:return None
-    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
-                    s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
-                    s.last_seen_at session_last_seen_at,s.device_label session_device_label
-             from sessions s join users u on u.id=s.user_id
-             where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() limit 1""",
-          (sha(raw+SECRET),), 'one')
-    if row:
-        row['_auth_transport']=transport
-        try:
-            q("update sessions set last_seen_at=now() where id=%s and (last_seen_at is null or last_seen_at<now()-interval '10 minutes')",(row['session_id'],),None)
-        except Exception:
-            pass
-    return row
-
-def refresh_freelancer(fid):
-    try:
-        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
-    except Exception:
-        pass
-
-
-def ensure_timeline_schema():
-    q("""create table if not exists order_events(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        actor_id bigint references users(id),
-        event_type text not null,
-        title text not null,
-        details text,
-        meta jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now()
-    );
-    create index if not exists idx_order_events_order on order_events(order_id,created_at);""",(),None)
-
-def log_order_event(order_id,event_type,title,actor_id=None,details=None,meta=None):
-    try:
-        q("insert into order_events(order_id,actor_id,event_type,title,details,meta) values(%s,%s,%s,%s,%s,%s::jsonb)",(order_id,actor_id,event_type,title,(details or None),json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as e:
-        print('EVENT_ERR',repr(e),flush=True)
-
-def order_timeline(order_id):
-    o=q("select o.*,t.title task_title from orders o join tasks t on t.id=o.task_id where o.id=%s",(order_id,),'one')
-    if not o:return []
-    ev=[]
-    def add(ts,kind,title,details=None,actor=None,meta=None):
-        if not ts:return
-        ev.append({'created_at':ts,'type':kind,'title':title,'details':details,'actor_name':actor,'meta':meta or {}})
-    add(o.get('created_at'),'order_created','تم اختيار العرض وإنشاء الطلب',o.get('task_title'))
-    for x in q("select e.*,u.name actor_name from order_events e left join users u on u.id=e.actor_id where e.order_id=%s order by e.created_at",(order_id,)):
-        add(x.get('created_at'),x.get('event_type'),x.get('title'),x.get('details'),x.get('actor_name'),x.get('meta') or {})
-    for x in q("select m.*,u.name actor_name,(select count(*)::int from attachments a where a.message_id=m.id) attachment_count from messages m join users u on u.id=m.sender_id where m.order_id=%s order by m.created_at",(order_id,)):
-        body=str(x.get('body') or '')
-        if body.startswith('طلب تعديل '):
-            continue
-        add(x.get('created_at'),'message','رسالة جديدة',body[:180],x.get('actor_name'),{'attachments':x.get('attachment_count') or 0})
-    for x in q("select rr.*,u.name actor_name from order_revision_requests rr join users u on u.id=rr.requested_by where rr.order_id=%s order by rr.created_at",(
