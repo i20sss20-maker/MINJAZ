@@ -68,8 +68,10 @@ m where m.order_id=any(%s) order by m.created_at limit 3000',(order_ids,))
                 if not u:return
                 sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
                 if not row:return self.sendj(404,{'error':'session_not_found'})
+                current_revoked=sid==int(u.get('session_id') or 0)
+                if current_revoked:self.clear_session_cookie()
                 log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
-                return self.sendj(200,{'ok':True,'current_revoked':sid==int(u.get('session_id') or 0)})
+                return self.sendj(200,{'ok':True,'current_revoked':current_revoked})
             if method=='GET' and p=='/api/v1/me/roles':
                 u=self.require();
                 if not u:return
