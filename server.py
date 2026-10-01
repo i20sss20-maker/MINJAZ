@@ -1,6 +1,6 @@
 import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
 import urllib.request, urllib.error
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -12,6 +12,8 @@ PORT=int(os.getenv('PORT','3000'))
 SECRET=os.getenv('AUTH_SECRET','dev-secret-change-me')
 DEV_OTP=os.getenv('DEV_OTP','1234')
 FEE=Decimal(os.getenv('PLATFORM_FEE_PERCENT','15'))
+MONEY_QUANT=Decimal('0.01')
+if not FEE.is_finite() or FEE<0 or FEE>100: raise RuntimeError('PLATFORM_FEE_PERCENT must be between 0 and 100')
 ADMIN_PHONE=os.getenv('ADMIN_PHONE','').strip()
 PAYMENT_MODE=os.getenv('PAYMENT_MODE','mock')
 DB_PERSISTENCE=os.getenv('DB_PERSISTENCE','volume_missing')
@@ -100,6 +102,11 @@ def normalize_phone(value):
     if digits.startswith('5') and len(digits)==9: return '+966'+digits
     if raw.startswith('+') and len(digits)>=9: return '+'+digits
     return ''
+def money_decimal(value):
+    d=Decimal(str(value))
+    if not d.is_finite(): raise ValueError('invalid_money')
+    return d.quantize(MONEY_QUANT,rounding=ROUND_HALF_UP)
+
 def as_json(v):
     if isinstance(v, Decimal): return float(v)
     if isinstance(v, (datetime,date)): return v.isoformat()
@@ -166,7 +173,7 @@ def apply_payment_adapter_event(b):
             amount=b.get('amount')
             if amount is not None:
                 try:
-                    if Decimal(str(amount)).quantize(Decimal('0.01'))!=Decimal(str(o['amount'])).quantize(Decimal('0.01')): raise AdapterEventError(409,'amount_mismatch')
+                    if money_decimal(amount)!=money_decimal(o['amount']): raise AdapterEventError(409,'amount_mismatch')
                 except AdapterEventError: raise
                 except Exception: raise AdapterEventError(400,'invalid_amount')
             if not ev:
@@ -445,7 +452,7 @@ def freelancer_earnings(fid):
 
 def create_payout_request(fid,raw_amount,note=None):
     try:
-        amount=Decimal(str(raw_amount)).quantize(Decimal('0.01'))
+        amount=money_decimal(raw_amount)
     except Exception:
         return None,'invalid_amount',None
     if amount<=0:
@@ -1305,10 +1312,10 @@ class H(BaseHTTPRequestHandler):
                 urgency=str(b.get('urgency') or 'normal').strip().lower()
                 if urgency not in ('normal','urgent'):return self.sendj(400,{'error':'invalid_urgency'})
                 try:
-                    bmin=float(b.get('budget_min')) if b.get('budget_min') not in (None,'') else None; bmax=float(b.get('budget_max')) if b.get('budget_max') not in (None,'') else None
+                    bmin=money_decimal(b.get('budget_min')) if b.get('budget_min') not in (None,'') else None; bmax=money_decimal(b.get('budget_max')) if b.get('budget_max') not in (None,'') else None
                 except Exception:return self.sendj(400,{'error':'invalid_budget'})
-                if (bmin is not None and bmin<49) or (bmax is not None and bmax<49):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
-                if (bmin is not None and bmin>1_000_000) or (bmax is not None and bmax>1_000_000):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
+                if (bmin is not None and bmin<Decimal('49')) or (bmax is not None and bmax<Decimal('49')):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
+                if (bmin is not None and bmin>Decimal('1000000')) or (bmax is not None and bmax>Decimal('1000000')):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
                 if bmin is not None and bmax is not None and bmax<bmin:return self.sendj(400,{'error':'invalid_budget_range'})
                 due_raw=str(b.get('due_at') or '').strip() or None
                 if due_raw:
@@ -1365,10 +1372,10 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})
                 b=self.body()
-                try: price=float(b.get('price') or 0)
+                try: price=money_decimal(b.get('price') or 0)
                 except Exception:return self.sendj(400,{'error':'invalid_price'})
                 if price<=0:return self.sendj(400,{'error':'invalid_price'})
-                if price>1_000_000:return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
+                if price>Decimal('1000000'):return self.sendj(400,{'error':'price_above_maximum','maximum':1000000})
                 try: delivery_hours=int(b.get('delivery_hours') or 24); revisions=int(b.get('revisions') if b.get('revisions') not in (None,'') else 1)
                 except Exception:return self.sendj(400,{'error':'invalid_proposal_terms'})
                 if delivery_hours<1 or delivery_hours>8760:return self.sendj(400,{'error':'invalid_delivery_hours','minimum':1,'maximum':8760})
@@ -1399,7 +1406,7 @@ class H(BaseHTTPRequestHandler):
                 if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
                 ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
                 if ex:return self.sendj(409,{'error':'order_exists'})
-                fee=round(float(x['price'])*float(FEE)/100,2); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+                fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100')); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
             if p=='/api/v1/orders' and method=='GET':
                 u=self.require();
                 if not u:return
