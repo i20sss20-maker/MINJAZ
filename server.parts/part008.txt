@@ -1,3 +1,13 @@
+                if not fp:return self.sendj(404,{'error':'freelancer_profile_not_found'})
+                if fp.get('kyc_status')=='approved':return self.sendj(200,{'ok':True,'already_verified':True})
+                if fp.get('kyc_status')=='pending' and fp.get('kyc_verification_url') and fp.get('kyc_provider_reference'):
+                    return self.sendj(200,{'ok':True,'verification_url':fp['kyc_verification_url'],'provider_reference':fp['kyc_provider_reference'],'reused':True})
+                claim=q("update freelancer_profiles set kyc_started_at=now() where user_id=%s and kyc_status<>'approved' and (kyc_started_at is null or kyc_started_at<now()-interval '2 minutes') returning user_id",(u['id'],),'one')
+                if not claim:return self.sendj(409,{'error':'kyc_initialization_in_progress','retry_after_seconds':120})
+                payload={'user_id':u['id'],'phone':u.get('phone'),'name':u.get('name'),'return_url':(PUBLIC_BASE_URL+'/#account') if PUBLIC_BASE_URL else None,'webhook_contract':'minjaz-kyc-v1','webhook_url':(PUBLIC_BASE_URL+'/api/v1/integrations/kyc/webhook') if PUBLIC_BASE_URL else None}
+                try:resp=adapter_post_json(KYC_START_URL,payload,KYC_ADAPTER_BEARER)
+                except Exception as exc:
+                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);operational_event('error','kyc','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'user',u.get('id'));print('KYC_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'kyc_provider_unavailable'})
                 verification_url=str(resp.get('verification_url') or '').strip(); provider_ref=str(resp.get('provider_reference') or '').strip()[:180]
                 if not _https_url(verification_url) or not provider_ref:
                     q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);return self.sendj(502,{'error':'invalid_kyc_provider_response'})
@@ -110,15 +120,3 @@
                 tid=int(m.group(1));t=q('select id,status,client_id from tasks where id=%s',(tid,),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 if int(t['client_id'])==int(u['id']):return self.sendj(403,{'error':'own_task_forbidden'})
-                if method=='POST' and (task_hidden(tid) or interaction_restricted(u['id'],t['client_id'])):return self.sendj(403,{'error':'interaction_restricted'})
-                if method=='POST':q('insert into favorite_tasks(freelancer_id,task_id) values(%s,%s) on conflict do nothing',(u['id'],tid),None);return self.sendj(201,{'ok':True,'task_id':tid})
-                if method=='DELETE':q('delete from favorite_tasks where freelancer_id=%s and task_id=%s',(u['id'],tid),None);return self.sendj(200,{'ok':True,'task_id':tid})
-            if p=='/api/v1/freelancer/saved-searches':
-                u=self.require('freelancer');
-                if not u:return
-                if method=='GET':return self.sendj(200,{'items':q('select id,name,filters,created_at,updated_at from saved_task_searches where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
-                if method=='POST':
-                    b=self.body();name=str(b.get('name') or '').strip()[:80];filters=b.get('filters') if isinstance(b.get('filters'),dict) else {}
-                    if not name:return self.sendj(400,{'error':'name_required'})
-                    allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
-                    if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
