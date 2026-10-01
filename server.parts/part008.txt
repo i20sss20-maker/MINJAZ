@@ -1,3 +1,7 @@
+                verification_url=str(resp.get('verification_url') or '').strip(); provider_ref=str(resp.get('provider_reference') or '').strip()[:180]
+                if not _https_url(verification_url) or not provider_ref:
+                    q('update freelancer_profiles set kyc_started_at=null where user_id=%s and kyc_provider_reference is null',(u['id'],),None);return self.sendj(502,{'error':'invalid_kyc_provider_response'})
+                q("update freelancer_profiles set kyc_status='pending',kyc_provider_reference=%s,kyc_verification_url=%s,kyc_started_at=null where user_id=%s",(provider_ref,verification_url,u['id']),None)
                 return self.sendj(200,{'ok':True,'verification_url':verification_url,'provider_reference':provider_ref})
             if method=='PATCH' and p=='/api/v1/freelancer/profile':
                 u=self.require('freelancer');
@@ -118,9 +122,3 @@
                     if not name:return self.sendj(400,{'error':'name_required'})
                     allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
                     if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
-                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
-            m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
-            if m and method=='DELETE':
-                u=self.require('freelancer');
-                if not u:return
-                q('delete from saved_task_searches where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
