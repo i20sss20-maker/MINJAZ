@@ -227,3 +227,5 @@ def complete_order_atomic(oid,user_id):
                 c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
             cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
             active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
