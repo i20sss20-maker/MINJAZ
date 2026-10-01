@@ -358,13 +358,16 @@ def create_order_atomic(proposal_id,client_id):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select p.*,t.client_id,t.id task_id
+            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
                            from proposals p join tasks t on t.id=p.task_id
-                           where p.id=%s and p.status='sent' and t.status='open'
-                           for update of p,t""",(int(proposal_id),))
+                           where p.id=%s for update of p,t""",(int(proposal_id),))
             x=cur.fetchone()
             if not x or int(x['client_id'])!=int(client_id):
                 c.rollback();return None,None,'proposal_not_found'
+            if x.get('status')!='sent' or x.get('task_status')!='open':
+                cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+                exists=cur.fetchone()
+                c.rollback();return None,dict(x),'order_exists' if exists else 'proposal_not_available'
             cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
             hidden=cur.fetchone()
             cur.execute("""select 1 where
