@@ -34,7 +34,7 @@ Production deploys are built directly from GitHub. Docker build validates:
 - backend source size and Python compilation
 - frontend bundle presence
 - health endpoint presence
-- all 10 database migrations
+- all 11 database migrations
 
 Railway also performs `/health` checks before a deployment is considered healthy.
 

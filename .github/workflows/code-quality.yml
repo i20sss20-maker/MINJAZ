@@ -24,7 +24,7 @@ jobs:
           set -euo pipefail
           test "$(wc -c < server.py)" -gt 160000
           test "$(wc -c < public/index.html)" -gt 290000
-          test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 10
+          test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 11
           grep -q "ThreadingHTTPServer" server.py
           grep -q "/health" server.py
           grep -q "/readiness" server.py

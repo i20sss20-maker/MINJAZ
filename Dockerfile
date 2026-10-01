@@ -14,7 +14,7 @@ RUN set -eux; \
     grep -q "ThreadingHTTPServer" server.py; \
     grep -q "/health" server.py; \
     grep -qi "<!doctype html" public/index.html; \
-    test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 10; \
+    test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 11; \
     python -m py_compile server.py migrate.py storage.py
 
 ENV PORT=3000
