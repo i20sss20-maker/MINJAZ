@@ -64,9 +64,9 @@
                     if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
                     b=self.body();st=str(b.get('status') or '')
                     if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one')
-                    if not r:return self.sendj(404,{'error':'freelancer_not_found'})
-                    admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
+                    uid=int(m.group(1));r,previous,err=update_manual_kyc_status(uid,st)
+                    if err:return self.sendj(404,{'error':err})
+                    admin_audit(u['id'],'kyc_status_updated','user',uid,{'status':st,'previous_status':previous});return self.sendj(200,r)
                 if p=='/api/admin/payouts' and method=='GET':
                     items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
                                from payout_requests pr join users us on us.id=pr.freelancer_id

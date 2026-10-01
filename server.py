@@ -698,7 +698,7 @@ def create_payout_request(fid,raw_amount,note=None):
             cur.execute('select id from users where id=%s for update',(fid,))
             if not cur.fetchone():
                 c.rollback();return None,'user_not_found',None
-            cur.execute('select kyc_status from freelancer_profiles where user_id=%s',(fid,))
+            cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
             fp=cur.fetchone()
             if not fp or fp.get('kyc_status')!='approved':
                 c.rollback();return None,'kyc_required',None
@@ -716,18 +716,51 @@ def create_payout_request(fid,raw_amount,note=None):
     finally:
         c.close()
 
+def update_manual_kyc_status(uid,status):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id from users where id=%s for update',(int(uid),))
+            if not cur.fetchone():
+                c.rollback();return None,None,'freelancer_not_found'
+            cur.execute('select * from freelancer_profiles where user_id=%s for update',(int(uid),))
+            fp=cur.fetchone()
+            if not fp:
+                c.rollback();return None,None,'freelancer_not_found'
+            previous=str(fp.get('kyc_status') or '')
+            cur.execute('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(status,int(uid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},previous,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_payout_status(pid,status,admin_note=None):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
+            cur.execute('select freelancer_id from payout_requests where id=%s',(int(pid),))
+            seed=cur.fetchone()
+            if not seed:
+                c.rollback();return None,None,'payout_not_found'
+            fid=int(seed['freelancer_id'])
+            cur.execute('select id from users where id=%s for update',(fid,))
+            if not cur.fetchone():
+                c.rollback();return None,None,'payout_not_found'
+            cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
+            fp=cur.fetchone()
+            cur.execute('select * from payout_requests where id=%s and freelancer_id=%s for update',(int(pid),fid))
             pr=cur.fetchone()
             if not pr:
                 c.rollback();return None,None,'payout_not_found'
             current=str(pr.get('status') or '')
             if current in ('paid','rejected','cancelled'):
                 c.rollback();return None,dict(pr),'payout_finalized'
+            if status in ('processing','paid') and (not fp or fp.get('kyc_status')!='approved'):
+                c.rollback();return None,dict(pr),'kyc_required'
             if status=='paid' and current not in ('pending','processing'):
                 c.rollback();return None,dict(pr),'invalid_payout_state'
             cur.execute("""update payout_requests
@@ -2199,9 +2232,9 @@ class H(BaseHTTPRequestHandler):
                     if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
                     b=self.body();st=str(b.get('status') or '')
                     if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one')
-                    if not r:return self.sendj(404,{'error':'freelancer_not_found'})
-                    admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
+                    uid=int(m.group(1));r,previous,err=update_manual_kyc_status(uid,st)
+                    if err:return self.sendj(404,{'error':err})
+                    admin_audit(u['id'],'kyc_status_updated','user',uid,{'status':st,'previous_status':previous});return self.sendj(200,r)
                 if p=='/api/admin/payouts' and method=='GET':
                     items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
                                from payout_requests pr join users us on us.id=pr.freelancer_id

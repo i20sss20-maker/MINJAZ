@@ -98,7 +98,18 @@ jobs:
           dispute_helper=server[dispute_helper_start:cancellation_helper_start]
           cancellation_helper=server[cancellation_helper_start:privacy_helper_start]
           privacy_helper=server[privacy_helper_start:server.index("def friendly_device")]
-          assert "select * from payout_requests where id=%s for update" in payout_block
+          assert "def update_manual_kyc_status(uid,status):" in server
+          kyc_manual_start=server.index("def update_manual_kyc_status")
+          payout_start=server.index("def update_payout_status")
+          kyc_manual_block=server[kyc_manual_start:payout_start]
+          payout_block=server[payout_start:dispute_helper_start]
+          user_lock="select id from users where id=%s for update"
+          profile_lock="select kyc_status from freelancer_profiles where user_id=%s for update"
+          assert user_lock in kyc_manual_block
+          assert "select * from freelancer_profiles where user_id=%s for update" in kyc_manual_block
+          assert user_lock in payout_block and profile_lock in payout_block
+          assert payout_block.index(user_lock) < payout_block.index(profile_lock)
+          assert "status in ('processing','paid')" in payout_block and "kyc_required" in payout_block
           assert "payout_finalized" in payout_block
           assert "for update of d,o" in dispute_helper
           assert "dispute_finalized" in dispute_helper
@@ -167,6 +178,7 @@ jobs:
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
       KYC_MODE: manual
+      ADMIN_PHONE: "+966599999995"
       DB_PERSISTENCE: persistent
       SOURCE_CONTROL: github
       STORAGE_MODE: postgres_dev
@@ -214,6 +226,13 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_order_create_payment_concurrency.py
+
+      - name: Run KYC payout consistency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_kyc_payout_consistency.py
 
       - name: Show server logs on failure
         if: failure()
