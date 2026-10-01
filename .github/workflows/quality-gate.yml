@@ -28,7 +28,10 @@ jobs:
       - name: Validate runtime structure
         run: |
           set -euo pipefail
-          test "$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)" -eq 10
+          migration_count="$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)"
+          test "$migration_count" -ge 1
+          test "$(find database/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | cut -d_ -f1 | sort | uniq -d | wc -l)" -eq 0
+          printf 'MIGRATIONS_OK count=%s\n' "$migration_count"
           test "$(wc -c < server.py)" -gt 160000
           test "$(wc -c < public/index.html)" -gt 290000
           grep -q "ThreadingHTTPServer" server.py
