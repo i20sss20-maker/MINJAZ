@@ -15,9 +15,9 @@ def apply_kyc_adapter_event(b):
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select pg_advisory_xact_lock(hashtext(%s))',('kyc:'+event_id,))
             cur.execute('select * from kyc_adapter_events where provider_event_id=%s for update',(event_id,)); ev=cur.fetchone()
+            if ev and (int(ev['user_id'])!=uid or ev['status']!=status or ev['provider_reference']!=provider_ref): raise AdapterEventError(409,'kyc_event_conflict')
             if ev and ev.get('processed_at'):
                 c.commit(); return {'duplicate':True,'status':status,'user_id':uid,'changed':False}
-            if ev and (int(ev['user_id'])!=uid or ev['status']!=status or ev['provider_reference']!=provider_ref): raise AdapterEventError(409,'kyc_event_conflict')
             cur.execute('select user_id,kyc_status,kyc_provider_reference from freelancer_profiles where user_id=%s for update',(uid,)); fp=cur.fetchone()
             if not fp: raise AdapterEventError(404,'freelancer_not_found')
             if fp.get('kyc_provider_reference') and fp.get('kyc_provider_reference')!=provider_ref: raise AdapterEventError(409,'kyc_provider_reference_mismatch')

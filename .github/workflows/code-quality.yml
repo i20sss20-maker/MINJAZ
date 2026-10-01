@@ -62,6 +62,12 @@ jobs:
           assert "from decimal import Decimal, ROUND_HALF_UP" in server
           assert "def money_decimal(value):" in server
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
+          pay_start=server.index("def apply_payment_adapter_event")
+          kyc_start=server.index("def apply_kyc_adapter_event")
+          pay_block=server[pay_start:kyc_start]
+          kyc_block=server[kyc_start:server.index("def _match_text")]
+          assert pay_block.index("payment_event_conflict") < pay_block.index("if ev and ev.get('processed_at')")
+          assert kyc_block.index("kyc_event_conflict") < kyc_block.index("if ev and ev.get('processed_at')")
           assert "price=float(" not in server
           assert "fee=round(float(" not in server
           assert "credentials:'same-origin'" in ui

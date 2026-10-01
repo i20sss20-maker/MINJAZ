@@ -163,8 +163,6 @@ def apply_payment_adapter_event(b):
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select pg_advisory_xact_lock(hashtext(%s))',('payment:'+event_id,))
             cur.execute('select * from payment_adapter_events where provider_event_id=%s for update',(event_id,)); ev=cur.fetchone()
-            if ev and ev.get('processed_at'):
-                c.commit(); return {'duplicate':True,'event_type':event_type,'order':None,'changed':False}
             if ev and (int(ev['order_id'])!=oid or ev['event_type']!=event_type or (ev.get('provider_payment_id') or '')!=(provider_payment_id or '')):
                 raise AdapterEventError(409,'payment_event_conflict')
             cur.execute('select * from orders where id=%s for update',(oid,)); o=cur.fetchone()
@@ -176,6 +174,8 @@ def apply_payment_adapter_event(b):
                     if money_decimal(amount)!=money_decimal(o['amount']): raise AdapterEventError(409,'amount_mismatch')
                 except AdapterEventError: raise
                 except Exception: raise AdapterEventError(400,'invalid_amount')
+            if ev and ev.get('processed_at'):
+                c.commit(); return {'duplicate':True,'event_type':event_type,'order':None,'changed':False}
             if not ev:
                 cur.execute('insert into payment_adapter_events(provider_event_id,order_id,event_type,provider_payment_id,payload) values(%s,%s,%s,%s,%s::jsonb)',(event_id,oid,event_type,provider_payment_id or None,json.dumps(b,ensure_ascii=False)))
             changed=False; workflow_started=False; late_cancelled_payment=False; failed_effective=False
@@ -213,9 +213,9 @@ def apply_kyc_adapter_event(b):
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select pg_advisory_xact_lock(hashtext(%s))',('kyc:'+event_id,))
             cur.execute('select * from kyc_adapter_events where provider_event_id=%s for update',(event_id,)); ev=cur.fetchone()
+            if ev and (int(ev['user_id'])!=uid or ev['status']!=status or ev['provider_reference']!=provider_ref): raise AdapterEventError(409,'kyc_event_conflict')
             if ev and ev.get('processed_at'):
                 c.commit(); return {'duplicate':True,'status':status,'user_id':uid,'changed':False}
-            if ev and (int(ev['user_id'])!=uid or ev['status']!=status or ev['provider_reference']!=provider_ref): raise AdapterEventError(409,'kyc_event_conflict')
             cur.execute('select user_id,kyc_status,kyc_provider_reference from freelancer_profiles where user_id=%s for update',(uid,)); fp=cur.fetchone()
             if not fp: raise AdapterEventError(404,'freelancer_not_found')
             if fp.get('kyc_provider_reference') and fp.get('kyc_provider_reference')!=provider_ref: raise AdapterEventError(409,'kyc_provider_reference_mismatch')
