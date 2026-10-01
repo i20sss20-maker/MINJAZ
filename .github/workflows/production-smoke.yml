@@ -3,7 +3,17 @@ name: Production Smoke
 on:
   push:
     branches: [main]
+    paths:
+      - "server.py"
+      - "migrate.py"
+      - "storage.py"
+      - "database/**"
+      - "public/**"
+      - "Dockerfile"
+      - ".dockerignore"
   workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
 
 jobs:
   smoke:
@@ -15,6 +25,7 @@ jobs:
           BASE: https://minjaz-app-prod-production.up.railway.app
         run: |
           set -euo pipefail
+
           health=""
           for i in $(seq 1 25); do
             if health=$(curl -fsS --max-time 12 "$BASE/health" 2>/dev/null); then
@@ -25,10 +36,15 @@ jobs:
             sleep 3
           done
           echo "$health" | jq -e '.ok==true and .database==true and .version=="0.5.5-rc5"' >/dev/null
+          echo "$health" | jq -r '"HEALTH_OK version="+.version+" db_latency_ms="+(.database_latency_ms|tostring)'
 
           readiness=$(curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/readiness")
           echo "$readiness" | jq -e '.ready_for_beta==true' >/dev/null
+          echo "$readiness" | jq -r '"COMMERCIAL_READY="+(.ready_for_commercial_launch|tostring)'
+          echo "$readiness" | jq -r '[.checks[]|select(.required==true and .ok==false)|.key]|"COMMERCIAL_BLOCKERS="+(join(",") // "none")'
 
+          categories=$(curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/api/v1/categories")
+          echo "$categories" | jq -e '(.items|length)>0' >/dev/null
           services=$(curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/api/v1/services")
           echo "$services" | jq -e '(.items|length)>=50' >/dev/null
 
@@ -36,11 +52,20 @@ jobs:
           test "$(wc -c < index.html)" -gt 290000
           grep -q 'applyServiceTemplate' index.html
           grep -q 'switchMinjazRole' index.html
+          grep -q 'مِنجاز' index.html
+
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/manifest.webmanifest" -o manifest.webmanifest
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/sw.js" -o sw.js
+          test -s manifest.webmanifest
+          test -s sw.js
 
           curl -fsS -D headers.txt -o /dev/null -H "Origin: $BASE" "$BASE/health"
           grep -qi "access-control-allow-origin: $BASE" headers.txt
           grep -qi "x-frame-options: DENY" headers.txt
           grep -qi "content-security-policy:" headers.txt
+
+          curl -fsS -D evil.txt -o /dev/null -H "Origin: https://evil.example" "$BASE/health"
+          ! grep -qi "access-control-allow-origin:" evil.txt
 
           code=$(curl -sS -o unauth.json -w "%{http_code}" "$BASE/api/v1/me")
           test "$code" = "401"
