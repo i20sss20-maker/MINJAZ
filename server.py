@@ -298,25 +298,33 @@ def clean_attachments(items,limit=5,uploaded_by=None):
     return out
 
 
-def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
-    for a in clean_attachments(attachments,uploaded_by=uploaded_by):
+def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
+    inserted=0
+    for a in cleaned_attachments or []:
         if a.get('storage_mode')=='railway_bucket':
-            c=db_connect()
-            try:
-                c.autocommit=False
-                with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
-                    if not cur.fetchone():
-                        c.rollback(); continue
-                    cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
-                    cur.execute("update upload_intents set consumed_at=now() where user_id=%s and object_key=%s",(uploaded_by,a['storage_key']))
-                c.commit()
-            except Exception:
-                c.rollback(); raise
-            finally:
-                c.close()
+            cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
+            if not cur.fetchone():
+                continue
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
+            cur.execute("update upload_intents set consumed_at=now() where user_id=%s and object_key=%s",(uploaded_by,a['storage_key']))
         else:
-            q("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,null,%s,%s,'external_link')",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['mime_type'],a['size_bytes']),None)
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,null,%s,%s,'external_link')",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['mime_type'],a['size_bytes']))
+        inserted+=1
+    return inserted
+
+def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
+    cleaned=clean_attachments(attachments,uploaded_by=uploaded_by)
+    if not cleaned:return 0
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            inserted=insert_attachments_tx(cur,uploaded_by,cleaned,task_id=task_id,order_id=order_id,message_id=message_id,delivery_id=delivery_id)
+        c.commit();return inserted
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
 
 def public_attachment(item):
@@ -344,6 +352,156 @@ def q(sql,params=(),fetch='all'):
             if fetch=='all': return rows(cur)
             if fetch=='one': return one(cur)
             return None
+
+def deliver_order_atomic(oid,user_id,note,attachments=None):
+    cleaned=clean_attachments(attachments,uploaded_by=user_id)
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if int(o['freelancer_id'])!=int(user_id):
+                c.rollback();return None,dict(o),'freelancer_only'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *",(int(oid),int(user_id),str(note or '')[:5000]))
+            d=dict(cur.fetchone())
+            insert_attachments_tx(cur,user_id,cleaned,order_id=oid,delivery_id=d['id'])
+            cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
+            cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in d.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def request_revision_atomic(oid,user_id,note):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
+                           from orders o join tasks t on t.id=o.task_id
+                           left join proposals p on p.id=o.proposal_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),None,'client_only'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            allowed=int(o.get('revisions_allowed') or 0)
+            cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
+            used=int(cur.fetchone()['used'] or 0)
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def complete_order_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),'client_only'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
+            cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
+            cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_dispute_atomic(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
+                c.rollback();return None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_dispute_exists'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,'active_cancellation_exists'
+            cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
+            d=dict(cur.fetchone())
+            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_cancellation_atomic(oid,user_id,reason,details=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
+                c.rollback();return None,None,'order_not_found'
+            if o.get('status') in ('completed','cancelled','disputed'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+            active=cur.fetchone()
+            if active:
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_id']=active_dispute['id'];return None,x,'active_dispute_exists'
+            refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
+            cur.execute("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
+            cr=dict(cur.fetchone())
+        c.commit();return {k:as_json(v) for k,v in cr.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
 def operational_event(level,area,code,message=None,request_id=None,user_id=None,entity_type=None,entity_id=None,meta=None):
     """Best-effort operational telemetry. Never let observability break the product path."""
@@ -1631,26 +1789,36 @@ class H(BaseHTTPRequestHandler):
                         q("update orders set payment_checkout_started_at=null where id=%s and payment_status='unpaid' and provider_payment_id is null",(oid,),None);return self.sendj(502,{'error':'invalid_payment_provider_response'})
                     q("update orders set provider_payment_id=%s,payment_checkout_url=%s,payment_checkout_started_at=null where id=%s and payment_status='unpaid'",(provider_id,checkout,oid),None);log_order_event(oid,'payment_checkout','تم إنشاء رابط الدفع',u['id'],meta={'mode':'adapter'});return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':checkout,'provider_payment_id':provider_id})
                 if action=='deliver':
-                    if u['role']!='freelancer' or int(o['freelancer_id'])!=int(u['id']):return self.sendj(403,{'error':'freelancer_only'})
-                    if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    b=self.body(); note=str(b.get('note') or '').strip()
+                    if u['role']!='freelancer':return self.sendj(403,{'error':'freelancer_only'})
+                    b=self.body();note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    d=q('insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *',(oid,u['id'],note[:5000]),'one'); insert_attachments(u['id'],b.get('attachments'),order_id=oid,delivery_id=d['id']); q("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(oid,),None); q("update orders set status='delivered' where id=%s",(oid,),None);q("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid);return self.sendj(201,{'ok':True,'delivery':d})
+                    d,locked,err=deliver_order_atomic(oid,u['id'],note,b.get('attachments'))
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='freelancer_only':return self.sendj(403,{'error':err})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    notify(locked['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid)
+                    return self.sendj(201,{'ok':True,'delivery':d})
                 if action=='revision':
-                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    b=self.body(); note=str(b.get('note') or '').strip()
+                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
+                    b=self.body();note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    lim=q('select coalesce(p.revisions,0)::int allowed,(select count(*)::int from order_revision_requests rr where rr.order_id=o.id) used from orders o left join proposals p on p.id=o.proposal_id where o.id=%s',(oid,),'one')
-                    allowed=int(lim.get('allowed') or 0); used=int(lim.get('used') or 0)
-                    if used>=allowed:return self.sendj(409,{'error':'revision_limit_reached','allowed':allowed,'used':used})
-                    rr=q("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(oid,u['id'],used+1,note[:3000]),'one')
-                    q("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(oid,u['id'],('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+note)[:4000]),None)
-                    q("update orders set status='revision_requested' where id=%s",(oid,),None);q("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],),None);notify(o['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid);return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(allowed-(used+1),0)})
+                    rr,locked,meta,err=request_revision_atomic(oid,u['id'],note)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='client_only':return self.sendj(403,{'error':err})
+                    if err=='revision_limit_reached':return self.sendj(409,{'error':err,'allowed':meta['allowed'],'used':meta['used']})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
+                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0)})
                 if action=='complete':
-                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('payment_status')!='paid' or o.get('status')!='delivered':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    q("update orders set status='completed',completed_at=now() where id=%s",(oid,),None);q("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],),None);refresh_freelancer(o['freelancer_id']);notify(o['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid);return self.sendj(200,{'ok':True})
+                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
+                    locked,err=complete_order_atomic(oid,u['id'])
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='client_only':return self.sendj(403,{'error':err})
+                    if err in ('active_cancellation_exists','active_dispute_exists'):
+                        return self.sendj(409,{'error':err,'id':locked.get('active_cancellation_id') or locked.get('active_dispute_id')})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    refresh_freelancer(locked['freelancer_id']);notify(locked['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid)
+                    return self.sendj(200,{'ok':True})
                 if action=='review':
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
                     if o.get('status')!='completed':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
@@ -1667,14 +1835,13 @@ class H(BaseHTTPRequestHandler):
                 if method=='GET':
                     return self.sendj(200,{'item':q('select d.*,us.name opened_by_name from order_disputes d join users us on us.id=d.opened_by where d.order_id=%s order by d.created_at desc limit 1',(oid,),'one')})
                 if method=='POST':
-                    if o.get('status') in ('completed','cancelled'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    active=q("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(oid,),'one')
-                    if active:return self.sendj(409,{'error':'active_dispute_exists','id':active['id']})
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    d=q("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status')),'one')
-                    q("update orders set status='disputed' where id=%s",(oid,),None);q("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],),None)
-                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
+                    d,locked,err=open_dispute_atomic(oid,u['id'],reason,details)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err in ('active_dispute_exists','active_cancellation_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
                     return self.sendj(201,d)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
             if m:
@@ -1686,14 +1853,13 @@ class H(BaseHTTPRequestHandler):
                 if method=='GET':
                     return self.sendj(200,{'item':q('select cr.*,us.name requested_by_name from order_cancellation_requests cr join users us on us.id=cr.requested_by where cr.order_id=%s order by cr.created_at desc limit 1',(oid,),'one')})
                 if method=='POST':
-                    if o.get('status') in ('completed','cancelled','disputed'):return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    active=q("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(oid,),'one')
-                    if active:return self.sendj(409,{'error':'active_cancellation_exists','id':active['id']})
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
-                    cr=q("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(oid,u['id'],reason[:180],details[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund),'one')
-                    other=o['freelancer_id'] if int(u['id'])==int(o['client_id']) else o['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{o.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
+                    cr,locked,err=open_cancellation_atomic(oid,u['id'],reason,details)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err in ('active_cancellation_exists','active_dispute_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
                     return self.sendj(201,cr)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
             if m and method=='GET':
