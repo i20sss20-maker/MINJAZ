@@ -46,9 +46,9 @@
                 b=self.body(); phone=normalize_phone(b.get('phone',''))
                 if not phone:return self.sendj(400,{'error':'invalid_phone'})
                 if not rate_limit_event('otp_ip',self.client_key(),20,600):return self.sendj(429,{'error':'otp_source_rate_limited','retry_after_seconds':600})
-                r=q("select count(*)::int n,max(created_at) last from otp_challenges where phone=%s and created_at>now()-interval '10 minutes'",(phone,), 'one')
+                r=q("select count(*)::int n,max(created_at) last,extract(epoch from (now()-max(created_at)))::float8 age_seconds from otp_challenges where phone=%s and created_at>now()-interval '10 minutes'",(phone,), 'one')
                 if r['n']>=5:return self.sendj(429,{'error':'otp_rate_limited','retry_after_seconds':600})
-                if r['last'] and (datetime.now(r['last'].tzinfo)-r['last']).total_seconds()<60:return self.sendj(429,{'error':'otp_wait','retry_after_seconds':60})
+                if r['last'] and float(r.get('age_seconds') or 999999)<60:return self.sendj(429,{'error':'otp_wait','retry_after_seconds':60})
                 cid=str(uuid.uuid4())
                 if SMS_MODE=='dev':
                     if IS_PROD:return self.sendj(503,{'error':'sms_not_configured'})
@@ -64,10 +64,10 @@
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
                 b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
-                ch=q("select * from otp_challenges where challenge_id=%s",(cid,), 'one')
+                ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
                 if not ch:return self.sendj(404,{'error':'challenge_not_found'})
                 if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
-                if ch['expires_at']<datetime.now(ch['expires_at'].tzinfo):return self.sendj(410,{'error':'otp_expired'})
+                if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
                 if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
                 if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
                     q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
