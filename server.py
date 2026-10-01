@@ -353,6 +353,46 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def create_order_from_proposal_atomic(proposal_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select p.*,t.client_id,t.id task_id,t.status task_status
+                           from proposals p join tasks t on t.id=p.task_id
+                           where p.id=%s for update of p,t""",(proposal_id,))
+            x=cur.fetchone()
+            if not x or int(x['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            existing=cur.fetchone()
+            if existing:
+                c.rollback();y=dict(x);y['existing_order_id']=existing['id'];return None,y,'order_exists'
+            if x.get('status')!='sent' or x.get('task_status')!='open':
+                c.rollback();return None,dict(x),'proposal_not_found'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'interaction_restricted'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
+                           values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
+                        (x['task_id'],x['id'],client_id,x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
@@ -1736,12 +1776,13 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
                 if not u:return
-                b=self.body(); x=q("select p.*,t.client_id,t.id task_id from proposals p join tasks t on t.id=p.task_id where p.id=%s and p.status='sent' and t.status='open'",(b.get('proposal_id'),),'one')
-                if not x or int(x['client_id'])!=int(u['id']):return self.sendj(404,{'error':'proposal_not_found'})
-                if task_hidden(x['task_id']) or interaction_restricted(u['id'],x['freelancer_id']):return self.sendj(403,{'error':'interaction_restricted'})
-                ex=q('select id from orders where task_id=%s',(x['task_id'],),'one')
-                if ex:return self.sendj(409,{'error':'order_exists'})
-                fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100')); r=q("insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status) values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *",(x['task_id'],x['id'],u['id'],x['freelancer_id'],x['price'],fee),'one');q("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']),None);q("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],),None);notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id']);return self.sendj(201,r)
+                b=self.body();r,x,err=create_order_from_proposal_atomic(b.get('proposal_id'),u['id'])
+                if err=='proposal_not_found':return self.sendj(404,{'error':err})
+                if err=='interaction_restricted':return self.sendj(403,{'error':err})
+                if err=='order_exists':return self.sendj(409,{'error':err,'order_id':x.get('existing_order_id') if x else None})
+                if err:return self.sendj(409,{'error':err})
+                notify(x['freelancer_id'],'تم اختيار عرضك','بانتظار دفع العميل لبدء التنفيذ','order',r['id'])
+                return self.sendj(201,r)
             if p=='/api/v1/orders' and method=='GET':
                 u=self.require();
                 if not u:return
