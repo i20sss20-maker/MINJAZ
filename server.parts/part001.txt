@@ -1,12 +1,3 @@
-dapter_events set processed_at=now() where provider_event_id=%s',(event_id,))
-        c.commit(); return {'duplicate':False,'event_type':event_type,'order':dict(o),'changed':changed,'workflow_started':workflow_started,'late_cancelled_payment':late_cancelled_payment,'failed_effective':failed_effective,'event_id':event_id}
-    except Exception:
-        c.rollback(); raise
-    finally:
-        c.close()
-
-def apply_kyc_adapter_event(b):
-    event_id=str(b.get('event_id') or '').strip()[:180]; provider_ref=str(b.get('provider_reference') or '').strip()[:180]; status=str(b.get('status') or '').strip()
     try: uid=int(b.get('user_id') or 0)
     except Exception: uid=0
     if not event_id or not uid or not provider_ref or status not in ('pending','approved','rejected'): raise AdapterEventError(400,'invalid_kyc_event')
@@ -100,25 +91,33 @@ def clean_attachments(items,limit=5,uploaded_by=None):
     return out
 
 
-def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
-    for a in clean_attachments(attachments,uploaded_by=uploaded_by):
+def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
+    inserted=0
+    for a in cleaned_attachments or []:
         if a.get('storage_mode')=='railway_bucket':
-            c=db_connect()
-            try:
-                c.autocommit=False
-                with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
-                    if not cur.fetchone():
-                        c.rollback(); continue
-                    cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
-                    cur.execute("update upload_intents set consumed_at=now() where user_id=%s and object_key=%s",(uploaded_by,a['storage_key']))
-                c.commit()
-            except Exception:
-                c.rollback(); raise
-            finally:
-                c.close()
+            cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
+            if not cur.fetchone():
+                continue
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
+            cur.execute("update upload_intents set consumed_at=now() where user_id=%s and object_key=%s",(uploaded_by,a['storage_key']))
         else:
-            q("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,null,%s,%s,'external_link')",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['mime_type'],a['size_bytes']),None)
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,null,%s,%s,'external_link')",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['mime_type'],a['size_bytes']))
+        inserted+=1
+    return inserted
+
+def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
+    cleaned=clean_attachments(attachments,uploaded_by=uploaded_by)
+    if not cleaned:return 0
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            inserted=insert_attachments_tx(cur,uploaded_by,cleaned,task_id=task_id,order_id=order_id,message_id=message_id,delivery_id=delivery_id)
+        c.commit();return inserted
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
 
 def public_attachment(item):
@@ -147,62 +146,86 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
-def operational_event(level,area,code,message=None,request_id=None,user_id=None,entity_type=None,entity_id=None,meta=None):
-    """Best-effort operational telemetry. Never let observability break the product path."""
+def deliver_order_atomic(oid,user_id,note,attachments=None):
+    cleaned=clean_attachments(attachments,uploaded_by=user_id)
+    c=db_connect()
     try:
-        q("insert into operational_events(request_id,level,area,code,message,user_id,entity_type,entity_id,meta) values(%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
-          (str(request_id or '')[:80] or None,str(level or 'error')[:16],str(area or 'app')[:80],str(code or 'unknown')[:120],str(message or '')[:500] or None,user_id,str(entity_type or '')[:80] or None,str(entity_id or '')[:120] or None,json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as exc:
-        print('OP_EVENT_ERR',repr(exc),flush=True)
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if int(o['freelancer_id'])!=int(user_id):
+                c.rollback();return None,dict(o),'freelancer_only'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
+                c.rollback();return None,dict(o),'invalid_order_state'
+            cur.execute("insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *",(int(oid),int(user_id),str(note or '')[:5000]))
+            d=dict(cur.fetchone())
+            insert_attachments_tx(cur,user_id,cleaned,order_id=oid,delivery_id=d['id'])
+            cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
+            cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in d.items()},dict(o),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
-def operational_snapshot():
+def request_revision_atomic(oid,user_id,note):
+    c=db_connect()
     try:
-        counts=q("""select
-          count(*) filter(where created_at>now()-interval '15 minutes')::int events_15m,
-          count(*) filter(where level in ('error','critical') and created_at>now()-interval '15 minutes')::int errors_15m,
-          count(*) filter(where level in ('error','critical') and created_at>now()-interval '24 hours')::int errors_24h,
-          max(created_at) last_event_at
-          from operational_events""",(), 'one') or {}
-        recent=q("select id,request_id,level,area,code,message,entity_type,entity_id,meta,created_at from operational_events order by created_at desc limit 80")
-        return {'counts':counts,'recent':recent}
-    except Exception as exc:
-        return {'counts':{'events_15m':0,'errors_15m':0,'errors_24h':0,'last_event_at':None},'recent':[],'telemetry_error':str(exc)[:120]}
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
+                           from orders o join tasks t on t.id=o.task_id
+                           left join proposals p on p.id=o.proposal_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),None,'client_only'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,'invalid_order_state'
+            allowed=int(o.get('revisions_allowed') or 0)
+            cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
+            used=int(cur.fetchone()['used'] or 0)
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
-def ensure_schema():
-    q("""create table if not exists order_disputes(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        opened_by bigint not null references users(id),
-        reason text not null,
-        details text,
-        status text not null default 'open',
-        previous_order_status text,
-        previous_task_status text,
-        resolution_action text,
-        resolution_note text,
-        resolved_by bigint references users(id),
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now(),
-        resolved_at timestamptz
-    );
-    create index if not exists idx_order_disputes_order on order_disputes(order_id,created_at desc);
-    create index if not exists idx_order_disputes_status on order_disputes(status,created_at desc);
-    create table if not exists attachments(
-        id bigserial primary key,
-        uploaded_by bigint not null references users(id),
-        task_id bigint references tasks(id) on delete cascade,
-        order_id bigint references orders(id) on delete cascade,
-        message_id bigint references messages(id) on delete cascade,
-        delivery_id bigint references deliveries(id) on delete cascade,
-        file_name text not null,
-        file_url text not null,
-        mime_type text not null default 'application/octet-stream',
-        size_bytes bigint not null default 0,
-        storage_mode text not null default 'external_link',
-        created_at timestamptz not null default now(),
-        check(task_id is not null or order_id is not null or message_id is not null or delivery_id is not null)
-    );
-    create index if not exists idx_attachments_task on attachments(task_id,created_at);
-    create index if not exists idx_attachments_order on attachments(order_id,created_at);
-    create index if not exists idx_attachments_message on attachments(message_id,created_at);
-    cre
+def complete_order_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),'client_only'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
