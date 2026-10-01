@@ -24,13 +24,13 @@ def call(method,path,body=None,token=None,expected=(200,201)):
 
 def login(phone,role,name):
     if not phone: raise AssertionError("missing_phone")
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
             break
         except AssertionError as exc:
             info=exc.args[0] if exc.args else ()
-            if attempt==0 and isinstance(info,tuple) and len(info)>=3 and info[1]==429:
+            if attempt<2 and isinstance(info,tuple) and len(info)>=3 and info[1]==429:
                 delay=min(65,int((info[2] or {}).get("retry_after_seconds") or 60)+1)
                 time.sleep(delay)
                 continue

@@ -103,6 +103,133 @@ def update_payout_status(pid,status,admin_note=None):
     finally:
         c.close()
 
+def admin_transition_dispute(did,admin_id,status,action='',resolution_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select d.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
+                           from order_disputes d join orders o on o.id=d.order_id
+                           where d.id=%s for update of d,o""",(int(did),))
+            d=cur.fetchone()
+            if not d:
+                c.rollback();return None,None,None,'dispute_not_found'
+            current=str(d.get('status') or '')
+            if current=='resolved':
+                c.rollback();return None,dict(d),None,'dispute_finalized'
+            if current not in ('open','in_review'):
+                c.rollback();return None,dict(d),None,'invalid_dispute_state'
+            note=str(resolution_note or '')[:3000] or None
+            if status=='in_review':
+                cur.execute("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(note,int(did)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(d),'not_needed',None
+            if status!='resolved':
+                c.rollback();return None,dict(d),None,'invalid_status'
+            action=str(action or '')
+            if action not in ('resume','cancel'):
+                c.rollback();return None,dict(d),None,'invalid_resolution_action'
+            cur.execute('select id,status from tasks where id=%s for update',(d['task_id'],))
+            task=cur.fetchone()
+            if not task:
+                c.rollback();return None,dict(d),None,'task_not_found'
+            refund='not_needed'
+            if action=='resume':
+                prev_order_status=d.get('previous_order_status') or 'in_progress'
+                prev_task_status=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
+                if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
+                if prev_task_status in ('disputed','completed','cancelled'):prev_task_status='in_progress'
+                cur.execute('update orders set status=%s where id=%s',(prev_order_status,d['order_id']))
+                cur.execute('update tasks set status=%s,updated_at=now() where id=%s',(prev_task_status,d['task_id']))
+            else:
+                if d.get('payment_status')=='paid':
+                    if PAYMENT_MODE=='mock':
+                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(d['order_id'],))
+                        refund='refunded'
+                    else:
+                        cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
+                        refund='manual_required'
+                else:
+                    cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],))
+            cur.execute("""update order_disputes
+                           set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,
+                               resolved_at=now(),updated_at=now()
+                           where id=%s returning *""",
+                        (action,note,int(admin_id),int(did)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(d),refund,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_refunded=False):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select cr.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
+                           from order_cancellation_requests cr join orders o on o.id=cr.order_id
+                           where cr.id=%s for update of cr,o""",(int(cid),))
+            cr=cur.fetchone()
+            if not cr:
+                c.rollback();return None,None,None,'cancellation_not_found'
+            note=str(admin_note or '')[:3000] or None
+            if mark_refunded:
+                if cr.get('status')!='approved' or cr.get('refund_status') not in ('manual_required','pending'):
+                    c.rollback();return None,dict(cr),None,'refund_not_markable'
+                cur.execute("update orders set payment_status='refunded' where id=%s",(cr['order_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set refund_status='refunded',admin_note=coalesce(%s,admin_note),updated_at=now()
+                               where id=%s returning *""",(note,int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),'refunded',None
+            current=str(cr.get('status') or '')
+            if status=='in_review':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute("update order_cancellation_requests set status='in_review',admin_note=%s,updated_at=now() where id=%s returning *",(note,int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+            if status=='rejected':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute("""update order_cancellation_requests
+                               set status='rejected',admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now()
+                               where id=%s returning *""",(note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+            if status=='approved':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute('select id,status from tasks where id=%s for update',(cr['task_id'],))
+                if not cur.fetchone():
+                    c.rollback();return None,dict(cr),None,'task_not_found'
+                refund='not_needed'
+                if cr.get('payment_status')=='paid':
+                    if PAYMENT_MODE=='mock':
+                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(cr['order_id'],))
+                        refund='refunded'
+                    else:
+                        cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
+                        refund='manual_required'
+                else:
+                    cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
+                                   resolved_at=now(),updated_at=now()
+                               where id=%s returning *""",
+                            (refund,note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),refund,None
+            c.rollback();return None,dict(cr),None,'invalid_status'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'

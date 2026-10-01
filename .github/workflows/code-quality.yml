@@ -64,10 +64,17 @@ jobs:
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
           assert "def update_payout_status(pid,status,admin_note=None):" in server
           payout_start=server.index("def update_payout_status")
-          payout_end=server.index("def friendly_device")
-          payout_block=server[payout_start:payout_end]
+          dispute_helper_start=server.index("def admin_transition_dispute")
+          cancellation_helper_start=server.index("def admin_transition_cancellation")
+          payout_block=server[payout_start:dispute_helper_start]
+          dispute_helper=server[dispute_helper_start:cancellation_helper_start]
+          cancellation_helper=server[cancellation_helper_start:server.index("def friendly_device")]
           assert "select * from payout_requests where id=%s for update" in payout_block
           assert "payout_finalized" in payout_block
+          assert "for update of d,o" in dispute_helper
+          assert "dispute_finalized" in dispute_helper
+          assert "for update of cr,o" in cancellation_helper
+          assert "cancellation_finalized" in cancellation_helper
           pay_start=server.index("def apply_payment_adapter_event")
           kyc_start=server.index("def apply_kyc_adapter_event")
           pay_block=server[pay_start:kyc_start]

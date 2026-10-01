@@ -508,6 +508,133 @@ def update_payout_status(pid,status,admin_note=None):
     finally:
         c.close()
 
+def admin_transition_dispute(did,admin_id,status,action='',resolution_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select d.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
+                           from order_disputes d join orders o on o.id=d.order_id
+                           where d.id=%s for update of d,o""",(int(did),))
+            d=cur.fetchone()
+            if not d:
+                c.rollback();return None,None,None,'dispute_not_found'
+            current=str(d.get('status') or '')
+            if current=='resolved':
+                c.rollback();return None,dict(d),None,'dispute_finalized'
+            if current not in ('open','in_review'):
+                c.rollback();return None,dict(d),None,'invalid_dispute_state'
+            note=str(resolution_note or '')[:3000] or None
+            if status=='in_review':
+                cur.execute("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(note,int(did)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(d),'not_needed',None
+            if status!='resolved':
+                c.rollback();return None,dict(d),None,'invalid_status'
+            action=str(action or '')
+            if action not in ('resume','cancel'):
+                c.rollback();return None,dict(d),None,'invalid_resolution_action'
+            cur.execute('select id,status from tasks where id=%s for update',(d['task_id'],))
+            task=cur.fetchone()
+            if not task:
+                c.rollback();return None,dict(d),None,'task_not_found'
+            refund='not_needed'
+            if action=='resume':
+                prev_order_status=d.get('previous_order_status') or 'in_progress'
+                prev_task_status=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
+                if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
+                if prev_task_status in ('disputed','completed','cancelled'):prev_task_status='in_progress'
+                cur.execute('update orders set status=%s where id=%s',(prev_order_status,d['order_id']))
+                cur.execute('update tasks set status=%s,updated_at=now() where id=%s',(prev_task_status,d['task_id']))
+            else:
+                if d.get('payment_status')=='paid':
+                    if PAYMENT_MODE=='mock':
+                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(d['order_id'],))
+                        refund='refunded'
+                    else:
+                        cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
+                        refund='manual_required'
+                else:
+                    cur.execute("update orders set status='cancelled' where id=%s",(d['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],))
+            cur.execute("""update order_disputes
+                           set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,
+                               resolved_at=now(),updated_at=now()
+                           where id=%s returning *""",
+                        (action,note,int(admin_id),int(did)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(d),refund,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_refunded=False):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select cr.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status
+                           from order_cancellation_requests cr join orders o on o.id=cr.order_id
+                           where cr.id=%s for update of cr,o""",(int(cid),))
+            cr=cur.fetchone()
+            if not cr:
+                c.rollback();return None,None,None,'cancellation_not_found'
+            note=str(admin_note or '')[:3000] or None
+            if mark_refunded:
+                if cr.get('status')!='approved' or cr.get('refund_status') not in ('manual_required','pending'):
+                    c.rollback();return None,dict(cr),None,'refund_not_markable'
+                cur.execute("update orders set payment_status='refunded' where id=%s",(cr['order_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set refund_status='refunded',admin_note=coalesce(%s,admin_note),updated_at=now()
+                               where id=%s returning *""",(note,int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),'refunded',None
+            current=str(cr.get('status') or '')
+            if status=='in_review':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute("update order_cancellation_requests set status='in_review',admin_note=%s,updated_at=now() where id=%s returning *",(note,int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+            if status=='rejected':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute("""update order_cancellation_requests
+                               set status='rejected',admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now()
+                               where id=%s returning *""",(note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+            if status=='approved':
+                if current not in ('pending','in_review'):
+                    c.rollback();return None,dict(cr),None,'cancellation_finalized'
+                cur.execute('select id,status from tasks where id=%s for update',(cr['task_id'],))
+                if not cur.fetchone():
+                    c.rollback();return None,dict(cr),None,'task_not_found'
+                refund='not_needed'
+                if cr.get('payment_status')=='paid':
+                    if PAYMENT_MODE=='mock':
+                        cur.execute("update orders set status='cancelled',payment_status='refunded' where id=%s",(cr['order_id'],))
+                        refund='refunded'
+                    else:
+                        cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
+                        refund='manual_required'
+                else:
+                    cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
+                                   resolved_at=now(),updated_at=now()
+                               where id=%s returning *""",
+                            (refund,note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                return {k:as_json(v) for k,v in row.items()},dict(cr),refund,None
+            c.rollback();return None,dict(cr),None,'invalid_status'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
@@ -1700,72 +1827,52 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(200,{'items':q("select d.*,t.title,cu.name client_name,fu.name freelancer_name,ou.name opened_by_name from order_disputes d join orders o on o.id=d.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ou on ou.id=d.opened_by order by case when d.status in ('open','in_review') then 0 else 1 end,d.created_at desc limit 300")})
                 m=re.fullmatch(r'/api/admin/disputes/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();did=int(m.group(1));d=q('select d.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status from order_disputes d join orders o on o.id=d.order_id where d.id=%s',(did,),'one')
-                    if not d:return self.sendj(404,{'error':'dispute_not_found'})
-                    if d.get('status')=='resolved':return self.sendj(409,{'error':'dispute_finalized'})
-                    if d.get('status') not in ('open','in_review'):return self.sendj(409,{'error':'invalid_dispute_state','state':d.get('status')})
-                    st=str(b.get('status') or '')
+                    b=self.body();did=int(m.group(1));st=str(b.get('status') or '')
+                    res,d,refund,err=admin_transition_dispute(did,u['id'],st,b.get('action'),b.get('resolution_note'))
+                    if err=='dispute_not_found':return self.sendj(404,{'error':err})
+                    if err in ('dispute_finalized','invalid_dispute_state','task_not_found'):
+                        return self.sendj(409,{'error':err,**({'state':d.get('status')} if err=='invalid_dispute_state' and d else {})})
+                    if err:return self.sendj(400,{'error':err})
                     if st=='in_review':
-                        return self.sendj(200,q("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(str(b.get('resolution_note') or '')[:3000] or None,did),'one'))
-                    if st=='resolved':
-                        action=str(b.get('action') or '')
-                        if action not in ('resume','cancel'):return self.sendj(400,{'error':'invalid_resolution_action'})
-                        refund='not_needed'
-                        if action=='resume':
-                            prev_order_status=d.get('previous_order_status') or 'in_progress';ts=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
-                            if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
-                            if ts in ('disputed','completed','cancelled'):ts='in_progress'
-                            q('update orders set status=%s where id=%s',(prev_order_status,d['order_id']),None);q('update tasks set status=%s,updated_at=now() where id=%s',(ts,d['task_id']),None)
-                        else:
-                            if d.get('payment_status')=='paid':
-                                if PAYMENT_MODE=='mock':
-                                    q("update orders set status='cancelled',payment_status='refunded' where id=%s",(d['order_id'],),None);refund='refunded'
-                                else:
-                                    q("update orders set status='cancelled' where id=%s",(d['order_id'],),None);refund='manual_required'
-                            else:
-                                q("update orders set status='cancelled' where id=%s",(d['order_id'],),None)
-                            q("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],),None)
-                            if refund=='manual_required':
-                                operational_event('warning','payment','dispute_cancel_refund_required','Cancelled dispute has a paid order that requires provider refund',self.request_id(),u['id'],'order',d['order_id'],{'dispute_id':did})
-                                notify_admins('استرداد مطلوب بعد إلغاء نزاع',f"الطلب #{d['order_id']} مدفوع وتم إلغاؤه بقرار نزاع؛ يلزم تنفيذ الاسترداد لدى مزود الدفع",'payment',d['order_id'])
-                        res=q("update order_disputes set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(action,str(b.get('resolution_note') or '')[:3000] or None,u['id'],did),'one')
-                        ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
-                        msg=str(b.get('resolution_note') or '')[:180]
-                        if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
-                        notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
-                        return self.sendj(200,{**res,'refund_status':refund,'refund_action_required':refund=='manual_required'})
-                    return self.sendj(400,{'error':'invalid_status'})
+                        admin_audit(u['id'],'dispute_in_review','dispute',did)
+                        return self.sendj(200,res)
+                    action=str(b.get('action') or '')
+                    if refund=='manual_required':
+                        operational_event('warning','payment','dispute_cancel_refund_required','Cancelled dispute has a paid order that requires provider refund',self.request_id(),u['id'],'order',d['order_id'],{'dispute_id':did})
+                        notify_admins('استرداد مطلوب بعد إلغاء نزاع',f"الطلب #{d['order_id']} مدفوع وتم إلغاؤه بقرار نزاع؛ يلزم تنفيذ الاسترداد لدى مزود الدفع",'payment',d['order_id'])
+                    ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
+                    msg=str(b.get('resolution_note') or '')[:180]
+                    if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
+                    notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
+                    admin_audit(u['id'],'dispute_resolved','dispute',did,{'action':action,'refund_status':refund})
+                    return self.sendj(200,{**res,'refund_status':refund,'refund_action_required':refund=='manual_required'})
                 if p=='/api/admin/cancellations' and method=='GET':
                     return self.sendj(200,{'items':q("select cr.*,t.title,o.payment_status,o.amount,cu.name client_name,fu.name freelancer_name,ru.name requested_by_name from order_cancellation_requests cr join orders o on o.id=cr.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ru on ru.id=cr.requested_by order by case when cr.status in ('pending','in_review') then 0 else 1 end,cr.created_at desc limit 300")})
                 m=re.fullmatch(r'/api/admin/cancellations/(\d+)',p)
                 if m and method=='PATCH':
-                    cid=int(m.group(1));b=self.body();cr=q('select cr.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status from order_cancellation_requests cr join orders o on o.id=cr.order_id where cr.id=%s',(cid,),'one')
-                    if not cr:return self.sendj(404,{'error':'cancellation_not_found'})
-                    if b.get('refund_status')=='refunded':
-                        if cr.get('status')!='approved' or cr.get('refund_status') not in ('manual_required','pending'):return self.sendj(409,{'error':'refund_not_markable'})
-                        q("update orders set payment_status='refunded' where id=%s",(cr['order_id'],),None)
-                        r=q("update order_cancellation_requests set refund_status='refunded',admin_note=coalesce(%s,admin_note),updated_at=now() where id=%s returning *",(str(b.get('admin_note') or '')[:3000] or None,cid),'one')
-                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id']);return self.sendj(200,r)
+                    cid=int(m.group(1));b=self.body()
+                    mark_refunded=b.get('refund_status')=='refunded'
                     st=str(b.get('status') or '')
+                    r,cr,refund,err=admin_transition_cancellation(cid,u['id'],st,b.get('admin_note'),mark_refunded)
+                    if err=='cancellation_not_found':return self.sendj(404,{'error':err})
+                    if err in ('cancellation_finalized','refund_not_markable','task_not_found'):return self.sendj(409,{'error':err})
+                    if err:return self.sendj(400,{'error':err})
+                    if mark_refunded:
+                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
+                        admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
+                        return self.sendj(200,r)
                     note=str(b.get('admin_note') or '')[:3000] or None
                     if st=='in_review':
-                        if cr.get('status') not in ('pending','in_review'):return self.sendj(409,{'error':'cancellation_finalized'})
-                        return self.sendj(200,q("update order_cancellation_requests set status='in_review',admin_note=%s,updated_at=now() where id=%s returning *",(note,cid),'one'))
+                        admin_audit(u['id'],'cancellation_in_review','cancellation',cid)
+                        return self.sendj(200,r)
                     if st=='rejected':
-                        if cr.get('status') not in ('pending','in_review'):return self.sendj(409,{'error':'cancellation_finalized'})
-                        r=q("update order_cancellation_requests set status='rejected',admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(note,u['id'],cid),'one');notify(cr['client_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);return self.sendj(200,r)
-                    if st=='approved':
-                        if cr.get('status') not in ('pending','in_review'):return self.sendj(409,{'error':'cancellation_finalized'})
-                        refund='not_needed'
-                        if cr.get('payment_status')=='paid':
-                            if PAYMENT_MODE=='mock':q("update orders set status='cancelled',payment_status='refunded' where id=%s",(cr['order_id'],),None);refund='refunded'
-                            else:q("update orders set status='cancelled' where id=%s",(cr['order_id'],),None);refund='manual_required'
-                        else:q("update orders set status='cancelled' where id=%s",(cr['order_id'],),None)
-                        q("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],),None)
-                        r=q("update order_cancellation_requests set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(refund,note,u['id'],cid),'one')
-                        msg=(note or 'تم اعتماد الإلغاء')+(' · يلزم معالجة الاسترداد لدى مزود الدفع' if refund=='manual_required' else '')
-                        notify(cr['client_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);return self.sendj(200,{**r,'refund_action_required':refund=='manual_required'})
-                    return self.sendj(400,{'error':'invalid_status'})
+                        notify(cr['client_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id'])
+                        admin_audit(u['id'],'cancellation_rejected','cancellation',cid)
+                        return self.sendj(200,r)
+                    msg=(note or 'تم اعتماد الإلغاء')+(' · يلزم معالجة الاسترداد لدى مزود الدفع' if refund=='manual_required' else '')
+                    notify(cr['client_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id'])
+                    admin_audit(u['id'],'cancellation_approved','cancellation',cid,{'refund_status':refund})
+                    return self.sendj(200,{**r,'refund_action_required':refund=='manual_required'})
                 if p=='/api/admin/safety/reports' and method=='GET':
                     st=(query.get('status') or [''])[0]
                     params=[];where=''
