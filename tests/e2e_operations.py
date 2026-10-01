@@ -177,3 +177,5 @@ class H(BaseHTTPRequestHandler):
     def log_message(self,*_): pass
 
 ThreadingHTTPServer(("0.0.0.0",PORT),H).serve_forever()
+
+# trigger configured operations E2E service
