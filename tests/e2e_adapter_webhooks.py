@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 BASE=os.getenv("E2E_BASE_URL","https://minjaz-stage-fixed-production.up.railway.app").rstrip("/")
 PAY_SECRET=os.getenv("E2E_PAYMENT_WEBHOOK_SECRET","").encode()
 KYC_SECRET=os.getenv("E2E_KYC_WEBHOOK_SECRET","").encode()
+ADMIN_PHONE=os.getenv("E2E_ADMIN_PHONE","").strip()
 PORT=int(os.getenv("PORT","3000"))
 
 def call(method,path,body=None,token=None,expected=(200,201),extra_headers=None):
@@ -43,13 +44,14 @@ def login(phone,role,name):
     return out
 
 def run():
-    assert len(PAY_SECRET)>=32 and len(KYC_SECRET)>=32,"webhook secrets required"
+    assert len(PAY_SECRET)>=32 and len(KYC_SECRET)>=32 and ADMIN_PHONE,"webhook secrets/admin phone required"
     h=call("GET","/health",expected=(200,))
     cats=call("GET","/api/v1/categories",expected=(200,)).get("items") or []
     seed=f"{int(time.time())%1000000:06d}{random.randint(10,99)}"
     client=login("+9665"+seed,"client","Webhook Client")
     freelancer=login("+9667"+seed,"freelancer","Webhook Freelancer")
-    ct,ft=client["token"],freelancer["token"]
+    admin=login(ADMIN_PHONE,"admin","MINJAZ Admin")
+    ct,ft,at=client["token"],freelancer["token"],admin["token"]
 
     task=call("POST","/api/v1/tasks",{
       "category_id":cats[0]["id"],"title":"اختبار webhook للدفع",
@@ -112,7 +114,42 @@ def run():
     me=call("GET","/api/v1/me",token=ft,expected=(200,))
     assert me.get("freelancer_profile",{}).get("kyc_status")=="approved",me
 
-    return {"ok":True,"version":h.get("version"),"payment_signature":True,"amount_mismatch":True,"payment_idempotency":True,"payment_conflict":True,"late_failure_safe":True,"kyc_idempotency":True,"kyc_conflict":True,"order_id":oid}
+    # Payment confirmation after an already-approved cancellation must never reopen work.
+    task2=call("POST","/api/v1/tasks",{
+      "category_id":cats[0]["id"],"title":"اختبار دفع متأخر بعد الإلغاء",
+      "description":"اختبار آلي للتأكد من بقاء الطلب ملغى عند وصول تأكيد دفع متأخر وتحويله للاسترداد اليدوي.",
+      "budget_min":"100","budget_max":"180","urgency":"normal"
+    },ct)
+    prop2=call("POST",f"/api/v1/tasks/{task2['id']}/proposals",{
+      "price":"130.00","delivery_hours":24,"revisions":1,"message":"اختبار دفع متأخر."
+    },ft)
+    order2=call("POST","/api/v1/orders",{"proposal_id":prop2["id"]},ct)
+    cancel=call("POST",f"/api/v1/orders/{order2['id']}/cancellation",{
+      "reason":"إلغاء اختبار","details":"إلغاء قبل وصول تأكيد الدفع لاختبار المطابقة المالية."
+    },ct)
+    approved=call("PATCH",f"/api/admin/cancellations/{cancel['id']}",{
+      "status":"approved","admin_note":"اعتماد إلغاء قبل وصول الدفع."
+    },at)
+    assert approved["status"]=="approved" and approved["refund_status"]=="not_needed",approved
+
+    late={
+      "event_id":f"pay-late-{seed}","type":"payment.succeeded",
+      "provider_payment_id":f"provider-late-{seed}","order_id":order2["id"],"amount":"130.00"
+    }
+    signed("/api/v1/integrations/payments/webhook",late,PAY_SECRET)
+    late_order=call("GET",f"/api/v1/orders/{order2['id']}",token=ct,expected=(200,))
+    assert late_order["status"]=="cancelled" and late_order["payment_status"]=="paid",late_order
+    late_cancel=call("GET",f"/api/v1/orders/{order2['id']}/cancellation",token=ct,expected=(200,))["item"]
+    assert late_cancel["refund_status"]=="manual_required",late_cancel
+
+    reconciled=call("PATCH",f"/api/admin/cancellations/{cancel['id']}",{
+      "refund_status":"refunded","admin_note":"تمت مطابقة الاسترداد بعد الدفع المتأخر."
+    },at)
+    assert reconciled["refund_status"]=="refunded",reconciled
+    refunded_order=call("GET",f"/api/v1/orders/{order2['id']}",token=ct,expected=(200,))
+    assert refunded_order["status"]=="cancelled" and refunded_order["payment_status"]=="refunded",refunded_order
+
+    return {"ok":True,"version":h.get("version"),"payment_signature":True,"amount_mismatch":True,"payment_idempotency":True,"payment_conflict":True,"late_failure_safe":True,"kyc_idempotency":True,"kyc_conflict":True,"late_cancelled_payment_safe":True,"manual_refund_reconciliation":True,"order_id":oid,"late_order_id":order2["id"]}
 
 RESULT=run()
 print("MINJAZ_ADAPTER_WEBHOOK_E2E_OK",json.dumps(RESULT,ensure_ascii=False),flush=True)
