@@ -1625,22 +1625,40 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(200,{'items':q("select d.*,t.title,cu.name client_name,fu.name freelancer_name,ou.name opened_by_name from order_disputes d join orders o on o.id=d.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ou on ou.id=d.opened_by order by case when d.status in ('open','in_review') then 0 else 1 end,d.created_at desc limit 300")})
                 m=re.fullmatch(r'/api/admin/disputes/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();did=int(m.group(1));d=q('select d.*,o.task_id from order_disputes d join orders o on o.id=d.order_id where d.id=%s',(did,),'one')
+                    b=self.body();did=int(m.group(1));d=q('select d.*,o.task_id,o.client_id,o.freelancer_id,o.payment_status from order_disputes d join orders o on o.id=d.order_id where d.id=%s',(did,),'one')
                     if not d:return self.sendj(404,{'error':'dispute_not_found'})
+                    if d.get('status')=='resolved':return self.sendj(409,{'error':'dispute_finalized'})
+                    if d.get('status') not in ('open','in_review'):return self.sendj(409,{'error':'invalid_dispute_state','state':d.get('status')})
                     st=str(b.get('status') or '')
                     if st=='in_review':
                         return self.sendj(200,q("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(str(b.get('resolution_note') or '')[:3000] or None,did),'one'))
                     if st=='resolved':
                         action=str(b.get('action') or '')
                         if action not in ('resume','cancel'):return self.sendj(400,{'error':'invalid_resolution_action'})
+                        refund='not_needed'
                         if action=='resume':
                             prev_order_status=d.get('previous_order_status') or 'in_progress';ts=d.get('previous_task_status') or ('delivered' if prev_order_status=='delivered' else 'in_progress')
                             if prev_order_status in ('disputed','completed','cancelled'):prev_order_status='in_progress'
                             if ts in ('disputed','completed','cancelled'):ts='in_progress'
                             q('update orders set status=%s where id=%s',(prev_order_status,d['order_id']),None);q('update tasks set status=%s,updated_at=now() where id=%s',(ts,d['task_id']),None)
                         else:
-                            q("update orders set status='cancelled' where id=%s",(d['order_id'],),None);q("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],),None)
-                        res=q("update order_disputes set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(action,str(b.get('resolution_note') or '')[:3000] or None,u['id'],did),'one');parts=q('select client_id,freelancer_id from orders where id=%s',(d['order_id'],),'one');ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع';notify(parts['client_id'],ttl,str(b.get('resolution_note') or '')[:220],'dispute',d['order_id']);notify(parts['freelancer_id'],ttl,str(b.get('resolution_note') or '')[:220],'dispute',d['order_id']);return self.sendj(200,res)
+                            if d.get('payment_status')=='paid':
+                                if PAYMENT_MODE=='mock':
+                                    q("update orders set status='cancelled',payment_status='refunded' where id=%s",(d['order_id'],),None);refund='refunded'
+                                else:
+                                    q("update orders set status='cancelled' where id=%s",(d['order_id'],),None);refund='manual_required'
+                            else:
+                                q("update orders set status='cancelled' where id=%s",(d['order_id'],),None)
+                            q("update tasks set status='cancelled',updated_at=now() where id=%s",(d['task_id'],),None)
+                            if refund=='manual_required':
+                                operational_event('warning','payment','dispute_cancel_refund_required','Cancelled dispute has a paid order that requires provider refund',self.request_id(),u['id'],'order',d['order_id'],{'dispute_id':did})
+                                notify_admins('استرداد مطلوب بعد إلغاء نزاع',f"الطلب #{d['order_id']} مدفوع وتم إلغاؤه بقرار نزاع؛ يلزم تنفيذ الاسترداد لدى مزود الدفع",'payment',d['order_id'])
+                        res=q("update order_disputes set status='resolved',resolution_action=%s,resolution_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now() where id=%s returning *",(action,str(b.get('resolution_note') or '')[:3000] or None,u['id'],did),'one')
+                        ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
+                        msg=str(b.get('resolution_note') or '')[:180]
+                        if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
+                        notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
+                        return self.sendj(200,{**res,'refund_status':refund,'refund_action_required':refund=='manual_required'})
                     return self.sendj(400,{'error':'invalid_status'})
                 if p=='/api/admin/cancellations' and method=='GET':
                     return self.sendj(200,{'items':q("select cr.*,t.title,o.payment_status,o.amount,cu.name client_name,fu.name freelancer_name,ru.name requested_by_name from order_cancellation_requests cr join orders o on o.id=cr.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ru on ru.id=cr.requested_by order by case when cr.status in ('pending','in_review') then 0 else 1 end,cr.created_at desc limit 300")})
@@ -1722,9 +1740,12 @@ class H(BaseHTTPRequestHandler):
                 if p=='/api/admin/users' and method=='GET':return self.sendj(200,{'items':q('select us.id,us.phone,us.name,us.role,us.is_verified,us.created_at,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status,(select array_agg(ur.role order by ur.role) from user_roles ur where ur.user_id=us.id and ur.enabled=true) roles from users us left join freelancer_profiles fp on fp.user_id=us.id order by us.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/freelancers/(\d+)/kyc',p)
                 if m and method=='PATCH':
+                    if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
                     b=self.body();st=str(b.get('status') or '')
                     if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one');admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
+                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one')
+                    if not r:return self.sendj(404,{'error':'freelancer_not_found'})
+                    admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
                 if p=='/api/admin/payouts' and method=='GET':
                     items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
                                from payout_requests pr join users us on us.id=pr.freelancer_id
@@ -1748,11 +1769,21 @@ class H(BaseHTTPRequestHandler):
                 if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/support/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(b.get('status') or 'in_progress',str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one');admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':b.get('status') or 'in_progress'});return self.sendj(200,r)
+                    b=self.body();st=str(b.get('status') or 'in_progress')
+                    if st not in ('in_progress','resolved','closed'):return self.sendj(400,{'error':'invalid_status'})
+                    r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(st,str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one')
+                    if not r:return self.sendj(404,{'error':'support_ticket_not_found'})
+                    admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':st});return self.sendj(200,r)
                 if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();st=b.get('status') or 'in_progress';r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then now() else resolved_at end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,int(m.group(1))),'one');admin_audit(u['id'],'privacy_request_updated','privacy_request',m.group(1),{'status':st});return self.sendj(200,r)
+                    b=self.body();st=str(b.get('status') or 'in_progress')
+                    if st not in ('in_progress','completed','rejected'):return self.sendj(400,{'error':'invalid_status'})
+                    pid=int(m.group(1));pr=q('select id,status from privacy_requests where id=%s',(pid,),'one')
+                    if not pr:return self.sendj(404,{'error':'privacy_request_not_found'})
+                    if pr.get('status') in ('completed','rejected') and st!=pr.get('status'):return self.sendj(409,{'error':'privacy_request_finalized'})
+                    r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,pid),'one')
+                    admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st});return self.sendj(200,r)
             return self.sendj(404,{'error':'not_found'})
         except ValueError as e:
             code=str(e)
