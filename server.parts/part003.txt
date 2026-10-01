@@ -1,6 +1,40 @@
+'select * from freelancer_profiles where user_id=%s for update',(int(uid),))
+            fp=cur.fetchone()
+            if not fp:
+                c.rollback();return None,None,'freelancer_not_found'
+            previous=str(fp.get('kyc_status') or '')
+            cur.execute('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(status,int(uid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},previous,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def update_payout_status(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select freelancer_id from payout_requests where id=%s',(int(pid),))
+            seed=cur.fetchone()
+            if not seed:
+                c.rollback();return None,None,'payout_not_found'
+            fid=int(seed['freelancer_id'])
+            cur.execute('select id from users where id=%s for update',(fid,))
+            if not cur.fetchone():
+                c.rollback();return None,None,'payout_not_found'
+            cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
+            fp=cur.fetchone()
+            cur.execute('select * from payout_requests where id=%s and freelancer_id=%s for update',(int(pid),fid))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'payout_not_found'
             current=str(pr.get('status') or '')
             if current in ('paid','rejected','cancelled'):
                 c.rollback();return None,dict(pr),'payout_finalized'
+            if status in ('processing','paid') and (not fp or fp.get('kyc_status')!='approved'):
+                c.rollback();return None,dict(pr),'kyc_required'
             if status=='paid' and current not in ('pending','processing'):
                 c.rollback();return None,dict(pr),'invalid_payout_state'
             cur.execute("""update payout_requests
