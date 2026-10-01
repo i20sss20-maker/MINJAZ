@@ -1,3 +1,8 @@
+            if p=='/api/v1/safety/reports':
+                u=self.require();
+                if not u:return
+                if method=='GET':
+                    return self.sendj(200,{'items':q("select sr.*,ru.name reported_user_name,t.title task_title from safety_reports sr left join users ru on ru.id=sr.reported_user_id left join tasks t on t.id=sr.task_id where sr.reporter_id=%s order by sr.created_at desc limit 100",(u['id'],))})
                 if method=='POST':
                     b=self.body();cat=str(b.get('category') or 'other')
                     if cat not in ('spam','fraud','harassment','unsafe','prohibited_service','impersonation','other'):return self.sendj(400,{'error':'invalid_category'})
@@ -102,4 +107,3 @@
                     if err in ('cancellation_finalized','refund_not_markable','task_not_found'):return self.sendj(409,{'error':err})
                     if err:return self.sendj(400,{'error':err})
                     if mark_refunded:
-                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
