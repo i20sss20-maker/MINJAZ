@@ -19,9 +19,12 @@ s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.i
                 if p=='/api/admin/users' and method=='GET':return self.sendj(200,{'items':q('select us.id,us.phone,us.name,us.role,us.is_verified,us.created_at,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status,(select array_agg(ur.role order by ur.role) from user_roles ur where ur.user_id=us.id and ur.enabled=true) roles from users us left join freelancer_profiles fp on fp.user_id=us.id order by us.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/freelancers/(\d+)/kyc',p)
                 if m and method=='PATCH':
+                    if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
                     b=self.body();st=str(b.get('status') or '')
                     if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one');admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
+                    r=q('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(st,int(m.group(1))),'one')
+                    if not r:return self.sendj(404,{'error':'freelancer_not_found'})
+                    admin_audit(u['id'],'kyc_status_updated','user',m.group(1),{'status':st});return self.sendj(200,r)
                 if p=='/api/admin/payouts' and method=='GET':
                     items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
                                from payout_requests pr join users us on us.id=pr.freelancer_id
@@ -45,11 +48,21 @@ s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.i
                 if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/support/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(b.get('status') or 'in_progress',str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one');admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':b.get('status') or 'in_progress'});return self.sendj(200,r)
+                    b=self.body();st=str(b.get('status') or 'in_progress')
+                    if st not in ('in_progress','resolved','closed'):return self.sendj(400,{'error':'invalid_status'})
+                    r=q('update support_tickets set status=%s,admin_reply=%s,updated_at=now() where id=%s returning *',(st,str(b.get('admin_reply') or '')[:3000] or None,int(m.group(1))),'one')
+                    if not r:return self.sendj(404,{'error':'support_ticket_not_found'})
+                    admin_audit(u['id'],'support_updated','support_ticket',m.group(1),{'status':st});return self.sendj(200,r)
                 if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
                 if m and method=='PATCH':
-                    b=self.body();st=b.get('status') or 'in_progress';r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then now() else resolved_at end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,int(m.group(1))),'one');admin_audit(u['id'],'privacy_request_updated','privacy_request',m.group(1),{'status':st});return self.sendj(200,r)
+                    b=self.body();st=str(b.get('status') or 'in_progress')
+                    if st not in ('in_progress','completed','rejected'):return self.sendj(400,{'error':'invalid_status'})
+                    pid=int(m.group(1));pr=q('select id,status from privacy_requests where id=%s',(pid,),'one')
+                    if not pr:return self.sendj(404,{'error':'privacy_request_not_found'})
+                    if pr.get('status') in ('completed','rejected') and st!=pr.get('status'):return self.sendj(409,{'error':'privacy_request_finalized'})
+                    r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,pid),'one')
+                    admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st});return self.sendj(200,r)
             return self.sendj(404,{'error':'not_found'})
         except ValueError as e:
             code=str(e)
