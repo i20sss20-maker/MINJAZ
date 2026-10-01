@@ -1,15 +1,17 @@
-import os, base64, hashlib, io, pathlib, shutil, subprocess, sys, tarfile
+import hashlib, os, pathlib, shutil, subprocess, sys, tarfile
 
-EXPECTED_PARTS = 12
 print("MINJAZ_SOURCE_LOADER_START", flush=True)
+root = pathlib.Path(__file__).resolve().parent
+artifact = root / "minjaz_rc5_runtime.tgz"
+sha_file = root / "minjaz_rc5_runtime.sha256"
 
-parts = [os.environ[f"R55{i:02d}"] for i in range(EXPECTED_PARTS)]
-encoded = "".join(parts)
-encoded += "=" * ((-len(encoded)) % 4)
-blob = base64.b64decode(encoded)
+if not artifact.exists():
+    raise RuntimeError("runtime artifact missing")
+if not sha_file.exists():
+    raise RuntimeError("runtime sha file missing")
 
-actual_sha = hashlib.sha256(blob).hexdigest()
-expected_sha = os.environ["R55_SHA256"].strip()
+expected_sha = sha_file.read_text(encoding="utf-8").strip().split()[0]
+actual_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
 if actual_sha != expected_sha:
     raise RuntimeError(f"runtime sha mismatch: {actual_sha}")
 
@@ -18,7 +20,7 @@ if app.exists():
     shutil.rmtree(app)
 app.mkdir(parents=True, exist_ok=True)
 
-with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+with tarfile.open(artifact, mode="r:gz") as tf:
     tf.extractall(app)
 
 server = app / "server.py"
@@ -26,10 +28,10 @@ index = app / "public" / "index.html"
 migrate = app / "migrate.py"
 storage = app / "storage.py"
 
-assert server.exists()
-assert migrate.exists()
-assert storage.exists()
-assert index.exists() and index.stat().st_size > 200000
+assert server.exists(), "server.py missing"
+assert migrate.exists(), "migrate.py missing"
+assert storage.exists(), "storage.py missing"
+assert index.exists() and index.stat().st_size > 200000, "frontend bundle incomplete"
 
 subprocess.check_call([sys.executable, "-m", "py_compile", str(server), str(migrate), str(storage)])
 os.chdir(app)
