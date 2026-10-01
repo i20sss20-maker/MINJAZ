@@ -66,10 +66,10 @@ client':
                 urgency=str(b.get('urgency') or 'normal').strip().lower()
                 if urgency not in ('normal','urgent'):return self.sendj(400,{'error':'invalid_urgency'})
                 try:
-                    bmin=float(b.get('budget_min')) if b.get('budget_min') not in (None,'') else None; bmax=float(b.get('budget_max')) if b.get('budget_max') not in (None,'') else None
+                    bmin=money_decimal(b.get('budget_min')) if b.get('budget_min') not in (None,'') else None; bmax=money_decimal(b.get('budget_max')) if b.get('budget_max') not in (None,'') else None
                 except Exception:return self.sendj(400,{'error':'invalid_budget'})
-                if (bmin is not None and bmin<49) or (bmax is not None and bmax<49):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
-                if (bmin is not None and bmin>1_000_000) or (bmax is not None and bmax>1_000_000):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
+                if (bmin is not None and bmin<Decimal('49')) or (bmax is not None and bmax<Decimal('49')):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
+                if (bmin is not None and bmin>Decimal('1000000')) or (bmax is not None and bmax>Decimal('1000000')):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
                 if bmin is not None and bmax is not None and bmax<bmin:return self.sendj(400,{'error':'invalid_budget_range'})
                 due_raw=str(b.get('due_at') or '').strip() or None
                 if due_raw:
