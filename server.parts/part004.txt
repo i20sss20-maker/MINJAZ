@@ -20,8 +20,17 @@ class H(BaseHTTPRequestHandler):
             incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
             self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
         return self._request_id
+    def client_ip(self):
+        candidates=[]
+        if ON_RAILWAY:candidates.append(str(self.headers.get('X-Real-IP') or '').strip())
+        candidates.append(str(self.client_address[0] if self.client_address else '').strip())
+        for value in candidates:
+            if not value:continue
+            try:return str(ipaddress.ip_address(value))
+            except ValueError:continue
+        return ''
     def client_key(self):
-        ip=str(self.client_address[0] if self.client_address else '')
+        ip=self.client_ip()
         return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
     def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
     def _queue_cookie(self,value):
