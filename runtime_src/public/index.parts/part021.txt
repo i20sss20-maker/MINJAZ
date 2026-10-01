@@ -1,0 +1,87 @@
+ex-start;flex-direction:column}.draftRestore>div:last-child{width:100%;display:flex;gap:6px}.draftRestore .btn{flex:1}.chatSend{grid-template-columns:1fr}.chatSend .btn{width:100%}}
+</style>
+<script id="rc2ResilienceScript">
+(function(){
+ const RC2_VERSION='0.5.5-rc5';
+ const uid=()=>me?.user?.id||'guest';
+ const safeParse=(v)=>{try{return JSON.parse(v)}catch{return null}};
+ const ageOk=(x)=>x&&Number(x.saved_at||0)>Date.now()-30*86400000;
+ function taskKey(){return 'minjaz_task_draft_v2_'+uid()}
+ function proposalKey(id){return 'minjaz_proposal_draft_v2_'+uid()+'_'+id}
+ function chatKey(id){return 'minjaz_chat_draft_v2_'+uid()+'_'+id}
+ function setDraftState(text,ok=true){const el=document.getElementById('draftSavedState');if(el){el.textContent=text;el.className='draftSaved'+(ok?' ok':'')}}
+ function readTaskDraft(){const x=safeParse(localStorage.getItem(taskKey()));return ageOk(x)?x:null}
+ function saveTaskDraft(){const ids=['ntService','ntCat','ntTitle','ntDesc','ntMin','ntMax','ntUrg','ntDue'];if(!document.getElementById('ntTitle'))return;const data={saved_at:Date.now()};ids.forEach(id=>{const el=document.getElementById(id);if(el)data[id]=el.value});const meaningful=(data.ntTitle||'').trim()||(data.ntDesc||'').trim()||data.ntMin||data.ntMax;if(!meaningful)return;localStorage.setItem(taskKey(),JSON.stringify(data));setDraftState('تم حفظ المسودة تلقائيًا')}
+ function clearTaskDraft(){localStorage.removeItem(taskKey());const n=document.getElementById('taskDraftNotice');if(n)n.remove();setDraftState('تم مسح المسودة',false)}
+ window.clearTaskDraftRC2=clearTaskDraft;
+ function hydrateTaskDraft(d){if(!d)return;['ntService','ntCat','ntTitle','ntDesc','ntMin','ntMax','ntUrg','ntDue'].forEach(id=>{const el=document.getElementById(id);if(el&&d[id]!=null)el.value=d[id]});setDraftState('استعدنا آخر مسودة محفوظة');}
+ const _newTask=window.newTaskModal;
+ window.newTaskModal=async function(){await _newTask();const d=readTaskDraft();const wizard=document.querySelector('.taskWizard');if(!wizard)return;if(d){const notice=document.createElement('div');notice.id='taskDraftNotice';notice.className='draftRestore';notice.innerHTML=`<div><b>استعدنا مسودة مهمة</b><small>آخر حفظ ${new Date(d.saved_at).toLocaleString('ar-SA')} · المرفقات لا تُحفظ ضمن المسودة لأسباب أمنية.</small></div><div><button class="btn ghost" onclick="clearTaskDraftRC2()">ابدأ من جديد</button></div>`;const steps=wizard.querySelector('.wizardSteps');steps?.insertAdjacentElement('afterend',notice);hydrateTaskDraft(d)}const state=document.createElement('div');state.id='draftSavedState';state.className='draftSaved';state.textContent='أي تعديل في النص أو الميزانية يُحفظ تلقائيًا على هذا الجهاز.';wizard.querySelector('.actions')?.insertAdjacentElement('beforebegin',state);['ntService','ntCat','ntTitle','ntDesc','ntMin','ntMax','ntUrg','ntDue'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('input',saveTaskDraft);el.addEventListener('change',saveTaskDraft)}})};
+ const _createTask=window.createTask;
+ window.createTask=async function(){await _createTask();if(!document.getElementById('modalOverlay')?.classList.contains('on'))clearTaskDraft()};
+
+ function saveProposalDraft(id){const data={saved_at:Date.now(),pp:document.getElementById('pp')?.value||'',ph:document.getElementById('ph')?.value||'',pr:document.getElementById('pr')?.value||'',pm:document.getElementById('pm')?.value||''};if(!data.pp&&!data.pm)return;localStorage.setItem(proposalKey(id),JSON.stringify(data))}
+ function attachProposalDraft(id,allowRestore){const d=safeParse(localStorage.getItem(proposalKey(id)));const valid=ageOk(d);if(valid&&allowRestore){['pp','ph','pr','pm'].forEach(k=>{const el=document.getElementById(k);if(el&&d[k]!=null)el.value=d[k]});const form=document.getElementById('pp')?.closest('.form2');if(form){const n=document.createElement('div');n.className='draftRestore';n.style.gridColumn='1/-1';n.innerHTML=`<div><b>استعدنا مسودة عرضك</b><small>آخر حفظ ${new Date(d.saved_at).toLocaleString('ar-SA')}</small></div><button class="btn ghost" onclick="localStorage.removeItem('${proposalKey(id)}');proposalModal421()">مسح</button>`;form.insertAdjacentElement('beforebegin',n)}}['pp','ph','pr','pm'].forEach(k=>document.getElementById(k)?.addEventListener('input',()=>saveProposalDraft(id)))}
+ const _proposal421=window.proposalModal421;
+ if(typeof _proposal421==='function')window.proposalModal421=function(raw){_proposal421(raw);const t=raw?(typeof raw==='string'?safeParse(raw):raw):window.__taskDetail421;if(t)attachProposalDraft(t.id,!t.has_proposal)};
+ const _sendProposal421=window.sendProposal421;
+ if(typeof _sendProposal421==='function')window.sendProposal421=async function(id){await _sendProposal421(id);if(window.__taskDetail421?.has_proposal)localStorage.removeItem(proposalKey(id))};
+
+ function wireChatDraft(id){const input=document.getElementById('chatMsg');if(!input)return;const d=safeParse(localStorage.getItem(chatKey(id)));if(ageOk(d)&&d.body&&!input.value){input.value=d.body;const box=input.closest('.chatSend');if(box){const n=document.createElement('div');n.className='draftSaved ok';n.style.gridColumn='1/-1';n.textContent='استعدنا رسالة غير مرسلة من هذا الجهاز.';box.appendChild(n)}}input.addEventListener('input',()=>{const body=input.value;if(body.trim())localStorage.setItem(chatKey(id),JSON.stringify({saved_at:Date.now(),body}));else localStorage.removeItem(chatKey(id))})}
+ const _orderModalRC2=window.orderModal;
+ window.orderModal=async function(id){await _orderModalRC2(id);wireChatDraft(id)};
+ const _sendMessageRC2=window.sendMessage;
+ window.sendMessage=async function(id){await _sendMessageRC2(id);const input=document.getElementById('chatMsg');if(!input||!input.value.trim())localStorage.removeItem(chatKey(id))};
+
+ // Better empty-state actions without changing business logic.
+ const _renderClientHomeRC2=window.renderClientHome;
+ window.renderClientHome=async function(){await _renderClientHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="newTaskModal()">أنشئ أول مهمة</button></div>')})};
+ const _renderFreelancerHomeRC2=window.renderFreelancerHome;
+ window.renderFreelancerHome=async function(){await _renderFreelancerHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn ghost" onclick="go(\'account\')">حدّث مهاراتك</button><button class="btn primary" onclick="go(\'tasks\')">تصفح الفرص</button></div>')})};
+ const _renderTeamRC2=window.renderTeam;
+ if(typeof _renderTeamRC2==='function')window.renderTeam=async function(){await _renderTeamRC2();const host=document.getElementById('team');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="go(\'freelancers\')">استكشف المستقلين</button></div>')})};
+
+ // Keep demo behavior aligned with production input boundaries.
+ if(typeof demoApi==='function'){
+   const _demoApiRC2=demoApi;
+   demoApi=async function(path,opt={}){
+     const method=(opt.method||'GET').toUpperCase();let body={};
+     try{body=typeof opt.body==='string'?JSON.parse(opt.body||'{}'):(opt.body||{})}catch{return demoResp(400,{error:'invalid_json'})}
+     const clean=path.split('?')[0];
+     if(clean==='/api/v1/tasks'&&method==='POST'){
+       const title=String(body.title||'').trim(),desc=String(body.description||'').trim(),urg=String(body.urgency||'normal');
+       if(title.length<5)return demoResp(400,{error:'title_too_short',minimum:5});if(title.length>180)return demoResp(400,{error:'title_too_long',maximum:180});
+       if(desc.length<20)return demoResp(400,{error:'description_too_short',minimum:20});if(desc.length>6000)return demoResp(400,{error:'description_too_long',maximum:6000});
+       if(!categories.some(c=>Number(c.id)===Number(body.category_id)))return demoResp(400,{error:'invalid_category'});if(!['normal','urgent'].includes(urg))return demoResp(400,{error:'invalid_urgency'});
+       const a=Number(body.budget_min||0),b=Number(body.budget_max||0);if((a&&a<49)||(b&&b<49))return demoResp(400,{error:'budget_below_minimum',minimum:49});if(a>1000000||b>1000000)return demoResp(400,{error:'budget_above_maximum',maximum:1000000});if(a&&b&&b<a)return demoResp(400,{error:'invalid_budget_range'});
+       if(body.due_at){const ts=Date.parse(body.due_at);if(!Number.isFinite(ts))return demoResp(400,{error:'invalid_due_at'});if(ts<=Date.now())return demoResp(400,{error:'due_at_must_be_future'})}
+     }
+     if(method==='POST'&&/^\/api\/v1\/tasks\/\d+\/proposals$/.test(clean)){
+       const price=Number(body.price||0),hours=Number(body.delivery_hours||24),revs=body.revisions==null||body.revisions===''?1:Number(body.revisions),msg=String(body.message||'');
+       if(!Number.isFinite(price)||price<=0)return demoResp(400,{error:'invalid_price'});if(price>1000000)return demoResp(400,{error:'price_above_maximum',maximum:1000000});
+       if(!Number.isInteger(hours)||hours<1||hours>8760)return demoResp(400,{error:'invalid_delivery_hours',minimum:1,maximum:8760});if(!Number.isInteger(revs)||revs<0||revs>50)return demoResp(400,{error:'invalid_revisions',minimum:0,maximum:50});if(msg.length>1200)return demoResp(400,{error:'proposal_message_too_long',maximum:1200});
+     }
+     if(method==='POST'&&/^\/api\/v1\/orders\/\d+\/messages$/.test(clean)&&String(body.body||'').trim().length>4000)return demoResp(400,{error:'message_too_long',maximum:4000});
+     return _demoApiRC2(path,opt);
+   };
+ }
+ function applyModalLimitsRC2(){const pp=document.getElementById('pp'),ph=document.getElementById('ph'),pr=document.getElementById('pr'),pm=document.getElementById('pm'),chat=document.getElementById('chatMsg');if(pp){pp.min='1';pp.max='1000000'}if(ph){ph.min='1';ph.max='8760'}if(pr){pr.min='0';pr.max='50'}if(pm)pm.maxLength=1200;if(chat)chat.maxLength=4000}
+ const _openModalLimitsRC2=window.openModal;window.openModal=function(markup){_openModalLimitsRC2(markup);applyModalLimitsRC2()};
+ document.documentElement.dataset.minjazRc=RC2_VERSION;
+})();
+</script>
+
+<script>
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}
+</script>
+
+<style id="opsRc4Styles">.opsIncidentGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.opsIncident{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:#fff}.opsIncident b{font-size:20px}.opsIncident small{display:block;color:#64748b;margin-top:3px}.opsEvent{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7;font-size:8px}.opsEvent code{font-size:7px;color:#475569}@media(max-width:720px){.opsIncidentGrid{grid-template-columns:1fr 1fr}.opsEvent{flex-direction:column}} </style>
+<script id="opsRc4Script">
+(function(){
+ const _r=window.renderAdmin;
+ window.renderAdmin=async function(){
+   await _r();
+   const host=document.getElementById('admin'); if(!host||host.querySelector('[data-ops-rc4]'))return;
+   let j=null; try{const x=await api('/api/admin/operations'); if(x.r.ok)j=x.j}catch(e){} if(!j)return;
+   const o=j.operational||{},c=o.counts||{},recent=o.recent||[]; const sec=document.createElement('div'); sec.dataset.opsRc4='1'; sec.className='safetyPanel';
+   sec.innerHTML=`<div class="sectionHead"><div><h2>صحة التشغيل</h2><p>أخطاء تقنية فقط مع Request ID للتتبع — بدون محتوى الرسائل أو الأسرار.</p></div><span class="pill ${(c.errors_15m||0)?'red':'green'}">${c.errors_15m||0} خطأ / 15د</span></div><div class="opsIncidentGrid"><div class="opsIncident"><b>${c.events_15m||0}</b><small>أحداث 15 دقيقة</small></div><div class="opsIncident"><b>${c.errors_15m||0}</b><small>أخطاء 15 دقيقة</small></div><div class="opsIncident"><b>${
