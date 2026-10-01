@@ -793,6 +793,30 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def update_privacy_request(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,'privacy_request_not_found'
+            current=str(pr.get('status') or '')
+            if current in ('completed','rejected') and status!=current:
+                c.rollback();return None,dict(pr),'privacy_request_finalized'
+            cur.execute("""update privacy_requests
+                           set status=%s,admin_note=%s,
+                               resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
+                           where id=%s returning *""",
+                        (status,str(admin_note or '')[:3000] or None,status,int(pid)))
+            row=dict(cur.fetchone());c.commit()
+            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def friendly_device(user_agent):
     ua=str(user_agent or '')[:500]; low=ua.lower()
     if 'ipad' in low:return 'iPad'
@@ -2125,11 +2149,11 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();st=str(b.get('status') or 'in_progress')
                     if st not in ('in_progress','completed','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    pid=int(m.group(1));pr=q('select id,status from privacy_requests where id=%s',(pid,),'one')
-                    if not pr:return self.sendj(404,{'error':'privacy_request_not_found'})
-                    if pr.get('status') in ('completed','rejected') and st!=pr.get('status'):return self.sendj(409,{'error':'privacy_request_finalized'})
-                    r=q("update privacy_requests set status=%s,admin_note=%s,resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end where id=%s returning *",(st,str(b.get('admin_note') or '')[:3000] or None,st,pid),'one')
-                    admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st});return self.sendj(200,r)
+                    pid=int(m.group(1));r,pr,err=update_privacy_request(pid,st,b.get('admin_note'))
+                    if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})
+                    return self.sendj(200,r)
             return self.sendj(404,{'error':'not_found'})
         except ValueError as e:
             code=str(e)
