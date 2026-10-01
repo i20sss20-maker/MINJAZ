@@ -76,7 +76,7 @@ jobs:
           assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
           review_start=server.index("def upsert_review_atomic")
           create_start=server.index("def create_order_atomic")
-          review_block=server[review_start:create_start]
+          review_block=server[review_start:server.index("def deliver_order_atomic")]
           assert "from orders o where o.id=%s for update" in review_block
           assert "select * from reviews where order_id=%s for update" in review_block
           assert "'state':'unchanged'" in review_block
