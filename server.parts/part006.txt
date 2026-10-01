@@ -1,3 +1,12 @@
+                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
+                expected=hmac.new(PAYMENT_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
+                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
+                try:b=json.loads(raw or b'{}')
+                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
+                try:result=apply_payment_adapter_event(b)
+                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
+                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
+                o=result['order']; event_id=result['event_id']
                 if result['event_type']=='payment.succeeded' and result.get('workflow_started'):
                     log_order_event(o['id'],'payment','تم تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',o['id'])
                 elif result['event_type']=='payment.succeeded' and result.get('late_cancelled_payment'):
@@ -98,14 +107,3 @@
                 roles=enabled_roles(u['id'])
                 raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
                 ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
-                self.set_session_cookie(raw)
-                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
-                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
-            if method=='POST' and p=='/api/v1/auth/session-cookie':
-                u=self.require();
-                if not u:return
-                raw,transport=session_token_from_headers(self.headers)
-                if not raw:return self.sendj(401,{'error':'unauthorized'})
-                self.set_session_cookie(raw)
-                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
