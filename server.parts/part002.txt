@@ -184,7 +184,7 @@ def create_payout_request(fid,raw_amount,note=None):
             cur.execute('select id from users where id=%s for update',(fid,))
             if not cur.fetchone():
                 c.rollback();return None,'user_not_found',None
-            cur.execute('select kyc_status from freelancer_profiles where user_id=%s',(fid,))
+            cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
             fp=cur.fetchone()
             if not fp or fp.get('kyc_status')!='approved':
                 c.rollback();return None,'kyc_required',None
@@ -202,12 +202,12 @@ def create_payout_request(fid,raw_amount,note=None):
     finally:
         c.close()
 
-def update_payout_status(pid,status,admin_note=None):
+def update_manual_kyc_status(uid,status):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from payout_requests where id=%s for update',(int(pid),))
-            pr=cur.fetchone()
-            if not pr:
-                c.rollback();return None,None,'payout_not_found'
+            cur.execute('select id from users where id=%s for update',(int(uid),))
+            if not cur.fetchone():
+                c.rollback();return None,None,'freelancer_not_found'
+            cur.execute(
