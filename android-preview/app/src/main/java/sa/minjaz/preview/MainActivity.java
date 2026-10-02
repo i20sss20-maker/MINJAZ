@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -20,6 +22,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -38,6 +41,8 @@ public class MainActivity extends Activity {
     private WebView webView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +53,7 @@ public class MainActivity extends Activity {
 
         buildUi();
         configureWebView();
+        registerNetworkRecovery();
 
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
@@ -168,41 +174,11 @@ public class MainActivity extends Activity {
 
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (!request.isForMainFrame()) return false;
-                return handleNavigation(request.getUrl());
-            }
-
-            @Override
-            public void onPageCommitVisible(WebView view, String url) {
-                hideError();
-                super.onPageCommitVisible(view, url);
-            }
-
-            @Override
-            public void onReceivedError(
-                WebView view,
-                WebResourceRequest request,
-                WebResourceError error
-            ) {
-                if (request.isForMainFrame()) showError();
-                super.onReceivedError(view, request, error);
-            }
-
-            @Override
-            public void onReceivedHttpError(
-                WebView view,
-                WebResourceRequest request,
-                WebResourceResponse errorResponse
-            ) {
-                if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
-                    showError();
-                }
-                super.onReceivedHttpError(view, request, errorResponse);
-            }
-        });
+        webView.setWebViewClient(
+            Build.VERSION.SDK_INT >= 26
+                ? new Api26MinjazWebViewClient()
+                : new MinjazWebViewClient()
+        );
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -360,6 +336,101 @@ public class MainActivity extends Activity {
         }
     }
 
+    private class MinjazWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (!request.isForMainFrame()) return false;
+            return handleNavigation(request.getUrl());
+        }
+
+        @Override
+        public void onPageCommitVisible(WebView view, String url) {
+            hideError();
+            super.onPageCommitVisible(view, url);
+        }
+
+        @Override
+        public void onReceivedError(
+            WebView view,
+            WebResourceRequest request,
+            WebResourceError error
+        ) {
+            if (request.isForMainFrame()) showError();
+            super.onReceivedError(view, request, error);
+        }
+
+        @Override
+        public void onReceivedHttpError(
+            WebView view,
+            WebResourceRequest request,
+            WebResourceResponse errorResponse
+        ) {
+            if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
+                showError();
+            }
+            super.onReceivedHttpError(view, request, errorResponse);
+        }
+    }
+
+    private class Api26MinjazWebViewClient extends MinjazWebViewClient {
+        @Override
+        public boolean onRenderProcessGone(
+            WebView view,
+            RenderProcessGoneDetail detail
+        ) {
+            recoverWebView();
+            return true;
+        }
+    }
+
+    private void registerNetworkRecovery() {
+        connectivityManager =
+            (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null || Build.VERSION.SDK_INT < 24) return;
+
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                runOnUiThread(() -> {
+                    if (webView != null && errorView != null
+                        && errorView.getVisibility() == View.VISIBLE) {
+                        hideError();
+                        webView.reload();
+                    }
+                });
+            }
+        };
+
+        try {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception ignored) {
+            networkCallback = null;
+        }
+    }
+
+    private void recoverWebView() {
+        final String lastUrl =
+            webView != null && webView.getUrl() != null ? webView.getUrl() : APP_URL;
+
+        if (webView != null) {
+            root.removeView(webView);
+            try {
+                webView.destroy();
+            } catch (Exception ignored) {
+            }
+        }
+
+        webView = new WebView(this);
+        webView.setLayoutParams(new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        root.addView(webView, 0);
+        configureWebView();
+        hideError();
+        webView.loadUrl(lastUrl);
+    }
+
     private void showError() {
         if (errorView != null) errorView.setVisibility(View.VISIBLE);
     }
@@ -437,6 +508,14 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (connectivityManager != null && networkCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {
+            }
+            networkCallback = null;
+        }
+
         if (fileCallback != null) {
             fileCallback.onReceiveValue(null);
             fileCallback = null;

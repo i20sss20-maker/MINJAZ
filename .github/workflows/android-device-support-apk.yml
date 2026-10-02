@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - main
-      - android-device-support-v2
-      - android-compat-only-v3
+      - 'android-*'
       - android-stability-v04
       - android-resilience-v05
     paths:
