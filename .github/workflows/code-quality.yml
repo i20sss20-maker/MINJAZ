@@ -80,6 +80,7 @@ jobs:
           assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
           assert "from freelancer_portfolio_items where freelancer_id=%s" in server
           assert "from freelancer_portfolio where freelancer_id=%s" not in server
+          assert "def accept_legal_versions_atomic(" in server
           assert "def legal_action_precondition(user_id):" in server
           assert server.count("if legal_block:return self.sendj(428,legal_block)") >= 4
           assert "'legal_acceptance_required'" in server
