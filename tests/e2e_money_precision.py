@@ -32,6 +32,9 @@ def run():
     seed=f"{int(time.time())%1000000:06d}{random.randint(10,99)}"
     ct=login("+9665"+seed,"client","Money E2E Client")
     ft=login("+9667"+seed,"freelancer","Money E2E Freelancer")
+    legal={"documents":["terms","privacy","marketplace_rules"]}
+    call("POST","/api/v1/legal/accept",legal,ct,expected=(200,))
+    call("POST","/api/v1/legal/accept",legal,ft,expected=(200,))
 
     task=call("POST","/api/v1/tasks",{
       "category_id":cats[0]["id"],"title":"اختبار دقة المبالغ",
@@ -55,6 +58,9 @@ def run():
 
 RESULT=run()
 print("MINJAZ_MONEY_E2E_OK",json.dumps(RESULT,ensure_ascii=False),flush=True)
+
+if os.getenv("E2E_EXIT_AFTER_RUN","").strip()=="1":
+    raise SystemExit(0)
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
