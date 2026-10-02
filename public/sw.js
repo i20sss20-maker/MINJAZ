@@ -1,4 +1,4 @@
-const VERSION='0.5.5-rc5';
+const VERSION='0.5.5-rc5-device2';
 const CACHE=`minjaz-shell-${VERSION}`;
 const SHELL=['/','/manifest.webmanifest','/icon.svg'];
 

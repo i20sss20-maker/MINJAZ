@@ -32,6 +32,123 @@
 @media(max-width:1100px){.oppToolbar{grid-template-columns:repeat(3,1fr)}.oppToolbar .searchWide{grid-column:span 2}}
 @media(max-width:980px){.shell{grid-template-columns:1fr}.side{display:none}.content{padding:18px 16px 94px}.topbar{height:64px;padding:0 16px}.mobileNav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;background:#fffffff2;backdrop-filter:blur(14px);border-top:1px solid var(--line);z-index:30;padding:7px max(7px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(7px,env(safe-area-inset-left))}.mobileNav button{border:0;background:transparent;color:#64748b;font-size:8px;padding:5px 2px}.mobileNav button span{display:block;font-size:18px;margin-bottom:1px}.mobileNav button.on{color:#3157f6}.hero{grid-template-columns:1fr}.grid,.grid.two{grid-template-columns:1fr 1fr}.categories{grid-template-columns:repeat(2,1fr)}.kpiGrid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.oppToolbar{grid-template-columns:1fr 1fr}.oppToolbar .searchWide{grid-column:1/-1}.profileNudge{align-items:flex-start;flex-direction:column}.auth{grid-template-columns:1fr}.authArt{display:none}.authPanel{padding:25px 18px}.authPanel h1{font-size:24px}.grid,.grid.two{grid-template-columns:1fr}.form2{grid-template-columns:1fr}.full{grid-column:auto}.hero{padding:19px}.hero h2{font-size:20px}.heroStats{grid-template-columns:1fr 1fr}.rowCard{grid-template-columns:1fr}.money{text-align:right}.userChip div:last-child{display:none}.content{padding-top:14px}.modal{padding:16px;border-radius:20px}}
+
+/* MINJAZ adaptive device support v2 */
+html{height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{min-height:100svh;min-height:100dvh;overflow-x:hidden}
+button,.btn,.navBtn,.mobileNav button{touch-action:manipulation}
+button,input,textarea,select{-webkit-tap-highlight-color:transparent}
+img,svg{max-width:100%}
+.card,.rowCard,.offerCard,.modal,.hero,.main,.content{min-width:0}
+.rowCard h3,.rowCard p,.offerBio,.attentionCard p,.hero p{overflow-wrap:anywhere}
+:focus-visible{outline:3px solid #8fa4ff;outline-offset:2px}
+@media(pointer:coarse){
+  .btn,.navBtn{min-height:44px}
+  .field input,.field textarea,.field select{min-height:48px}
+  .x{width:44px;height:44px}
+}
+@media(min-width:768px) and (max-width:1100px){
+  .shell{grid-template-columns:88px minmax(0,1fr)}
+  .side{display:block;padding:18px 10px}
+  .side .brand{justify-content:center;padding:4px 0 18px}
+  .side .brand span:last-child,.navLabel{display:none}
+  .navBtn{justify-content:center;padding:12px 8px;font-size:0;min-height:48px}
+  .navIcon{width:auto;font-size:20px}
+  .mobileNav{display:none}
+  .topbar{height:64px;padding:0 18px}
+  .content{padding:20px 20px 56px}
+  .hero{grid-template-columns:1.1fr .9fr}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .categories{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kpiGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:767px){
+  .shell{min-height:100dvh}
+  .topbar{height:60px;padding:0 12px}
+  .topTitle h1{font-size:15px}
+  .topTitle small{font-size:10px}
+  .userChip{gap:6px}
+  .avatar{width:34px;height:34px;border-radius:11px}
+  .userChip .btn{padding:8px 10px;min-height:40px}
+  .content{padding:12px 12px calc(96px + env(safe-area-inset-bottom))}
+  .hero{padding:18px;border-radius:20px;gap:14px}
+  .hero h2{font-size:22px;line-height:1.45}
+  .hero p{font-size:13px;line-height:1.8}
+  .heroActions .btn{flex:1 1 150px}
+  .heroStat{padding:12px;border-radius:15px}
+  .heroStat b{font-size:20px}
+  .heroStat small{font-size:10px}
+  .sectionHead{margin:18px 0 9px}
+  .sectionHead h2{font-size:15px}
+  .sectionHead p{font-size:10px}
+  .card{padding:14px;border-radius:16px}
+  .rowCard{padding:13px;border-radius:16px;gap:10px}
+  .rowCard h3{font-size:14px;line-height:1.6}
+  .rowCard p{font-size:11px;line-height:1.75}
+  .rowMeta{gap:5px}
+  .money{font-size:16px}
+  .metric b{font-size:21px}
+  .metric small,.metric .label{font-size:10px}
+  .pill{font-size:9px;padding:6px 8px}
+  .cat{padding:13px}
+  .cat b{font-size:11px;line-height:1.6}
+  .btn{min-height:44px;padding:10px 12px;font-size:12px}
+  .field{gap:8px;margin-bottom:14px}
+  .field label{font-size:12px}
+  .field input,.field textarea,.field select{font-size:16px;padding:12px 13px;border-radius:13px}
+  .form2{gap:12px}
+  .overlay{place-items:end center;padding:0;padding-top:max(16px,env(safe-area-inset-top))}
+  .modal{width:100%;max-width:none;max-height:92dvh;border-radius:24px 24px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .modalHead{margin-bottom:14px}
+  .modalHead h2{font-size:16px}
+  .actions{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));z-index:3;background:#fff;padding:10px 0 calc(18px + env(safe-area-inset-bottom));margin-bottom:calc(-18px - env(safe-area-inset-bottom));flex-wrap:wrap}
+  .actions .btn{flex:1 1 120px}
+  .chat{height:min(42dvh,340px)}
+  .bubble{max-width:90%;font-size:12px}
+  .chatSend input{font-size:16px;min-width:0}
+  .mobileNav{grid-auto-flow:column;grid-auto-columns:1fr;overflow-x:auto;overscroll-behavior-x:contain;padding:7px max(8px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+  .mobileNav button{min-width:64px;min-height:52px;font-size:10px}
+  .mobileNav button span{font-size:20px}
+  .offerCard{padding:13px}
+  .offerName h3{font-size:13px}
+  .offerName p,.offerMetric small,.offerFact small{font-size:9px}
+  .offerBio{font-size:11px}
+  .skillChip{font-size:9px}
+  .offerFact b{font-size:11px}
+  .attentionCard b{font-size:12px}
+  .attentionCard p{font-size:10px}
+  .orderStep b{font-size:9px}
+  .orderStep small{font-size:8px}
+  .orderAlert{font-size:10px}
+  .orderFact b{font-size:11px}
+  .orderFact small{font-size:9px}
+  .table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;font-size:11px}
+  .table th,.table td{padding:11px 10px}
+}
+@media(max-width:390px){
+  .content{padding-inline:10px}
+  .hero{padding:16px}
+  .heroStats{gap:8px}
+  .categories{gap:8px}
+  .cat span{font-size:21px}
+  .mobileNav button{min-width:58px;font-size:9px}
+}
+@media(max-height:520px) and (min-width:720px){
+  .topbar{height:54px}
+  .content{padding-top:10px}
+  .hero{padding:16px}
+  .side{padding-top:12px}
+}
+@media(min-width:1440px){
+  .content{max-width:1360px}
+}
+@media(hover:none){
+  .btn:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
+
 </style>
 </head>
 <body>
