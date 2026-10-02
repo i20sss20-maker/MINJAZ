@@ -222,6 +222,50 @@ def pay_mock_atomic(oid,user_id):
     finally:
         c.close()
 
+def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.id,o.client_id,o.freelancer_id,o.status
+                           from orders o where o.id=%s for update""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),'client_only'
+            if o.get('status')!='completed':
+                c.rollback();return None,dict(o),'invalid_order_state'
+            normalized_comment=str(comment or '')[:2000] or None
+            cur.execute('select * from reviews where order_id=%s for update',(int(oid),))
+            existing=cur.fetchone()
+            if existing:
+                same=(int(existing['quality'])==int(quality)
+                      and int(existing['timeliness'])==int(timeliness)
+                      and int(existing['communication'])==int(communication)
+                      and (existing.get('comment') or None)==normalized_comment)
+                if same:
+                    c.rollback()
+                    return {'id':existing['id'],'state':'unchanged','created':False,'updated':False},dict(o),None
+                cur.execute("""update reviews
+                               set quality=%s,timeliness=%s,communication=%s,comment=%s
+                               where order_id=%s returning *""",
+                            (int(quality),int(timeliness),int(communication),normalized_comment,int(oid)))
+                row=dict(cur.fetchone());c.commit()
+                return {'id':row['id'],'state':'updated','created':False,'updated':True},dict(o),None
+            cur.execute("""insert into reviews(order_id,reviewer_id,reviewee_id,quality,timeliness,communication,comment)
+                           values(%s,%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),o['freelancer_id'],int(quality),int(timeliness),int(communication),normalized_comment))
+            row=dict(cur.fetchone());c.commit()
+            return {'id':row['id'],'state':'created','created':True,'updated':False},dict(o),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        return None,None,'review_conflict_retry'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
