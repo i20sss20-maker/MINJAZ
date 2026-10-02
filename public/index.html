@@ -1297,6 +1297,40 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .pageErrorActions .btn{width:100%}
 }
 
+
+/* MINJAZ smart refresh + render efficiency v13 */
+#tasks .rowCard,
+#orders .rowCard,
+.offerCard,
+.freelancerCard,
+.notifPageItem,
+.reviewCard,
+.portfolioCard{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 96px;
+}
+.smartSyncDot{
+  width:7px;
+  height:7px;
+  display:inline-block;
+  border-radius:999px;
+  margin-inline-start:5px;
+  background:#2cc9b7;
+  box-shadow:0 0 0 4px rgba(44,201,183,.10);
+}
+.smartSyncDot.syncing{
+  background:#6558f5;
+  box-shadow:0 0 0 4px rgba(101,88,245,.10);
+  animation:minjazSyncPulse .9s ease-in-out infinite alternate;
+}
+@keyframes minjazSyncPulse{
+  from{opacity:.45;transform:scale(.9)}
+  to{opacity:1;transform:scale(1)}
+}
+@media(prefers-reduced-motion:reduce){
+  .smartSyncDot.syncing{animation:none}
+}
+
 </style>
 </head>
 <body>
@@ -2985,6 +3019,153 @@ body{font-size:14px;line-height:1.65}
   });
 
   upgradeNotifButtonV12();
+})();
+</script>
+
+
+<script id="minjazSmartRefreshV13">
+(function(){
+  const BADGE_TTL_MS=20000;
+  const PERIODIC_BADGE_MS=60000;
+  const RESUME_PAGE_MS=180000;
+  const RESUME_BADGE_MS=20000;
+  const AUTO_REFRESH_ROUTES=new Set(['home','orders','notifications','admin']);
+  let lastBadgeAt=0;
+  let badgeInFlight=null;
+  let hiddenAt=0;
+  let offlineAt=0;
+  let pageRefreshInFlight=false;
+
+  function modalOpen(){
+    const overlay=document.getElementById('modalOverlay');
+    return !!overlay?.classList.contains('on');
+  }
+
+  function userEditing(){
+    const el=document.activeElement;
+    return !!el && ['INPUT','TEXTAREA','SELECT'].includes(el.tagName);
+  }
+
+  function canAutoRefreshPage(){
+    return !!me?.user &&
+      navigator.onLine &&
+      document.visibilityState==='visible' &&
+      !modalOpen() &&
+      !userEditing() &&
+      AUTO_REFRESH_ROUTES.has(currentPage);
+  }
+
+  function syncDot(on){
+    const sub=document.getElementById('pageSub');
+    if(!sub)return;
+    let dot=sub.querySelector('.smartSyncDot');
+    if(!dot){
+      dot=document.createElement('span');
+      dot.className='smartSyncDot';
+      dot.setAttribute('aria-hidden','true');
+      sub.appendChild(dot);
+    }
+    dot.classList.toggle('syncing',!!on);
+  }
+
+  const baseRefreshBadgeV13=window.refreshNotifBadge;
+  if(typeof baseRefreshBadgeV13==='function'){
+    window.refreshNotifBadge=async function(options){
+      const force=options===true || options?.force===true;
+      const now=Date.now();
+      if(!me?.user || !navigator.onLine)return null;
+      if(!force && now-lastBadgeAt<BADGE_TTL_MS)return badgeInFlight;
+      if(badgeInFlight)return badgeInFlight;
+
+      badgeInFlight=(async()=>{
+        syncDot(true);
+        try{
+          const out=await baseRefreshBadgeV13();
+          lastBadgeAt=Date.now();
+          return out;
+        }finally{
+          badgeInFlight=null;
+          syncDot(false);
+        }
+      })();
+      return badgeInFlight;
+    };
+  }
+
+  async function refreshCurrentPageV13(){
+    if(pageRefreshInFlight || !canAutoRefreshPage())return;
+    pageRefreshInFlight=true;
+    syncDot(true);
+    try{
+      await window.go(currentPage);
+    }catch(e){
+      console.warn('MINJAZ background refresh skipped',e);
+    }finally{
+      pageRefreshInFlight=false;
+      syncDot(false);
+    }
+  }
+
+  function refreshBadgeIdleV13(force=false){
+    const run=()=>window.refreshNotifBadge?.({force});
+    if('requestIdleCallback' in window){
+      requestIdleCallback(run,{timeout:1800});
+    }else{
+      setTimeout(run,120);
+    }
+  }
+
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden'){
+      hiddenAt=Date.now();
+      return;
+    }
+    if(!me?.user)return;
+    const away=hiddenAt?Date.now()-hiddenAt:0;
+    hiddenAt=0;
+    if(away>=RESUME_BADGE_MS)refreshBadgeIdleV13(true);
+    if(away>=RESUME_PAGE_MS)setTimeout(refreshCurrentPageV13,220);
+  });
+
+  window.addEventListener('offline',()=>{
+    offlineAt=Date.now();
+  });
+
+  window.addEventListener('online',()=>{
+    if(!me?.user)return;
+    const wasOffline=offlineAt?Date.now()-offlineAt:0;
+    offlineAt=0;
+    refreshBadgeIdleV13(true);
+    if(wasOffline>=15000)setTimeout(refreshCurrentPageV13,500);
+  });
+
+  window.addEventListener('focus',()=>{
+    if(!me?.user || document.visibilityState!=='visible')return;
+    refreshBadgeIdleV13(false);
+  });
+
+  setInterval(()=>{
+    if(!me?.user || !navigator.onLine || document.visibilityState!=='visible')return;
+    refreshBadgeIdleV13(false);
+  },PERIODIC_BADGE_MS);
+
+  const baseGoV13=window.go;
+  if(typeof baseGoV13==='function'){
+    window.go=async function(id){
+      const out=await baseGoV13(id);
+      if(me?.user)refreshBadgeIdleV13(false);
+      return out;
+    };
+  }
+
+  const baseBootV13=window.boot;
+  if(typeof baseBootV13==='function'){
+    window.boot=async function(){
+      const out=await baseBootV13();
+      if(me?.user)refreshBadgeIdleV13(true);
+      return out;
+    };
+  }
 })();
 </script>
 
