@@ -1230,6 +1230,82 @@ def create_portfolio_item_atomic(fid,title,description=None,external_url=None,id
     finally:
         c.close()
 
+def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
+    note=str(admin_note or '')[:3000] or None
+    st=str(status or '')
+    ta=str(task_action or '')
+    ua=str(user_action or '')
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from safety_reports where id=%s for update',(int(rid),))
+            sr=cur.fetchone()
+            if not sr:
+                c.rollback();return None,None,None,'report_not_found'
+            task_changed=False;user_changed=False
+            if ta in ('hide','restore') and sr.get('task_id'):
+                desired=ta=='hide'
+                cur.execute('select * from task_moderation where task_id=%s for update',(sr['task_id'],))
+                tm=cur.fetchone()
+                current=bool(tm.get('hidden')) if tm else False
+                current_reason=(tm.get('reason') or None) if tm else None
+                if current!=desired or current_reason!=note:
+                    cur.execute("""insert into task_moderation(task_id,hidden,reason,updated_by)
+                                   values(%s,%s,%s,%s)
+                                   on conflict(task_id) do update
+                                   set hidden=excluded.hidden,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()""",
+                                (sr['task_id'],desired,note,int(admin_id)))
+                    cur.execute('insert into moderation_actions(report_id,admin_id,task_id,action,note) values(%s,%s,%s,%s,%s)',
+                                (int(rid),int(admin_id),sr['task_id'],'hide_task' if desired else 'restore_task',note))
+                    task_changed=True
+            if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
+                cur.execute('select id,role from users where id=%s for update',(sr['reported_user_id'],))
+                target=cur.fetchone()
+                if target and target.get('role')=='admin':
+                    c.rollback();return None,dict(sr),None,'admin_not_restrictable'
+                desired=ua=='restrict'
+                cur.execute('select * from user_moderation where user_id=%s for update',(sr['reported_user_id'],))
+                um=cur.fetchone()
+                current=bool(um.get('interaction_restricted')) if um else False
+                current_reason=(um.get('reason') or None) if um else None
+                if current!=desired or current_reason!=note:
+                    cur.execute("""insert into user_moderation(user_id,interaction_restricted,reason,updated_by)
+                                   values(%s,%s,%s,%s)
+                                   on conflict(user_id) do update
+                                   set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()""",
+                                (sr['reported_user_id'],desired,note,int(admin_id)))
+                    cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',
+                                (int(rid),int(admin_id),sr['reported_user_id'],'restrict_user' if desired else 'unrestrict_user',note))
+                    user_changed=True
+            report_changed=(str(sr.get('status') or '')!=st or (sr.get('admin_note') or None)!=note)
+            resolved=st in ('resolved','dismissed')
+            if report_changed:
+                cur.execute("""update safety_reports
+                               set status=%s,admin_note=%s,
+                                   resolved_by=case when %s then %s else resolved_by end,
+                                   resolved_at=case when %s then now() else null end,
+                                   updated_at=now()
+                               where id=%s returning *""",
+                            (st,note,resolved,int(admin_id),resolved,int(rid)))
+                row=dict(cur.fetchone())
+                cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,task_id,action,note) values(%s,%s,%s,%s,%s,%s)',
+                            (int(rid),int(admin_id),sr.get('reported_user_id'),sr.get('task_id'),'report_'+st,note))
+            elif task_changed or user_changed:
+                cur.execute('update safety_reports set updated_at=now() where id=%s returning *',(int(rid),))
+                row=dict(cur.fetchone())
+            else:
+                c.rollback()
+                out={k:as_json(v) for k,v in dict(sr).items()}
+                return out,dict(sr),{'changed':False,'task_changed':False,'user_changed':False,'report_changed':False},None
+        c.commit()
+        out={k:as_json(v) for k,v in row.items()}
+        return out,dict(sr),{'changed':True,'task_changed':task_changed,'user_changed':user_changed,'report_changed':report_changed},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_manual_kyc_status(uid,status):
     c=db_connect()
     try:
@@ -3049,28 +3125,25 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(200,{'items':q("select ma.*,au.name admin_name,tu.name target_user_name,t.title task_title from moderation_actions ma join users au on au.id=ma.admin_id left join users tu on tu.id=ma.target_user_id left join tasks t on t.id=ma.task_id order by ma.created_at desc limit 150")})
                 m=re.fullmatch(r'/api/admin/safety/reports/(\d+)',p)
                 if m and method=='PATCH':
-                    rid=int(m.group(1));b=self.body();sr=q('select * from safety_reports where id=%s',(rid,),'one')
-                    if not sr:return self.sendj(404,{'error':'report_not_found'})
+                    rid=int(m.group(1));b=self.body()
                     note=str(b.get('admin_note') or '')[:3000] or None
-                    st=str(b.get('status') or sr.get('status') or 'open')
+                    existing=q('select status from safety_reports where id=%s',(rid,),'one')
+                    if not existing:return self.sendj(404,{'error':'report_not_found'})
+                    st=str(b.get('status') or existing.get('status') or 'open')
                     if st not in ('open','in_review','resolved','dismissed'):return self.sendj(400,{'error':'invalid_status'})
-                    ta=str(b.get('task_action') or '')
-                    if ta in ('hide','restore') and sr.get('task_id'):
-                        hidden=ta=='hide';q("insert into task_moderation(task_id,hidden,reason,updated_by) values(%s,%s,%s,%s) on conflict(task_id) do update set hidden=excluded.hidden,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['task_id'],hidden,note,u['id']),None)
-                        q('insert into moderation_actions(report_id,admin_id,task_id,action,note) values(%s,%s,%s,%s,%s)',(rid,u['id'],sr['task_id'],'hide_task' if hidden else 'restore_task',note),None)
-                    ua=str(b.get('user_action') or '')
-                    if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
-                        target=q('select id,role from users where id=%s',(sr['reported_user_id'],),'one')
-                        if target and target.get('role')=='admin':return self.sendj(403,{'error':'admin_not_restrictable'})
-                        restricted=ua=='restrict';q("insert into user_moderation(user_id,interaction_restricted,reason,updated_by) values(%s,%s,%s,%s) on conflict(user_id) do update set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()",(sr['reported_user_id'],restricted,note,u['id']),None)
-                        q('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',(rid,u['id'],sr['reported_user_id'],'restrict_user' if restricted else 'unrestrict_user',note),None)
-                        notify(sr['reported_user_id'],'تحديث من فريق الأمان','تم تقييد التعاملات الجديدة على الحساب مؤقتًا' if restricted else 'تم رفع تقييد التعاملات الجديدة عن الحساب','safety',None,sr.get('task_id'))
-                    resolved=st in ('resolved','dismissed')
-                    r=q("update safety_reports set status=%s,admin_note=%s,resolved_by=case when %s then %s else resolved_by end,resolved_at=case when %s then now() else null end,updated_at=now() where id=%s returning *",(st,note,resolved,u['id'],resolved,rid),'one')
-                    q('insert into moderation_actions(report_id,admin_id,target_user_id,task_id,action,note) values(%s,%s,%s,%s,%s,%s)',(rid,u['id'],sr.get('reported_user_id'),sr.get('task_id'),'report_'+st,note),None)
-                    if resolved:notify(sr['reporter_id'],'تم تحديث بلاغ الأمان','تمت مراجعة البلاغ وإغلاقه' if st=='resolved' else 'تمت مراجعة البلاغ ولم يتطلب إجراء إضافيًا','safety',sr.get('order_id'),sr.get('task_id'))
-                    admin_audit(u['id'],'safety_report_updated','safety_report',rid,{'status':st,'task_action':ta,'user_action':ua})
-                    return self.sendj(200,r)
+                    ta=str(b.get('task_action') or '');ua=str(b.get('user_action') or '')
+                    r,previous,flags,err=update_safety_report_admin(rid,u['id'],st,note,ta,ua)
+                    if err=='report_not_found':return self.sendj(404,{'error':err})
+                    if err=='admin_not_restrictable':return self.sendj(403,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    if flags.get('user_changed') and previous.get('reported_user_id'):
+                        restricted=ua=='restrict'
+                        notify(previous['reported_user_id'],'تحديث من فريق الأمان','تم تقييد التعاملات الجديدة على الحساب مؤقتًا' if restricted else 'تم رفع تقييد التعاملات الجديدة عن الحساب','safety',None,previous.get('task_id'))
+                    if flags.get('report_changed') and st in ('resolved','dismissed'):
+                        notify(previous['reporter_id'],'تم تحديث بلاغ الأمان','تمت مراجعة البلاغ وإغلاقه' if st=='resolved' else 'تمت مراجعة البلاغ ولم يتطلب إجراء إضافيًا','safety',previous.get('order_id'),previous.get('task_id'))
+                    if flags.get('changed'):
+                        admin_audit(u['id'],'safety_report_updated','safety_report',rid,{'status':st,'task_action':ta,'user_action':ua})
+                    return self.sendj(200,{**r,'idempotent_replay':not flags.get('changed'),'changes':flags})
                 if p=='/api/admin/orders' and method=='GET':
                     return self.sendj(200,{'items':q("""select o.id,o.task_id,o.client_id,o.freelancer_id,o.amount,o.platform_fee,o.status,o.payment_status,o.created_at,
                         t.title,t.due_at,t.urgency,c.name client_name,f.name freelancer_name,
