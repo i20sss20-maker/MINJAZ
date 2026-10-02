@@ -16,7 +16,6 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
