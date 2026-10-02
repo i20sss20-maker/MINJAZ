@@ -2665,18 +2665,20 @@ class H(BaseHTTPRequestHandler):
                     if err in ('dispute_finalized','invalid_dispute_state','task_not_found'):
                         return self.sendj(409,{'error':err,**({'state':d.get('status')} if err=='invalid_dispute_state' and d else {})})
                     if err:return self.sendj(400,{'error':err})
+                    replayed=bool((res or {}).get('idempotent_replay'))
                     if st=='in_review':
-                        admin_audit(u['id'],'dispute_in_review','dispute',did)
+                        if not replayed:admin_audit(u['id'],'dispute_in_review','dispute',did)
                         return self.sendj(200,res)
                     action=str(b.get('action') or '')
-                    if refund=='manual_required':
+                    if not replayed and refund=='manual_required':
                         operational_event('warning','payment','dispute_cancel_refund_required','Cancelled dispute has a paid order that requires provider refund',self.request_id(),u['id'],'order',d['order_id'],{'dispute_id':did})
                         notify_admins('استرداد مطلوب بعد إلغاء نزاع',f"الطلب #{d['order_id']} مدفوع وتم إلغاؤه بقرار نزاع؛ يلزم تنفيذ الاسترداد لدى مزود الدفع",'payment',d['order_id'])
-                    ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
-                    msg=str(b.get('resolution_note') or '')[:180]
-                    if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
-                    notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
-                    admin_audit(u['id'],'dispute_resolved','dispute',did,{'action':action,'refund_status':refund})
+                    if not replayed:
+                        ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
+                        msg=str(b.get('resolution_note') or '')[:180]
+                        if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
+                        notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
+                        admin_audit(u['id'],'dispute_resolved','dispute',did,{'action':action,'refund_status':refund})
                     return self.sendj(200,{**res,'refund_status':refund,'refund_action_required':refund=='manual_required'})
                 if p=='/api/admin/cancellations' and method=='GET':
                     return self.sendj(200,{'items':q("select cr.*,t.title,o.payment_status,o.amount,cu.name client_name,fu.name freelancer_name,ru.name requested_by_name from order_cancellation_requests cr join orders o on o.id=cr.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ru on ru.id=cr.requested_by order by case when cr.status in ('pending','in_review') then 0 else 1 end,cr.created_at desc limit 300")})
@@ -2689,21 +2691,25 @@ class H(BaseHTTPRequestHandler):
                     if err=='cancellation_not_found':return self.sendj(404,{'error':err})
                     if err in ('cancellation_finalized','refund_not_markable','task_not_found'):return self.sendj(409,{'error':err})
                     if err:return self.sendj(400,{'error':err})
+                    replayed=bool((r or {}).get('idempotent_replay'))
                     if mark_refunded:
-                        notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
-                        admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
+                        if not replayed:
+                            notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
+                            admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
                         return self.sendj(200,r)
                     note=str(b.get('admin_note') or '')[:3000] or None
                     if st=='in_review':
-                        admin_audit(u['id'],'cancellation_in_review','cancellation',cid)
+                        if not replayed:admin_audit(u['id'],'cancellation_in_review','cancellation',cid)
                         return self.sendj(200,r)
                     if st=='rejected':
-                        notify(cr['client_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id'])
-                        admin_audit(u['id'],'cancellation_rejected','cancellation',cid)
+                        if not replayed:
+                            notify(cr['client_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم رفض طلب الإلغاء',note or 'يمكن متابعة الطلب','cancellation',cr['order_id'])
+                            admin_audit(u['id'],'cancellation_rejected','cancellation',cid)
                         return self.sendj(200,r)
-                    msg=(note or 'تم اعتماد الإلغاء')+(' · يلزم معالجة الاسترداد لدى مزود الدفع' if refund=='manual_required' else '')
-                    notify(cr['client_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id'])
-                    admin_audit(u['id'],'cancellation_approved','cancellation',cid,{'refund_status':refund})
+                    if not replayed:
+                        msg=(note or 'تم اعتماد الإلغاء')+(' · يلزم معالجة الاسترداد لدى مزود الدفع' if refund=='manual_required' else '')
+                        notify(cr['client_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id']);notify(cr['freelancer_id'],'تم اعتماد إلغاء الطلب',msg[:220],'cancellation',cr['order_id'])
+                        admin_audit(u['id'],'cancellation_approved','cancellation',cid,{'refund_status':refund})
                     return self.sendj(200,{**r,'refund_action_required':refund=='manual_required'})
                 if p=='/api/admin/safety/reports' and method=='GET':
                     st=(query.get('status') or [''])[0]
