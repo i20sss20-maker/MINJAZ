@@ -338,7 +338,21 @@ def run():
 
     # Re-deliver after the revision so completion and review can continue.
     call("POST",f"/api/v1/orders/{order['id']}/deliver",{"note":"تسليم بعد تنفيذ التعديل."},winner_token)
-    call("POST",f"/api/v1/orders/{order['id']}/complete",{},ct)
+    complete_key=f"complete-race-{base}"
+    complete_payload={"idempotency_key":complete_key}
+    complete_barrier=Barrier(2)
+    def complete_same(_):
+        complete_barrier.wait()
+        return raw_call("POST",f"/api/v1/orders/{order['id']}/complete",complete_payload,ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        complete_results=list(ex.map(complete_same,(1,2)))
+    assert [x[0] for x in complete_results]==[200,200],complete_results
+    assert sum(1 for _,x in complete_results if x.get("idempotent_replay"))==1,complete_results
+    completed_order=call("GET",f"/api/v1/orders/{order['id']}",token=ct,expected=(200,))
+    assert completed_order.get("status")=="completed",completed_order
+    completed_notes=call("GET","/api/v1/notifications?kind=completed&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    completed_notes=[x for x in completed_notes if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(completed_notes)==1,completed_notes
 
     # Complete the same order and verify concurrent identical reviews are idempotent.
     review_payload={"quality":5,"timeliness":4,"communication":5,"comment":"تقييم ثابت لاختبار التزامن"}
