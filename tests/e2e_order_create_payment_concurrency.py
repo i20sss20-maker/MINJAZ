@@ -57,6 +57,11 @@ def run():
     f2=login(phones[2],"freelancer","Order Race Freelancer B")
     ct,t1,t2=client["token"],f1["token"],f2["token"]
     accept_legal(ct);accept_legal(t1);accept_legal(t2)
+    legal_retry=call("POST","/api/v1/legal/accept",{"documents":["terms","privacy","marketplace_rules"]},t2,expected=(200,))
+    assert legal_retry.get("complete") is True and legal_retry.get("idempotent_replay") is True,legal_retry
+    activity=call("GET","/api/v1/account/activity",token=t2,expected=(200,)).get("items") or []
+    legal_activity=[x for x in activity if x.get("event_type")=="legal_acceptance"]
+    assert len(legal_activity)==1,legal_activity
 
     search_key=f"saved-search-race-{base}"
     search_payload={"name":"Saved search retry","filters":{"urgency":"urgent","sort":"latest","min_budget":"100"},"idempotency_key":search_key}
@@ -433,6 +438,7 @@ def run():
         "ok":True,"version":health.get("version"),"task_creation_idempotent":True,
         "task_repeat_idempotent":True,
         "saved_search_idempotent":True,
+        "legal_acceptance_retry_safe":True,
         "task_close_supported":True,
         "task_close_proposal_write_race_safe":True,
         "task_close_accept_race_safe":True,

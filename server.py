@@ -1761,6 +1761,33 @@ def legal_status(user_id):
     docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
     return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
 
+def accept_legal_versions_atomic(user_id,documents,session_id=None):
+    valid=legal_versions();seen=set();requested=[]
+    for doc in documents or []:
+        doc=str(doc)
+        if doc in valid and doc not in seen:
+            seen.add(doc);requested.append(doc)
+    c=db_connect();changed=[]
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            for doc in requested:
+                cur.execute("""insert into legal_acceptances(user_id,document,version)
+                               values(%s,%s,%s) on conflict do nothing
+                               returning document""",(int(user_id),doc,valid[doc]))
+                row=cur.fetchone()
+                if row:changed.append(str(row['document']))
+            if changed:
+                cur.execute("""insert into account_activity(user_id,session_id,event_type,label,meta)
+                               values(%s,%s,'legal_acceptance',%s,%s::jsonb)""",
+                            (int(user_id),session_id,'تمت الموافقة على المستندات القانونية الحالية',json.dumps({'documents':changed},ensure_ascii=False)))
+        c.commit()
+        return changed,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def legal_action_precondition(user_id):
     status=legal_status(user_id)
     if status['complete']:return None
@@ -2310,11 +2337,10 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/legal/accept' and method=='POST':
                 u=self.require();
                 if not u:return
-                b=self.body();docs=b.get('documents') if isinstance(b.get('documents'),list) else [];valid=legal_versions();accepted=[]
-                for doc in docs:
-                    if doc in valid:q("insert into legal_acceptances(user_id,document,version) values(%s,%s,%s) on conflict do nothing",(u['id'],doc,valid[doc]),None);accepted.append(doc)
-                if accepted:log_account_activity(u['id'],'legal_acceptance','تمت الموافقة على المستندات القانونية الحالية',u.get('session_id'),{'documents':accepted})
-                return self.sendj(200,legal_status(u['id']))
+                b=self.body();docs=b.get('documents') if isinstance(b.get('documents'),list) else []
+                changed,_=accept_legal_versions_atomic(u['id'],docs,u.get('session_id'))
+                status=legal_status(u['id']);status['accepted_documents']=changed;status['idempotent_replay']=not bool(changed)
+                return self.sendj(200,status)
             if p=='/api/v1/account/sessions' and method=='GET':
                 u=self.require();
                 if not u:return
