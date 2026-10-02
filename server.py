@@ -2337,11 +2337,10 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/legal/accept' and method=='POST':
                 u=self.require();
                 if not u:return
-                b=self.body();docs=b.get('documents') if isinstance(b.get('documents'),list) else [];valid=legal_versions();accepted=[]
-                for doc in docs:
-                    if doc in valid:q("insert into legal_acceptances(user_id,document,version) values(%s,%s,%s) on conflict do nothing",(u['id'],doc,valid[doc]),None);accepted.append(doc)
-                if accepted:log_account_activity(u['id'],'legal_acceptance','تمت الموافقة على المستندات القانونية الحالية',u.get('session_id'),{'documents':accepted})
-                return self.sendj(200,legal_status(u['id']))
+                b=self.body();docs=b.get('documents') if isinstance(b.get('documents'),list) else []
+                changed,_=accept_legal_versions_atomic(u['id'],docs,u.get('session_id'))
+                status=legal_status(u['id']);status['accepted_documents']=changed;status['idempotent_replay']=not bool(changed)
+                return self.sendj(200,status)
             if p=='/api/v1/account/sessions' and method=='GET':
                 u=self.require();
                 if not u:return
