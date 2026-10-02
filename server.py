@@ -1321,6 +1321,30 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def update_support_ticket(tid,status,admin_reply=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from support_tickets where id=%s for update',(int(tid),))
+            ticket=cur.fetchone()
+            if not ticket:
+                c.rollback();return None,None,False,'support_ticket_not_found'
+            reply=str(admin_reply or '')[:3000] or None
+            if str(ticket.get('status') or '')==str(status) and (ticket.get('admin_reply') or None)==reply:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(ticket).items()},dict(ticket),False,None
+            cur.execute("""update support_tickets
+                           set status=%s,admin_reply=%s,updated_at=now()
+                           where id=%s returning *""",(status,reply,int(tid)))
+            row=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in row.items()},dict(ticket),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_privacy_request(pid,status,admin_note=None):
     c=db_connect()
     try:
@@ -1329,17 +1353,22 @@ def update_privacy_request(pid,status,admin_note=None):
             cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
             pr=cur.fetchone()
             if not pr:
-                c.rollback();return None,None,'privacy_request_not_found'
+                c.rollback();return None,None,False,'privacy_request_not_found'
             current=str(pr.get('status') or '')
+            note=str(admin_note or '')[:3000] or None
             if current in ('completed','rejected') and status!=current:
-                c.rollback();return None,dict(pr),'privacy_request_finalized'
+                c.rollback();return None,dict(pr),False,'privacy_request_finalized'
+            if current==str(status) and (pr.get('admin_note') or None)==note:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(pr).items()},dict(pr),False,None
             cur.execute("""update privacy_requests
                            set status=%s,admin_note=%s,
                                resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
                            where id=%s returning *""",
-                        (status,str(admin_note or '')[:3000] or None,status,int(pid)))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+                        (status,note,status,int(pid)))
+            row=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in row.items()},dict(pr),True,None
     except Exception:
         c.rollback();raise
     finally:
