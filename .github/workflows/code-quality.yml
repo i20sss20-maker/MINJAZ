@@ -125,6 +125,10 @@ jobs:
           assert kyc_block.index("kyc_event_conflict") < kyc_block.index("if ev and ev.get('processed_at')")
           assert "price=float(" not in server
           assert "fee=round(float(" not in server
+          assert "RELEASE_COMMIT=os.getenv('RAILWAY_GIT_COMMIT_SHA','').strip()" in server
+          assert "'release_commit':RELEASE_COMMIT_SHORT or None" in server
+          assert "'deployment_service':DEPLOYMENT_SERVICE or None" in server
+          assert "'deployment_environment':DEPLOYMENT_ENVIRONMENT or None" in server
           assert "credentials:'same-origin'" in ui
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
