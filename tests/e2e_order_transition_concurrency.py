@@ -118,6 +118,15 @@ def run():
     final_o2=call("GET",f"/api/v1/orders/{o2['id']}",token=ct,expected=(200,))
     assert final_o2["status"]=="disputed",final_o2
 
+    dispute_item=call("GET",f"/api/v1/orders/{o2['id']}/dispute",token=ct,expected=(200,)).get("item")
+    assert dispute_item and dispute_item.get("id"),dispute_item
+    did=int(dispute_item["id"])
+    review_body={"status":"in_review","resolution_note":"stable dispute review"}
+    review1=call("PATCH",f"/api/admin/disputes/{did}",review_body,at)
+    review2=call("PATCH",f"/api/admin/disputes/{did}",review_body,at)
+    assert review1.get("status")=="in_review" and not review1.get("idempotent_replay"),review1
+    assert review2.get("idempotent_replay") is True,review2
+
     # Retrying the same cancellation request with one key returns the same case and notifies once.
     _,oc=create_paid_order(ct,ft,cat,"اختبار إعادة طلب الإلغاء")
     cancel_key=f"cancel-race-{seed}"
