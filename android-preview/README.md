@@ -5,7 +5,7 @@ This module is the installable Android shell for the MINJAZ beta web application
 - applicationId: `sa.minjaz.preview`
 - minSdk: 24
 - targetSdk / compileSdk: 36
-- version: `0.2-device-support`
+- version: `0.5-resilience` (`versionCode 5`)
 - form factors: phones, tablets, foldables, ChromeOS / resizable windows
 - production URL: `https://minjaz-app-prod-production.up.railway.app`
 
@@ -14,3 +14,5 @@ The shell keeps first-party MINJAZ pages inside the app, opens external links wi
 The APK is a preview build. Production signing should use a stable private signing key before public release.
 
 Compatibility-only v0.3 keeps the previous MINJAZ visual experience while updating Android platform support.
+
+Runtime recovery v0.5 adds WebView crash recovery and automatic retry after connectivity returns, without changing the MINJAZ visual UI.
