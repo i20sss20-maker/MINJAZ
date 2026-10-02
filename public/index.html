@@ -459,6 +459,377 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   stroke-linejoin:round;
 }
 
+
+/* MINJAZ workspace polish v9 */
+.page{
+  animation:minjazPageIn .18s ease-out;
+}
+@keyframes minjazPageIn{
+  from{opacity:.55;transform:translateY(4px)}
+  to{opacity:1;transform:none}
+}
+.page>.sectionHead:first-child{
+  margin-top:0;
+  padding:16px 17px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  background:rgba(255,255,255,.78);
+  backdrop-filter:blur(14px);
+  box-shadow:0 10px 32px rgba(17,21,42,.04);
+}
+.page>.sectionHead:first-child h2{font-size:16px}
+.page>.sectionHead:first-child p{font-size:9px}
+
+/* Tasks / opportunities */
+#tasks>.list,#orders>.list{gap:11px}
+#tasks .rowCard,#orders .rowCard{
+  position:relative;
+  overflow:hidden;
+  min-height:96px;
+  padding:17px 18px;
+  border-radius:20px;
+}
+#tasks .rowCard:before,#orders .rowCard:before{
+  content:"";
+  position:absolute;
+  inset-inline-start:0;
+  top:18px;
+  bottom:18px;
+  width:3px;
+  border-radius:999px;
+  background:linear-gradient(180deg,#6558f5,#2cc9b7);
+  opacity:.68;
+}
+#tasks .rowCard h3,#orders .rowCard h3{
+  font-size:12px;
+  line-height:1.7;
+}
+#tasks .rowCard p,#orders .rowCard p{font-size:9px;max-width:760px}
+#tasks .rowMeta,#orders .rowMeta{margin-top:9px}
+#tasks .money,#orders .money{
+  min-width:105px;
+  text-align:left;
+  color:#282b3f;
+}
+#tasks .rowCard .btn,#orders .rowCard .btn{min-width:96px}
+
+.oppToolbar{
+  border-radius:22px;
+  padding:15px;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+  box-shadow:0 12px 34px rgba(17,21,42,.045);
+}
+.oppToolbar .field label{font-size:8px;color:#656a80}
+.matchHint{
+  display:inline-flex;
+  flex-wrap:wrap;
+  gap:3px;
+  margin-top:8px;
+  padding:5px 8px;
+  border-radius:10px;
+  background:#f8f7ff;
+}
+.matchHint b{color:#594dea}
+
+/* Offer comparison */
+.offerSummary{gap:10px}
+.offerMetric{
+  border-radius:16px;
+  padding:12px;
+  background:linear-gradient(180deg,#fff,#fafafe);
+}
+.offerMetric b{font-size:16px}
+.offerGrid{gap:12px}
+.offerCard{
+  position:relative;
+  overflow:hidden;
+  padding:16px;
+  border-radius:20px;
+}
+.offerCard:after{
+  content:"";
+  position:absolute;
+  inset-inline-end:-55px;
+  top:-60px;
+  width:140px;
+  height:140px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(101,88,245,.08),transparent 68%);
+  pointer-events:none;
+}
+.offerAvatar{
+  width:42px;
+  height:42px;
+  border-radius:14px;
+}
+.offerName h3{font-size:12px}
+.offerBio{font-size:9px;line-height:1.9}
+.skillChip{
+  background:#f6f6fa;
+  border:1px solid #ececf2;
+}
+.offerFoot{padding-top:12px}
+.offerFact b{font-size:11px}
+
+/* Orders and progress */
+.orderStepper{
+  gap:8px;
+  margin:7px 0 17px;
+}
+.orderStep{
+  min-height:58px;
+  display:grid;
+  place-content:center;
+  border-radius:15px;
+  background:#fafafe;
+}
+.orderStep.done{
+  background:linear-gradient(180deg,#f0fbf6,#ebfaf3);
+  border-color:#c8eedb;
+}
+.orderStep.current{
+  background:linear-gradient(180deg,#f3f1ff,#eeebff);
+  border-color:#d9d4ff;
+  box-shadow:0 9px 24px rgba(101,88,245,.10);
+}
+.orderAlert{border-radius:15px;padding:12px 13px}
+.orderFacts{gap:10px}
+.orderFact{
+  min-height:66px;
+  display:grid;
+  align-content:center;
+  border-radius:15px;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+}
+.orderFact b{font-size:11px}
+
+/* Chat */
+.chat{
+  height:340px;
+  padding:14px;
+  gap:9px;
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 90% 10%,rgba(101,88,245,.035),transparent 13rem),
+    #f8f9fc;
+}
+.bubble{
+  max-width:min(82%,520px);
+  padding:10px 12px;
+  border-radius:16px;
+  box-shadow:0 4px 14px rgba(17,21,42,.035);
+}
+.bubble.me{
+  border-color:#dcd7ff;
+  background:linear-gradient(180deg,#f3f1ff,#eeecff);
+  border-bottom-right-radius:6px;
+}
+.bubble:not(.me){border-bottom-left-radius:6px}
+.bubble small{margin-top:5px}
+.chatSend{
+  gap:9px;
+  padding-top:4px;
+}
+.chatSend input{
+  min-height:44px;
+  border-radius:14px;
+  background:#fff;
+  outline:none;
+}
+.chatSend input:focus{
+  border-color:#8d83ff;
+  box-shadow:var(--ring);
+}
+
+/* Account / settings */
+#account>.grid,#account>.grid.two{gap:13px}
+#account .card{
+  border-radius:21px;
+  padding:17px;
+}
+#account .card h2,#account .card h3{
+  letter-spacing:-.01em;
+}
+#account .field{margin-bottom:13px}
+#account .btn{min-height:41px}
+
+/* Tables / admin */
+.table{
+  overflow:hidden;
+  border-radius:15px;
+}
+.table th{
+  background:#fafafe;
+  color:#6b7085;
+  font-weight:700;
+}
+.table td{background:#fff}
+.table tr:hover td{background:#fcfcff}
+
+/* Empty / loading states */
+.empty{
+  min-height:150px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:7px;
+  border:1px dashed #dfe1eb;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+  border-radius:20px;
+}
+.empty b{font-family:Alexandria;font-size:12px;color:#34374a}
+.empty span{max-width:480px;line-height:1.8}
+
+/* Mobile workspace */
+@media(max-width:760px){
+  .page>.sectionHead:first-child{
+    padding:13px 14px;
+    border-radius:17px;
+    align-items:flex-start;
+  }
+  .page>.sectionHead:first-child .btn{white-space:nowrap}
+  #tasks .rowCard,#orders .rowCard{
+    padding:15px;
+    min-height:0;
+  }
+  #tasks .rowCard:before,#orders .rowCard:before{
+    top:14px;bottom:14px
+  }
+  #tasks .money,#orders .money{text-align:right}
+  #tasks .rowCard>div:last-child,#orders .rowCard>div:last-child{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  #tasks .rowCard .btn,#orders .rowCard .btn{margin-top:0!important}
+  .offerSummary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .offerCard{padding:14px}
+  .orderStepper{
+    grid-template-columns:repeat(5,minmax(76px,1fr));
+    margin-inline:-2px;
+  }
+  .chat{height:390px;padding:10px}
+  .bubble{max-width:90%}
+  .chatSend{grid-template-columns:minmax(0,1fr) auto}
+  #account .card{padding:15px}
+}
+@media(max-width:420px){
+  .page>.sectionHead:first-child{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .page>.sectionHead:first-child>.btn{width:100%}
+  .offerSummary{grid-template-columns:1fr 1fr}
+  .orderFacts{grid-template-columns:1fr 1fr}
+}
+
+
+/* MINJAZ detail modal polish v9 */
+.modal{
+  width:min(720px,96vw);
+  padding:22px;
+}
+.modalHead{
+  position:sticky;
+  top:-22px;
+  z-index:5;
+  margin:-22px -22px 18px;
+  padding:18px 22px 14px;
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid #ececf2;
+}
+.modalHead h2{
+  font-size:16px;
+  line-height:1.5;
+}
+.modalHead>div>div{
+  margin-top:3px;
+}
+.modal .grid.two{
+  gap:10px;
+}
+.modal .grid.two>.card{
+  min-height:92px;
+  display:grid;
+  align-content:center;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+}
+.modal .sectionHead{
+  margin:18px 0 9px;
+}
+.modal .sectionHead h2{font-size:13px}
+.modal .actions{
+  position:sticky;
+  bottom:-22px;
+  z-index:4;
+  margin:18px -22px -22px;
+  padding:13px 22px calc(13px + env(safe-area-inset-bottom));
+  background:rgba(255,255,255,.95);
+  backdrop-filter:blur(16px);
+  border-top:1px solid #ececf2;
+  box-shadow:0 -14px 32px rgba(17,21,42,.055);
+}
+.modal .actions:empty{display:none}
+.modal .actions .btn.primary,
+.modal .actions .btn.green{
+  box-shadow:0 10px 24px rgba(101,88,245,.16);
+}
+.modal .money{font-size:17px}
+.modal .metric .label{
+  color:#767b8f;
+  font-weight:700;
+}
+.modal .metric small{margin-top:2px}
+.modal .offerToolbar{
+  grid-template-columns:minmax(180px,1fr) minmax(150px,.8fr) auto;
+  align-items:end;
+}
+.modal .offerToolbar .btn{height:46px}
+.modal .offerCard .money{
+  padding:6px 10px;
+  border-radius:12px;
+  background:#f7f6ff;
+  color:#5145da;
+}
+.modal .orderStepper::-webkit-scrollbar{height:4px}
+.modal .orderStepper::-webkit-scrollbar-thumb{background:#d9d7e6;border-radius:99px}
+.modal #chatBox{scroll-behavior:smooth}
+.modal #chatBox .empty{
+  min-height:100%;
+  border:0;
+  background:transparent;
+}
+@media(max-width:760px){
+  .modal{
+    width:min(100%,96vw);
+    max-height:92dvh;
+    padding:16px;
+    border-radius:22px;
+  }
+  .modalHead{
+    top:-16px;
+    margin:-16px -16px 14px;
+    padding:15px 16px 12px;
+  }
+  .modal .actions{
+    bottom:-16px;
+    margin:16px -16px -16px;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .modal .actions .btn{width:100%}
+  .modal .offerToolbar{
+    grid-template-columns:1fr;
+  }
+  .modal .grid.two{grid-template-columns:1fr 1fr}
+}
+@media(max-width:430px){
+  .modal .grid.two{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 <body>
