@@ -69,8 +69,8 @@ jobs:
           assert "def deliver_order_atomic(oid,user_id,note,attachments=None,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerprint=None):" in server
-          assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
-          assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          assert "def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):" in server
+          assert "def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):" in server
           assert "def close_task_atomic(task_id,client_id):" in server
           assert "def withdraw_proposal_atomic(task_id,freelancer_id):" in server
@@ -97,6 +97,8 @@ jobs:
           assert "__deliveryPendingPayloads" in ui
           assert "__revisionPendingPayloads" in ui
           assert "__completePendingKeys" in ui
+          assert "__disputePendingPayloads" in ui
+          assert "__cancellationPendingPayloads" in ui
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")

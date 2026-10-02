@@ -852,60 +852,88 @@ def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerpri
     finally:
         c.close()
 
-def open_dispute_atomic(oid,user_id,reason,details=None):
+def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'dispute',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from order_disputes where id=%s and order_id=%s and opened_by=%s',(replay['result_id'],int(oid),int(user_id)))
+                    d=cur.fetchone()
+                    cur.execute('select * from orders where id=%s',(int(oid),))
+                    o=cur.fetchone()
+                    if not d or not o:
+                        c.rollback();return None,None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(d).items()},dict(o),True,None
             cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
                            where o.id=%s for update of o,t""",(int(oid),))
             o=cur.fetchone()
             if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
-                c.rollback();return None,None,'order_not_found'
+                c.rollback();return None,None,False,'order_not_found'
             if o.get('status') in ('completed','cancelled'):
-                c.rollback();return None,dict(o),'invalid_order_state'
+                c.rollback();return None,dict(o),False,'invalid_order_state'
             cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
             active=cur.fetchone()
             if active:
-                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_dispute_exists'
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,False,'active_dispute_exists'
             cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active_cancel=cur.fetchone()
             if active_cancel:
-                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,'active_cancellation_exists'
+                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,False,'active_cancellation_exists'
             cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
             d=dict(cur.fetchone())
             cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
             cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
-        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),None
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),False,None
     except Exception:
         c.rollback();raise
     finally:
         c.close()
 
-def open_cancellation_atomic(oid,user_id,reason,details=None):
+def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'cancellation',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from order_cancellation_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
+                    cr=cur.fetchone()
+                    cur.execute("""select o.*,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s""",(int(oid),))
+                    o=cur.fetchone()
+                    if not cr or not o:
+                        c.rollback();return None,None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(cr).items()},dict(o),True,None
             cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
                            where o.id=%s for update of o,t""",(int(oid),))
             o=cur.fetchone()
             if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
-                c.rollback();return None,None,'order_not_found'
+                c.rollback();return None,None,False,'order_not_found'
             if o.get('status') in ('completed','cancelled','disputed'):
-                c.rollback();return None,dict(o),'invalid_order_state'
+                c.rollback();return None,dict(o),False,'invalid_order_state'
             cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active=cur.fetchone()
             if active:
-                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,'active_cancellation_exists'
+                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,False,'active_cancellation_exists'
             cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
             active_dispute=cur.fetchone()
             if active_dispute:
-                c.rollback();x=dict(o);x['active_id']=active_dispute['id'];return None,x,'active_dispute_exists'
+                c.rollback();x=dict(o);x['active_id']=active_dispute['id'];return None,x,False,'active_dispute_exists'
             refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
             cur.execute("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
             cr=dict(cur.fetchone())
-        c.commit();return {k:as_json(v) for k,v in cr.items()},dict(o),None
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(cr['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in cr.items()},dict(o),False,None
     except Exception:
         c.rollback();raise
     finally:
@@ -2359,12 +2387,17 @@ class H(BaseHTTPRequestHandler):
                 if method=='POST':
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    d,locked,err=open_dispute_atomic(oid,u['id'],reason,details)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'dispute',reason+'\n'+details) if idempotency_key else None
+                    d,locked,replayed,err=open_dispute_atomic(oid,u['id'],reason,details,idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err in ('active_dispute_exists','active_cancellation_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
-                    return self.sendj(201,d)
+                    if not replayed:
+                        other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
+                    d['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,d)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
             if m:
                 u=self.require()
@@ -2377,12 +2410,17 @@ class H(BaseHTTPRequestHandler):
                 if method=='POST':
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    cr,locked,err=open_cancellation_atomic(oid,u['id'],reason,details)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'cancellation',reason+'\n'+details) if idempotency_key else None
+                    cr,locked,replayed,err=open_cancellation_atomic(oid,u['id'],reason,details,idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err in ('active_cancellation_exists','active_dispute_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
-                    return self.sendj(201,cr)
+                    if not replayed:
+                        other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
+                    cr['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,cr)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
             if m and method=='GET':
                 u=self.require();
