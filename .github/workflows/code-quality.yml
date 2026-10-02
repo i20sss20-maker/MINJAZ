@@ -40,7 +40,13 @@ jobs:
           from pathlib import Path
           server = Path("server.py").read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n")
           parts = "".join(p.read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n") for p in sorted(Path("server.parts").glob("part*.txt")))
-          assert server == parts, "server_parts_content_mismatch"
+          if server != parts:
+              limit=min(len(server),len(parts))
+              pos=next((i for i in range(limit) if server[i]!=parts[i]),limit)
+              print("SERVER_PARTS_MISMATCH",{"server_len":len(server),"parts_len":len(parts),"first_mismatch":pos})
+              print("SERVER_AROUND",repr(server[max(0,pos-120):pos+240]))
+              print("PARTS_AROUND",repr(parts[max(0,pos-120):pos+240]))
+              raise SystemExit(1)
           print("SERVER_PARTS_CONTENT_MATCH_OK")
           PY
 
