@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE=os.getenv("E2E_BASE_URL","https://minjaz-stage-fixed-production.up.railway.app").rstrip("/")
 PORT=int(os.getenv("PORT","3000"))
+ADMIN_PHONE=os.getenv("ADMIN_PHONE","+966599999995")
 
 def raw_call(method,path,body=None,token=None):
     data=None if body is None else json.dumps(body,ensure_ascii=False).encode()
@@ -71,7 +72,8 @@ def run():
     seed=f"{int(time.time())%1000000:06d}{random.randint(10,99)}"
     client=login("+9665"+seed,"client","Transition Race Client")
     freelancer=login("+9667"+seed,"freelancer","Transition Race Freelancer")
-    ct,ft=client["token"],freelancer["token"]
+    admin=login(ADMIN_PHONE,"admin","Transition Race Admin")
+    ct,ft,at=client["token"],freelancer["token"],admin["token"]
     accept_legal(ct);accept_legal(ft)
 
     # Two cancellation requests at the same instant: exactly one active case.
@@ -84,6 +86,26 @@ def run():
     loser=next(payload for _,(status,payload) in c1 if status==409)
     assert loser.get("error")=="active_cancellation_exists",loser
 
+    cxl_item=call("GET",f"/api/v1/orders/{o1['id']}/cancellation",token=ct,expected=(200,)).get("item")
+    assert cxl_item and cxl_item.get("id"),cxl_item
+    cxl_id=int(cxl_item["id"])
+    review_body={"status":"in_review","admin_note":"مراجعة إدارية ثابتة"}
+    review1=call("PATCH",f"/api/admin/cancellations/{cxl_id}",review_body,at)
+    review2=call("PATCH",f"/api/admin/cancellations/{cxl_id}",review_body,at)
+    assert review1.get("status")=="in_review" and not review1.get("idempotent_replay"),review1
+    assert review2.get("idempotent_replay") is True,review2
+    cb=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ct,expected=(200,)).get("items") or []
+    fb=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ft,expected=(200,)).get("items") or []
+    reject_body={"status":"rejected","admin_note":"رفض إداري ثابت"}
+    reject1=call("PATCH",f"/api/admin/cancellations/{cxl_id}",reject_body,at)
+    reject2=call("PATCH",f"/api/admin/cancellations/{cxl_id}",reject_body,at)
+    assert reject1.get("status")=="rejected" and not reject1.get("idempotent_replay"),reject1
+    assert reject2.get("idempotent_replay") is True,reject2
+    ca=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ct,expected=(200,)).get("items") or []
+    fa=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ft,expected=(200,)).get("items") or []
+    assert len(ca)==len(cb)+1,(cb,ca)
+    assert len(fa)==len(fb)+1,(fb,fa)
+
     # Two dispute opens at the same instant: exactly one active dispute.
     _,o2=create_paid_order(ct,ft,cat,"اختبار نزاع مزدوج")
     d1=concurrent([
@@ -95,6 +117,20 @@ def run():
     assert loser.get("error")=="active_dispute_exists",loser
     final_o2=call("GET",f"/api/v1/orders/{o2['id']}",token=ct,expected=(200,))
     assert final_o2["status"]=="disputed",final_o2
+
+    dispute_item=call("GET",f"/api/v1/orders/{o2['id']}/dispute",token=ct,expected=(200,)).get("item")
+    assert dispute_item and dispute_item.get("id"),dispute_item
+    did=int(dispute_item["id"])
+    review_body={"status":"in_review","resolution_note":"stable dispute review"}
+    review1=call("PATCH",f"/api/admin/disputes/{did}",review_body,at)
+    review2=call("PATCH",f"/api/admin/disputes/{did}",review_body,at)
+    assert review1.get("status")=="in_review" and not review1.get("idempotent_replay"),review1
+    assert review2.get("idempotent_replay") is True,review2
+    resolve_body={"status":"resolved","action":"resume","resolution_note":"stable dispute resolution"}
+    resolve1=call("PATCH",f"/api/admin/disputes/{did}",resolve_body,at)
+    resolve2=call("PATCH",f"/api/admin/disputes/{did}",resolve_body,at)
+    assert resolve1.get("status")=="resolved" and not resolve1.get("idempotent_replay"),resolve1
+    assert resolve2.get("idempotent_replay") is True,resolve2
 
     # Retrying the same cancellation request with one key returns the same case and notifies once.
     _,oc=create_paid_order(ct,ft,cat,"اختبار إعادة طلب الإلغاء")
@@ -184,6 +220,9 @@ def run():
         "cancellation_retry_idempotent":True,
         "dispute_retry_idempotent":True,
         "single_case_notifications":True,
+        "admin_cancellation_retry_idempotent":True,
+        "admin_dispute_retry_idempotent":True,
+        "single_admin_cancellation_notifications":True,
         "complete_vs_cancellation_safe":True,
         "deliver_vs_dispute_safe":True,
         "revision_vs_dispute_safe":True,
