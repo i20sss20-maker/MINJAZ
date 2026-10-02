@@ -438,6 +438,7 @@ def run():
         "ok":True,"version":health.get("version"),"task_creation_idempotent":True,
         "task_repeat_idempotent":True,
         "saved_search_idempotent":True,
+        "legal_acceptance_retry_safe":True,
         "task_close_supported":True,
         "task_close_proposal_write_race_safe":True,
         "task_close_accept_race_safe":True,
