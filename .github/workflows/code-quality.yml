@@ -248,6 +248,12 @@ jobs:
           cat /tmp/minjaz-ci.log
           exit 1
 
+      - name: Run full marketplace journey E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_marketplace.py
+
       - name: Run order transition concurrency E2E
         env:
           E2E_BASE_URL: http://127.0.0.1:3000

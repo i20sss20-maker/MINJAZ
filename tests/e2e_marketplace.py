@@ -47,8 +47,9 @@ def login(phone, role, name):
             "name": name,
         },
     )
+    effective_roles = out.get("roles") or out.get("user", {}).get("roles") or [out.get("user", {}).get("role")]
     assert out.get("token"), out
-    assert out["user"]["role"] == role, out
+    assert role in effective_roles, out
     return out["token"]
 
 
@@ -108,6 +109,22 @@ def run():
         freelancer_token,
     )
     proposal_id = proposal["id"]
+
+    # Client can invite the freelancer to the open task and freelancer receives the invitation.
+    invite = call(
+        "POST",
+        f"/api/v1/freelancers/{freelancer_me['user']['id']}/invite",
+        {"task_id": task_id, "note": "دعوة اختبار للمستقل قبل اعتماد العرض."},
+        client_token,
+    )
+    assert int(invite["task_id"]) == int(task_id), invite
+    invite_notifications = call(
+        "GET",
+        "/api/v1/notifications?kind=task_invite&unread=1",
+        token=freelancer_token,
+        expected=(200,),
+    )
+    assert any(int(item.get("task_id") or 0) == int(task_id) for item in (invite_notifications.get("items") or [])), invite_notifications
 
     proposals = call(
         "GET",
@@ -178,6 +195,17 @@ def run():
     )
     assert review.get("ok") is True, review
 
+    # After a shared order exists, client can keep the freelancer in the trusted team.
+    team_add = call(
+        "POST",
+        f"/api/v1/team/{freelancer_me['user']['id']}",
+        {"note": "مستقل موثوق من اختبار الدورة المتكاملة."},
+        client_token,
+    )
+    assert team_add.get("ok") is True, team_add
+    team = call("GET", "/api/v1/team", token=client_token, expected=(200,)).get("items") or []
+    assert any(int(item["freelancer_id"]) == int(freelancer_me["user"]["id"]) for item in team), team
+
     final_order = call(
         "GET",
         f"/api/v1/orders/{order_id}",
@@ -202,6 +230,15 @@ def run():
     )
     assert "available_balance" in earnings, earnings
     assert isinstance(notifications.get("items"), list), notifications
+    assert int(notifications.get("unread") or 0) > 0, notifications
+    call("POST", "/api/v1/notifications/read-all", {}, freelancer_token, expected=(200,))
+    after_read = call(
+        "GET",
+        "/api/v1/notifications?unread=1",
+        token=freelancer_token,
+        expected=(200,),
+    )
+    assert int(after_read.get("unread") or 0) == 0 and not (after_read.get("items") or []), after_read
 
     return {
         "ok": True,
@@ -219,6 +256,9 @@ def run():
         "review": True,
         "earnings": True,
         "notifications": True,
+        "task_invite": True,
+        "trusted_team": True,
+        "notifications_read_all": True,
         "task_id": task_id,
         "order_id": order_id,
     }
@@ -226,6 +266,9 @@ def run():
 
 RESULT = run()
 print("MINJAZ_MARKETPLACE_E2E_OK", json.dumps(RESULT, ensure_ascii=False), flush=True)
+
+if os.getenv("E2E_EXIT_AFTER_RUN") == "1":
+    raise SystemExit(0)
 
 
 class Handler(BaseHTTPRequestHandler):
