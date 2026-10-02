@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE=os.getenv("E2E_BASE_URL","https://minjaz-stage-fixed-production.up.railway.app").rstrip("/")
 PORT=int(os.getenv("PORT","3000"))
+ADMIN_PHONE=os.getenv("ADMIN_PHONE","+966599999995")
 
 def raw_call(method,path,body=None,token=None):
     data=None if body is None else json.dumps(body,ensure_ascii=False).encode()
@@ -71,7 +72,8 @@ def run():
     seed=f"{int(time.time())%1000000:06d}{random.randint(10,99)}"
     client=login("+9665"+seed,"client","Transition Race Client")
     freelancer=login("+9667"+seed,"freelancer","Transition Race Freelancer")
-    ct,ft=client["token"],freelancer["token"]
+    admin=login(ADMIN_PHONE,"admin","Transition Race Admin")
+    ct,ft,at=client["token"],freelancer["token"],admin["token"]
     accept_legal(ct);accept_legal(ft)
 
     # Two cancellation requests at the same instant: exactly one active case.
