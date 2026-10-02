@@ -1132,31 +1132,35 @@ def update_payout_status(pid,status,admin_note=None):
             cur.execute('select freelancer_id from payout_requests where id=%s',(int(pid),))
             seed=cur.fetchone()
             if not seed:
-                c.rollback();return None,None,'payout_not_found'
+                c.rollback();return None,None,False,'payout_not_found'
             fid=int(seed['freelancer_id'])
             cur.execute('select id from users where id=%s for update',(fid,))
             if not cur.fetchone():
-                c.rollback();return None,None,'payout_not_found'
+                c.rollback();return None,None,False,'payout_not_found'
             cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
             fp=cur.fetchone()
             cur.execute('select * from payout_requests where id=%s and freelancer_id=%s for update',(int(pid),fid))
             pr=cur.fetchone()
             if not pr:
-                c.rollback();return None,None,'payout_not_found'
+                c.rollback();return None,None,False,'payout_not_found'
             current=str(pr.get('status') or '')
+            note=str(admin_note or '')[:1000] or None
+            if current==status and (pr.get('admin_note') or None)==note:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(pr).items()},dict(pr),False,None
             if current in ('paid','rejected','cancelled'):
-                c.rollback();return None,dict(pr),'payout_finalized'
+                c.rollback();return None,dict(pr),False,'payout_finalized'
             if status in ('processing','paid') and (not fp or fp.get('kyc_status')!='approved'):
-                c.rollback();return None,dict(pr),'kyc_required'
+                c.rollback();return None,dict(pr),False,'kyc_required'
             if status=='paid' and current not in ('pending','processing'):
-                c.rollback();return None,dict(pr),'invalid_payout_state'
+                c.rollback();return None,dict(pr),False,'invalid_payout_state'
             cur.execute("""update payout_requests
                            set status=%s,admin_note=%s,updated_at=now(),
                                resolved_at=case when %s in ('paid','rejected','cancelled') then now() else resolved_at end
                            where id=%s returning *""",
-                        (status,str(admin_note or '')[:1000] or None,status,int(pid)))
+                        (status,note,status,int(pid)))
             row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(pr),None
+            return {k:as_json(v) for k,v in row.items()},dict(pr),True,None
     except Exception:
         c.rollback();raise
     finally:
@@ -2739,13 +2743,14 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
                     if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
-                    r,pr,err=update_payout_status(pid,st,b.get('admin_note'))
+                    r,pr,changed,err=update_payout_status(pid,st,b.get('admin_note'))
                     if err=='payout_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
-                    notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
-                    admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st,'previous_status':pr.get('status')})
-                    return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id'])})
+                    if changed:
+                        ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
+                        notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
+                        admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st,'previous_status':pr.get('status')})
+                    return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id']),'idempotent_replay':not changed})
                 if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/support/(\d+)',p)
                 if m and method=='PATCH':
