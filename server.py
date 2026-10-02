@@ -683,62 +683,128 @@ def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=No
     finally:
         c.close()
 
-def deliver_order_atomic(oid,user_id,note,attachments=None):
+def order_action_request_fingerprint(oid,action,note,attachments=None):
+    refs=[]
+    if isinstance(attachments,list):
+        for x in attachments[:5]:
+            if not isinstance(x,dict):continue
+            try:size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+            except Exception:size=0
+            refs.append({
+                'name':str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف',
+                'storage_key':str(x.get('storage_key') or '').strip().lstrip('/') or None,
+                'url':str(x.get('url') or x.get('file_url') or '').strip() or None,
+                'mime_type':str(x.get('mime_type') or '').strip()[:120] or None,
+                'size_bytes':size,
+            })
+    payload={'order_id':int(oid),'action':str(action),'note':str(note or ''),'attachments':refs}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def claim_order_action_idempotency(cur,actor_id,idempotency_key,action_type,order_id,request_fingerprint):
+    cur.execute("""insert into order_action_idempotency_keys(actor_id,idempotency_key,action_type,order_id,request_fingerprint)
+                   values(%s,%s,%s,%s,%s) on conflict(actor_id,idempotency_key) do nothing
+                   returning actor_id""",(int(actor_id),idempotency_key,action_type,int(order_id),request_fingerprint))
+    if cur.fetchone():
+        return None,None
+    cur.execute('select action_type,order_id,request_fingerprint,result_id from order_action_idempotency_keys where actor_id=%s and idempotency_key=%s',(int(actor_id),idempotency_key))
+    record=cur.fetchone()
+    if not record:return None,'idempotency_conflict'
+    if (str(record.get('action_type') or '')!=str(action_type)
+        or int(record.get('order_id') or 0)!=int(order_id)
+        or str(record.get('request_fingerprint') or '')!=str(request_fingerprint or '')):
+        return None,'idempotency_key_reused'
+    if not record.get('result_id'):return None,'idempotency_conflict'
+    return dict(record),None
+
+def deliver_order_atomic(oid,user_id,note,attachments=None,idempotency_key=None,idempotency_fingerprint=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'deliver',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from deliveries where id=%s and order_id=%s and freelancer_id=%s',(replay['result_id'],int(oid),int(user_id)))
+                    d=cur.fetchone()
+                    cur.execute('select * from orders where id=%s',(int(oid),))
+                    o=cur.fetchone()
+                    if not d or not o:
+                        c.rollback();return None,None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(d).items()},dict(o),True,None
             cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
                            where o.id=%s for update of o,t""",(int(oid),))
             o=cur.fetchone()
             if not o:
-                c.rollback();return None,None,'order_not_found'
+                c.rollback();return None,None,False,'order_not_found'
             if int(o['freelancer_id'])!=int(user_id):
-                c.rollback();return None,dict(o),'freelancer_only'
+                c.rollback();return None,dict(o),False,'freelancer_only'
             if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
-                c.rollback();return None,dict(o),'invalid_order_state'
+                c.rollback();return None,dict(o),False,'invalid_order_state'
             cur.execute("insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *",(int(oid),int(user_id),str(note or '')[:5000]))
             d=dict(cur.fetchone())
             insert_attachments_tx(cur,user_id,cleaned,order_id=oid,delivery_id=d['id'])
             cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
             cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
             cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
         c.commit()
-        return {k:as_json(v) for k,v in d.items()},dict(o),None
+        return {k:as_json(v) for k,v in d.items()},dict(o),False,None
     except Exception:
         c.rollback();raise
     finally:
         c.close()
 
-def request_revision_atomic(oid,user_id,note):
+def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'revision',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from order_revision_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
+                    rr=cur.fetchone()
+                    cur.execute("""select o.*,coalesce(p.revisions,0)::int revisions_allowed
+                                   from orders o left join proposals p on p.id=o.proposal_id where o.id=%s""",(int(oid),))
+                    o=cur.fetchone()
+                    if not rr or not o:
+                        c.rollback();return None,None,None,False,'idempotency_conflict'
+                    cur.execute('select count(*)::int used from order_revision_requests where order_id=%s',(int(oid),))
+                    used=int(cur.fetchone()['used'] or 0);allowed=int(o.get('revisions_allowed') or 0)
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(rr).items()},dict(o),{'allowed':allowed,'used':used},True,None
             cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
                            from orders o join tasks t on t.id=o.task_id
                            left join proposals p on p.id=o.proposal_id
                            where o.id=%s for update of o,t""",(int(oid),))
             o=cur.fetchone()
             if not o:
-                c.rollback();return None,None,None,'order_not_found'
+                c.rollback();return None,None,None,False,'order_not_found'
             if int(o['client_id'])!=int(user_id):
-                c.rollback();return None,dict(o),None,'client_only'
+                c.rollback();return None,dict(o),None,False,'client_only'
             if o.get('status')!='delivered':
-                c.rollback();return None,dict(o),None,'invalid_order_state'
+                c.rollback();return None,dict(o),None,False,'invalid_order_state'
             allowed=int(o.get('revisions_allowed') or 0)
             cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
             used=int(cur.fetchone()['used'] or 0)
             if used>=allowed:
-                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},'revision_limit_reached'
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},False,'revision_limit_reached'
             cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
             rr=dict(cur.fetchone())
             cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
             cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
             cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(rr['id'],int(user_id),idempotency_key))
         c.commit()
-        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},None
+        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},False,None
     except Exception:
         c.rollback();raise
     finally:
@@ -2215,23 +2281,29 @@ class H(BaseHTTPRequestHandler):
                     if u['role']!='freelancer':return self.sendj(403,{'error':'freelancer_only'})
                     b=self.body();note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    d,locked,err=deliver_order_atomic(oid,u['id'],note,b.get('attachments'))
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'deliver',note,b.get('attachments')) if idempotency_key else None
+                    d,locked,replayed,err=deliver_order_atomic(oid,u['id'],note,b.get('attachments'),idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err=='freelancer_only':return self.sendj(403,{'error':err})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    notify(locked['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid)
-                    return self.sendj(201,{'ok':True,'delivery':d})
+                    if not replayed:notify(locked['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid)
+                    return self.sendj(200 if replayed else 201,{'ok':True,'delivery':d,'idempotent_replay':bool(replayed)})
                 if action=='revision':
                     if u['role']!='client':return self.sendj(403,{'error':'client_only'})
                     b=self.body();note=str(b.get('note') or '').strip()
                     if not note:return self.sendj(400,{'error':'note_required'})
-                    rr,locked,meta,err=request_revision_atomic(oid,u['id'],note)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'revision',note) if idempotency_key else None
+                    rr,locked,meta,replayed,err=request_revision_atomic(oid,u['id'],note,idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err=='client_only':return self.sendj(403,{'error':err})
                     if err=='revision_limit_reached':return self.sendj(409,{'error':err,'allowed':meta['allowed'],'used':meta['used']})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
-                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0)})
+                    if not replayed:notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
+                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0),'idempotent_replay':bool(replayed)})
                 if action=='complete':
                     if u['role']!='client':return self.sendj(403,{'error':'client_only'})
                     locked,err=complete_order_atomic(oid,u['id'])
