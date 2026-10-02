@@ -85,6 +85,21 @@ def run():
     changed=dict(idem_payload);changed["title"]="عنوان مختلف بنفس المفتاح"
     reused=raw_call("POST","/api/v1/tasks",changed,ct)
     assert reused[0]==409 and reused[1].get("error")=="idempotency_key_reused",reused
+
+    repeat_key=f"repeat-race-{base}"
+    repeat_payload={"idempotency_key":repeat_key}
+    repeat_barrier=Barrier(2)
+    def repeat_same_task():
+        repeat_barrier.wait()
+        return raw_call("POST",f"/api/v1/tasks/{idem_task_id}/repeat",repeat_payload,ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        first=ex.submit(repeat_same_task);second=ex.submit(repeat_same_task)
+        repeat_results=[first.result(),second.result()]
+    assert sorted(x[0] for x in repeat_results)==[200,201],repeat_results
+    repeat_ids={int(x[1]["id"]) for x in repeat_results}
+    assert len(repeat_ids)==1,repeat_results
+    repeat_replay=next(x[1] for x in repeat_results if x[0]==200)
+    assert repeat_replay.get("idempotent_replay") is True,repeat_replay
     call("POST",f"/api/v1/tasks/{idem_task_id}/close",{},ct,expected=(200,))
 
     # A client can close an open task; sent proposals are rejected and no new proposal can appear afterward.
@@ -397,6 +412,7 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),"task_creation_idempotent":True,
+        "task_repeat_idempotent":True,
         "task_close_supported":True,
         "task_close_proposal_write_race_safe":True,
         "task_close_accept_race_safe":True,
