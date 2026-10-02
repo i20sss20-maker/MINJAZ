@@ -213,6 +213,60 @@ def create_task_atomic(client_id,category_id,service_id,title,description,budget
     finally:
         c.close()
 
+def message_request_fingerprint(order_id,body,attachments):
+    refs=[]
+    if isinstance(attachments,list):
+        for x in attachments[:5]:
+            if not isinstance(x,dict):continue
+            try:size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+            except Exception:size=0
+            refs.append({
+                'name':str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف',
+                'storage_key':str(x.get('storage_key') or '').strip().lstrip('/') or None,
+                'url':str(x.get('url') or x.get('file_url') or '').strip() or None,
+                'mime_type':str(x.get('mime_type') or '').strip()[:120] or None,
+                'size_bytes':size,
+            })
+    payload={'order_id':int(order_id),'body':str(body or ''),'attachments':refs}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_message_atomic(order_id,sender_id,body,cleaned_attachments,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                cur.execute("""insert into message_idempotency_keys(sender_id,idempotency_key,request_fingerprint)
+                               values(%s,%s,%s) on conflict(sender_id,idempotency_key) do nothing
+                               returning sender_id""",(int(sender_id),idempotency_key,idempotency_fingerprint))
+                claimed=cur.fetchone()
+                if not claimed:
+                    cur.execute('select request_fingerprint,message_id from message_idempotency_keys where sender_id=%s and idempotency_key=%s',(int(sender_id),idempotency_key))
+                    record=cur.fetchone()
+                    if not record:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    if str(record.get('request_fingerprint') or '')!=str(idempotency_fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    if not record.get('message_id'):
+                        c.rollback();return None,False,'idempotency_conflict'
+                    cur.execute('select * from messages where id=%s and sender_id=%s',(record['message_id'],int(sender_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('insert into messages(order_id,sender_id,body) values(%s,%s,%s) returning *',(int(order_id),int(sender_id),body or 'مرفق'))
+            msg=dict(cur.fetchone())
+            insert_attachments_tx(cur,int(sender_id),cleaned_attachments,order_id=int(order_id),message_id=msg['id'])
+            if idempotency_key:
+                cur.execute('update message_idempotency_keys set message_id=%s where sender_id=%s and idempotency_key=%s',(msg['id'],int(sender_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in msg.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
     c=db_connect()
     try:
