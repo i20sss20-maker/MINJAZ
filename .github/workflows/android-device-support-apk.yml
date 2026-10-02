@@ -3,6 +3,7 @@ name: Android Device Support APK
 on:
   push:
     branches:
+      - main
       - android-device-support-v2
       - android-compat-only-v3
     paths:
