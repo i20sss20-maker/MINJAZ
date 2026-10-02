@@ -1,5 +1,6 @@
 <resources>
-    <color name="minjaz_navy">#0B1020</color>
-    <color name="minjaz_blue">#3157F6</color>
-    <color name="minjaz_surface">#FFFFFF</color>
+    <color name="minjaz_navy">#11152A</color>
+    <color name="minjaz_blue">#6558F5</color>
+    <color name="minjaz_mint">#2CC9B7</color>
+    <color name="minjaz_surface">#F7F8FC</color>
 </resources>
