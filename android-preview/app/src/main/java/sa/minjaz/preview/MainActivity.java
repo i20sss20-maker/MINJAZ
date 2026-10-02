@@ -5,6 +5,7 @@ import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.net.ConnectivityManager;
@@ -32,6 +33,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.Locale;
+
 public class MainActivity extends Activity {
     private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
     private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
@@ -48,8 +51,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(17, 21, 42));
-        getWindow().setNavigationBarColor(Color.rgb(247, 248, 252));
+        applySystemChrome();
 
         buildUi();
         configureWebView();
@@ -69,7 +71,7 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(247, 248, 252));
+        root.setBackgroundColor(surfaceColor());
 
         webView = new WebView(this);
         webView.setLayoutParams(new FrameLayout.LayoutParams(
@@ -105,19 +107,25 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         box.setPadding(dp(28), dp(28), dp(28), dp(28));
-        box.setBackgroundColor(Color.rgb(247, 248, 252));
+        box.setBackgroundColor(surfaceColor());
+
+        boolean english = isEnglishDevice();
 
         TextView title = new TextView(this);
-        title.setText("تعذر الاتصال بمِنجاز");
+        title.setText(english ? "Could not connect to MINJAZ" : "تعذر الاتصال بمِنجاز");
         title.setTextSize(20);
-        title.setTextColor(Color.rgb(15, 23, 42));
+        title.setTextColor(primaryTextColor());
         title.setGravity(Gravity.CENTER);
         box.addView(title);
 
         TextView message = new TextView(this);
-        message.setText("تحقق من اتصال الإنترنت ثم حاول مرة أخرى.");
+        message.setText(
+            english
+                ? "Check your internet connection and try again."
+                : "تحقق من اتصال الإنترنت ثم حاول مرة أخرى."
+        );
         message.setTextSize(14);
-        message.setTextColor(Color.rgb(100, 116, 139));
+        message.setTextColor(secondaryTextColor());
         message.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -127,7 +135,7 @@ public class MainActivity extends Activity {
         box.addView(message, messageParams);
 
         Button retry = new Button(this);
-        retry.setText("إعادة المحاولة");
+        retry.setText(english ? "Try again" : "إعادة المحاولة");
         retry.setOnClickListener(v -> {
             hideError();
             if (webView.getUrl() == null || webView.getUrl().trim().isEmpty()) {
@@ -162,7 +170,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.6");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.7");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
@@ -173,6 +181,7 @@ public class MainActivity extends Activity {
         cookieManager.setAcceptThirdPartyCookies(webView, false);
 
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        webView.setBackgroundColor(surfaceColor());
 
         webView.setWebViewClient(
             Build.VERSION.SDK_INT >= 26
@@ -529,6 +538,53 @@ public class MainActivity extends Activity {
             webView = null;
         }
         super.onDestroy();
+    }
+
+    private boolean isSystemDark() {
+        int nightMode = getResources().getConfiguration().uiMode
+            & Configuration.UI_MODE_NIGHT_MASK;
+        return nightMode == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private boolean isEnglishDevice() {
+        Locale locale = getResources().getConfiguration().getLocales().get(0);
+        return locale != null && "en".equalsIgnoreCase(locale.getLanguage());
+    }
+
+    private int surfaceColor() {
+        return isSystemDark()
+            ? Color.rgb(13, 16, 32)
+            : Color.rgb(247, 248, 252);
+    }
+
+    private int primaryTextColor() {
+        return isSystemDark()
+            ? Color.rgb(243, 245, 251)
+            : Color.rgb(15, 23, 42);
+    }
+
+    private int secondaryTextColor() {
+        return isSystemDark()
+            ? Color.rgb(154, 163, 188)
+            : Color.rgb(100, 116, 139);
+    }
+
+    private void applySystemChrome() {
+        boolean dark = isSystemDark();
+        getWindow().setStatusBarColor(Color.rgb(17, 21, 42));
+        getWindow().setNavigationBarColor(
+            dark ? Color.rgb(13, 16, 32) : Color.rgb(247, 248, 252)
+        );
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            int flags = getWindow().getDecorView().getSystemUiVisibility();
+            if (dark) {
+                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            } else {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
     }
 
     private int dp(int value) {
