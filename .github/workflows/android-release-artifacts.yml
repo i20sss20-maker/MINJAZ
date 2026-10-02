@@ -6,6 +6,7 @@ on:
       - main
       - 'android-*'
       - 'brand-*'
+      - 'theme-*'
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-release-artifacts.yml'
@@ -59,8 +60,8 @@ jobs:
 
           aapt dump badging "$APK" | tee /tmp/minjaz-release-badging.txt
           grep -q "package: name='sa.minjaz.preview'" /tmp/minjaz-release-badging.txt
-          grep -q "versionCode='6'" /tmp/minjaz-release-badging.txt
-          grep -q "versionName='0.6-release-prep'" /tmp/minjaz-release-badging.txt
+          grep -q "versionCode='7'" /tmp/minjaz-release-badging.txt
+          grep -q "versionName='0.7-theme-i18n'" /tmp/minjaz-release-badging.txt
           grep -q "targetSdkVersion:'36'" /tmp/minjaz-release-badging.txt
           grep -q "sdkVersion:'24'" /tmp/minjaz-release-badging.txt
 
@@ -69,7 +70,7 @@ jobs:
       - name: Upload unsigned release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MINJAZ-0.6-release-unsigned
+          name: MINJAZ-0.7-release-unsigned
           path: |
             android-preview/app/build/outputs/apk/release/app-release-unsigned.apk
             android-preview/app/build/outputs/bundle/release/app-release.aab

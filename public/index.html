@@ -9,7 +9,19 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>مِنجاز — مهمتك، لها من ينجزها</title>
+<title>مِنجاز — مهمتك، لها من ينجزها</title>\n<script id="minjazEarlyPrefs">
+(function(){
+  try{
+    const lang=localStorage.getItem('minjaz_lang')||'ar';
+    const mode=localStorage.getItem('minjaz_theme_mode')||'system';
+    const dark=mode==='dark'||(mode==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.lang=lang==='en'?'en':'ar';
+    document.documentElement.dir=lang==='en'?'ltr':'rtl';
+    document.documentElement.dataset.theme=dark?'dark':'light';
+    document.documentElement.dataset.themeMode=mode;
+  }catch(e){}
+})();
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Alexandria:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
 :root{--bg:#f4f7fb;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e6ebf2;--blue:#3157f6;--navy:#0b1020;--green:#16a34a;--amber:#d97706;--red:#dc2626;--shadow:0 18px 55px rgba(15,23,42,.08)}
@@ -1347,6 +1359,312 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   border-color:#cfeede;
   background:#f4fbf7;
   color:#22735a;
+}
+
+
+/* MINJAZ dark mode + bilingual system v15 */
+:root{
+  color-scheme:light;
+  --surface-0:#f7f8fc;
+  --surface-1:#ffffff;
+  --surface-2:#fbfbfe;
+  --surface-3:#f3f4f8;
+  --text-1:#17192b;
+  --text-2:#565c72;
+  --text-3:#7a8095;
+  --border-1:#e7e9f1;
+  --border-2:#d9dce8;
+  --overlay:rgba(11,16,32,.60);
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0d1020;
+  --panel:#151a2d;
+  --ink:#f3f5fb;
+  --muted:#9aa3bc;
+  --line:#2a3047;
+  --navy:#090c18;
+  --green:#39c992;
+  --amber:#e4a244;
+  --red:#ff7373;
+  --brand:#8176ff;
+  --brand-2:#9a91ff;
+  --accent:#41d5c3;
+  --shadow:0 20px 60px rgba(0,0,0,.32);
+  --shadow-soft:0 10px 34px rgba(0,0,0,.22);
+  --ring:0 0 0 4px rgba(129,118,255,.20);
+  --surface-0:#0d1020;
+  --surface-1:#151a2d;
+  --surface-2:#111628;
+  --surface-3:#1a2034;
+  --text-1:#f3f5fb;
+  --text-2:#c4cad9;
+  --text-3:#919ab3;
+  --border-1:#2a3047;
+  --border-2:#384059;
+  --overlay:rgba(2,4,12,.76);
+}
+html[data-theme="dark"] body{
+  background:
+    radial-gradient(circle at 88% -8%,rgba(129,118,255,.10),transparent 32rem),
+    radial-gradient(circle at -5% 30%,rgba(65,213,195,.06),transparent 28rem),
+    var(--surface-0)!important;
+  color:var(--text-1)!important;
+}
+html[data-theme="dark"] .auth{background:var(--surface-0)!important}
+html[data-theme="dark"] .authPanel:before{
+  background:linear-gradient(180deg,rgba(21,26,45,.94),rgba(17,22,40,.82))!important;
+  border-color:var(--border-1)!important;
+  box-shadow:0 28px 80px rgba(0,0,0,.22)!important;
+}
+html[data-theme="dark"] .authPanel .brand{
+  background:rgba(21,26,45,.88)!important;
+  border-color:var(--border-1)!important;
+}
+html[data-theme="dark"] .authPanel>p,
+html[data-theme="dark"] .field label,
+html[data-theme="dark"] .sectionHead p,
+html[data-theme="dark"] .rowCard p,
+html[data-theme="dark"] .offerBio,
+html[data-theme="dark"] .metric small,
+html[data-theme="dark"] .orderFact small,
+html[data-theme="dark"] .offerFact small,
+html[data-theme="dark"] .bubble small,
+html[data-theme="dark"] .empty,
+html[data-theme="dark"] .table th,
+html[data-theme="dark"] .matchHint,
+html[data-theme="dark"] .attachHint,
+html[data-theme="dark"] .uploadState,
+html[data-theme="dark"] .templateHint,
+html[data-theme="dark"] .topTitle small,
+html[data-theme="dark"] .userChip small{
+  color:var(--text-3)!important;
+}
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .chatSend input{
+  background:#111628!important;
+  color:var(--text-1)!important;
+  border-color:var(--border-1)!important;
+  box-shadow:none!important;
+}
+html[data-theme="dark"] .field input::placeholder,
+html[data-theme="dark"] .field textarea::placeholder,
+html[data-theme="dark"] .chatSend input::placeholder{color:#747f9c!important}
+html[data-theme="dark"] .field input:hover,
+html[data-theme="dark"] .field textarea:hover,
+html[data-theme="dark"] .field select:hover{border-color:#424a66!important}
+html[data-theme="dark"] .field input:focus,
+html[data-theme="dark"] .field textarea:focus,
+html[data-theme="dark"] .field select:focus{
+  border-color:#8176ff!important;
+  box-shadow:var(--ring)!important;
+}
+html[data-theme="dark"] .roleSwitch{background:#101426!important;border-color:var(--border-1)!important}
+html[data-theme="dark"] .roleSwitch button{color:var(--text-3)!important}
+html[data-theme="dark"] .roleSwitch button.on{
+  background:#1b2138!important;
+  color:#a69eff!important;
+  box-shadow:0 6px 20px rgba(0,0,0,.24)!important;
+}
+html[data-theme="dark"] .topbar{
+  background:rgba(13,16,32,.84)!important;
+  border-bottom-color:var(--border-1)!important;
+  box-shadow:0 8px 30px rgba(0,0,0,.14)!important;
+}
+html[data-theme="dark"] .avatar{
+  background:linear-gradient(145deg,#272452,#173c40)!important;
+  color:#a69eff!important;
+  border-color:#36315f!important;
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .rowCard,
+html[data-theme="dark"] .cat,
+html[data-theme="dark"] .offerCard,
+html[data-theme="dark"] .attentionCard,
+html[data-theme="dark"] .orderFact,
+html[data-theme="dark"] .oppToolbar,
+html[data-theme="dark"] .profileNudge,
+html[data-theme="dark"] .freelancerToolbar,
+html[data-theme="dark"] .freelancerCard,
+html[data-theme="dark"] .profileMetric,
+html[data-theme="dark"] .portfolioCard,
+html[data-theme="dark"] .reviewCard,
+html[data-theme="dark"] .notifPageItem,
+html[data-theme="dark"] .safetyPanel,
+html[data-theme="dark"] .blockedItem,
+html[data-theme="dark"] .sessionItem,
+html[data-theme="dark"] .readinessItem,
+html[data-theme="dark"] .paymentPanel,
+html[data-theme="dark"] .disputeCard,
+html[data-theme="dark"] .safetyCard,
+html[data-theme="dark"] .attachSection,
+html[data-theme="dark"] .attachChip,
+html[data-theme="dark"] .payoutRow,
+html[data-theme="dark"] .earnCard,
+html[data-theme="dark"] .orderFocusRc5,
+html[data-theme="dark"] .opsIncident,
+html[data-theme="dark"] .pageErrorCard,
+html[data-theme="dark"] .pwaAction,
+html[data-theme="dark"] .pwaInstallCard{
+  background:linear-gradient(180deg,#171c30,#13182a)!important;
+  color:var(--text-1)!important;
+  border-color:var(--border-1)!important;
+  box-shadow:var(--shadow-soft)!important;
+}
+html[data-theme="dark"] .page>.sectionHead:first-child,
+html[data-theme="dark"] .notifToolbar{
+  background:rgba(21,26,45,.82)!important;
+  border-color:var(--border-1)!important;
+  box-shadow:0 10px 32px rgba(0,0,0,.12)!important;
+}
+html[data-theme="dark"] .btn.ghost,
+html[data-theme="dark"] .x{
+  background:#1a2034!important;
+  color:var(--text-2)!important;
+  border-color:var(--border-1)!important;
+}
+html[data-theme="dark"] .btn.soft{background:#252047!important;color:#b1aaff!important}
+html[data-theme="dark"] .btn.green{background:#15372c!important;color:#70e4b4!important}
+html[data-theme="dark"] .btn.danger{background:#3b1c24!important;color:#ff9c9c!important}
+html[data-theme="dark"] .pill.blue{background:#27234d!important;color:#aaa3ff!important}
+html[data-theme="dark"] .pill.green{background:#15372c!important;color:#70e4b4!important}
+html[data-theme="dark"] .pill.amber{background:#3a2a16!important;color:#f0bd70!important}
+html[data-theme="dark"] .pill.red{background:#3b1c24!important;color:#ff9c9c!important}
+html[data-theme="dark"] .pill.gray,
+html[data-theme="dark"] .skillChip{background:#20263a!important;color:#aeb6cb!important}
+html[data-theme="dark"] .chat{
+  background:#0f1425!important;
+  border-color:var(--border-1)!important;
+}
+html[data-theme="dark"] .bubble{
+  background:#1a2034!important;
+  border-color:var(--border-1)!important;
+  color:var(--text-1)!important;
+}
+html[data-theme="dark"] .bubble.me{
+  background:#262249!important;
+  border-color:#3e386b!important;
+}
+html[data-theme="dark"] .modal{
+  background:#12172a!important;
+  color:var(--text-1)!important;
+  border-color:var(--border-1)!important;
+  box-shadow:0 32px 100px rgba(0,0,0,.56)!important;
+}
+html[data-theme="dark"] .overlay{background:var(--overlay)!important}
+html[data-theme="dark"] .modalHead{
+  background:rgba(18,23,42,.96)!important;
+  border-bottom-color:var(--border-1)!important;
+}
+html[data-theme="dark"] .modal .actions{
+  background:rgba(18,23,42,.96)!important;
+  border-top-color:var(--border-1)!important;
+  box-shadow:0 -14px 32px rgba(0,0,0,.16)!important;
+}
+html[data-theme="dark"] .offerMetric,
+html[data-theme="dark"] .orderStep,
+html[data-theme="dark"] .table th,
+html[data-theme="dark"] .table td,
+html[data-theme="dark"] .empty,
+html[data-theme="dark"] .draftSafetyNote,
+html[data-theme="dark"] .modalGuide,
+html[data-theme="dark"] .inviteBox{
+  background:#111628!important;
+  color:var(--text-2)!important;
+  border-color:var(--border-1)!important;
+}
+html[data-theme="dark"] .table td{color:var(--text-1)!important}
+html[data-theme="dark"] .table tr:hover td{background:#191f33!important}
+html[data-theme="dark"] .orderStep.done{background:#143329!important;border-color:#245a45!important;color:#70e4b4!important}
+html[data-theme="dark"] .orderStep.current{background:#252047!important;border-color:#443b78!important;color:#aaa3ff!important}
+html[data-theme="dark"] .mobileNav{
+  background:rgba(13,16,32,.94)!important;
+  border-color:var(--border-1)!important;
+  box-shadow:0 -14px 34px rgba(0,0,0,.22)!important;
+}
+html[data-theme="dark"] .mobileNav button{color:#8f98b2!important}
+html[data-theme="dark"] .mobileNav button.on{background:#252047!important;color:#b1aaff!important}
+html[data-theme="dark"] #toast{background:#f1f3f9!important;color:#11152a!important}
+html[data-theme="dark"] .connectionBanner{background:#3a2a16!important;color:#f0bd70!important;border-color:#5c4324!important}
+html[data-theme="dark"] ::selection{background:rgba(129,118,255,.32);color:#fff}
+
+/* theme/language controls */
+.prefQuick{
+  width:39px;height:39px;
+  display:grid;place-items:center;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(255,255,255,.9);
+  color:#555b72;
+  cursor:pointer;
+  transition:.16s ease;
+}
+.prefQuick:hover{transform:translateY(-1px);border-color:#d7d3ff;color:#594dea}
+html[data-theme="dark"] .prefQuick{
+  background:#171c30;
+  color:#b8bfd1;
+  border-color:var(--border-1);
+}
+.prefQuick svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.preferenceGrid{display:grid;gap:13px}
+.preferenceGroup{display:grid;gap:7px}
+.preferenceGroup>label{font:700 11px Alexandria;color:var(--ink)}
+.preferenceChoices{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.preferenceChoices.two{grid-template-columns:repeat(2,1fr)}
+.preferenceChoice{
+  min-height:48px;
+  display:grid;place-items:center;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  color:var(--ink);
+  font-weight:700;
+  cursor:pointer;
+}
+.preferenceChoice.on{
+  border-color:#9d94ff;
+  background:#f3f1ff;
+  color:#574ae9;
+  box-shadow:0 0 0 3px rgba(101,88,245,.08);
+}
+html[data-theme="dark"] .preferenceChoice{background:#171c30;border-color:var(--border-1);color:var(--text-2)}
+html[data-theme="dark"] .preferenceChoice.on{background:#27234d;border-color:#5d55a6;color:#b9b3ff}
+.prefPreview{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--surface-2);
+}
+.prefPreview small{color:var(--muted)}
+html[dir="ltr"] body{font-family:"Segoe UI",Inter,Arial,sans-serif}
+html[dir="ltr"] .brand,
+html[dir="ltr"] h1,
+html[dir="ltr"] h2,
+html[dir="ltr"] h3,
+html[dir="ltr"] .btn,
+html[dir="ltr"] .navBtn,
+html[dir="ltr"] .preferenceGroup>label{font-family:"Segoe UI",Inter,Arial,sans-serif!important}
+html[dir="ltr"] .navBtn,
+html[dir="ltr"] .table th,
+html[dir="ltr"] .table td{text-align:left}
+html[dir="ltr"] .navBtn.on{box-shadow:inset 3px 0 #776aff!important}
+html[dir="ltr"] .side{border-left:0;border-right:1px solid rgba(255,255,255,.04)}
+html[dir="ltr"] .bubble.me{align-self:flex-end}
+html[dir="ltr"] .money{text-align:right}
+html[dir="ltr"] .rowCard:before{inset-inline-start:0}
+.authPrefQuickV15{
+  position:absolute;
+  top:24px;
+  inset-inline-end:24px;
+  z-index:4;
+}
+@media(max-width:600px){
+  .authPrefQuickV15{top:20px;inset-inline-end:20px}
+  .preferenceChoices{grid-template-columns:1fr}
+  .preferenceChoices.two{grid-template-columns:1fr 1fr}
 }
 
 </style>
@@ -3262,6 +3580,327 @@ body{font-size:14px;line-height:1.65}
     if(!e.key?.startsWith('minjaz:v14:draft:'))return;
     if(document.visibilityState==='visible') return;
   });
+})();
+</script>
+
+
+<script id="minjazThemeI18nV15">
+(function(){
+  const LANG_KEY='minjaz_lang';
+  const THEME_KEY='minjaz_theme_mode';
+  const supportedLangs=new Set(['ar','en']);
+  const supportedThemes=new Set(['system','light','dark']);
+  let lang=localStorage.getItem(LANG_KEY)||'ar';
+  let themeMode=localStorage.getItem(THEME_KEY)||'system';
+  if(!supportedLangs.has(lang))lang='ar';
+  if(!supportedThemes.has(themeMode))themeMode='system';
+
+  const originalText=new WeakMap();
+  const originalAttrs=new WeakMap();
+  let localizing=false;
+
+  const EN={
+    'مِنجاز':'MINJAZ',
+    'الرئيسية':'Home','مهامي':'My tasks','المهام':'Tasks','الطلبات':'Orders','فريقي':'My team','حسابي':'Account','أعمالي':'My work','لوحة الإدارة':'Admin dashboard','الحساب':'Account',
+    'القائمة':'Menu','الإشعارات':'Notifications','الإعدادات':'Settings','بحث':'Search','القسم':'Category','الأولوية':'Priority','العروض':'Proposals','الكل':'All','عادية':'Normal','عاجلة':'Urgent',
+    'تطبيق':'Apply','مسح':'Clear','إلغاء':'Cancel','حفظ':'Save','إرسال':'Send','إغلاق':'Close','السابق':'Back','التالي':'Next','فتح الطلب':'Open order','عرض الطلب':'View order','عرض الكل':'View all',
+    'عميل':'Client','مستقل':'Freelancer','إدارة':'Admin','مستخدم':'User',
+    'مفتوحة':'Open','تم الاختيار':'Matched','بانتظار الدفع':'Awaiting payment','قيد التنفيذ':'In progress','تم التسليم':'Delivered','مكتملة':'Completed','تعديل مطلوب':'Revision requested','ملغاة':'Cancelled','نزاع':'Dispute','مدفوع':'Paid','غير مدفوع':'Unpaid',
+    'جاري التحميل':'Loading','تعذر تحميل الصفحة':'Could not load this page','إعادة المحاولة':'Try again','الرجوع للرئيسية':'Back to home',
+    'إرسال رمز التحقق':'Send verification code','إعادة إرسال الرمز':'Resend code','دخول':'Sign in','الاسم':'Name','رقم الجوال':'Mobile number','رمز التحقق':'Verification code',
+    'مهمة جديدة':'New task','＋ مهمة جديدة':'+ New task','＋ أنشئ مهمة':'+ Create task','＋ إنشاء أول مهمة':'+ Create first task','نشر المهمة':'Publish task',
+    'إنشاء مهمة جديدة':'Create a new task','أنشئ مهمتك':'Create your task','عنوان المهمة':'Task title','الوصف':'Description','التفاصيل':'Details','من ميزانية':'Budget from','إلى ميزانية':'Budget to','الميزانية من':'Budget from','الميزانية إلى':'Budget to',
+    'موعد نهائي — اختياري':'Deadline — optional','الخدمة':'Service','حدد النوع':'Choose type','اشرح المطلوب':'Describe what you need','الميزانية':'Budget','الوقت والسعر':'Time and price','المراجعة':'Review','تأكد وانشر':'Review and publish',
+    'مهمة مخصصة':'Custom task','ابدأ بقالب جاهز — اختياري':'Start with a template — optional','مرفقات المهمة':'Task attachments',
+    'الفرص المفتوحة':'Open opportunities','كل الأقسام':'All categories','ما أرسلت عليها':'Not applied','أرسلت عليها':'Applied','الأكثر ملاءمة':'Best match','الأحدث':'Newest','الأعلى ميزانية':'Highest budget','مسح الفلاتر':'Clear filters',
+    'إرسال عرض':'Send proposal','تحديث العرض':'Update proposal','السعر':'Price','مدة التسليم بالساعات':'Delivery time in hours','عدد التعديلات':'Revisions','رسالة للعميل':'Message to client',
+    'مقارنة العروض':'Compare proposals','أقل عرض':'Lowest proposal','متوسط العروض':'Average proposals','أسرع تسليم':'Fastest delivery','موثقون':'Verified','ترتيب العروض':'Sort proposals','توازن السعر والجودة':'Price & quality balance','الأعلى تقييمًا':'Highest rated','الأسرع تسليمًا':'Fastest delivery','الأقل سعرًا':'Lowest price','التوثيق':'Verification','كل المستقلين':'All freelancers','موثق فقط':'Verified only','إعادة ضبط':'Reset',
+    '✓ هوية موثقة':'✓ Identity verified','التوثيق غير مكتمل':'Verification incomplete','غير متاح حاليًا':'Currently unavailable','متاح الآن':'Available now','غير متاح':'Unavailable','✓ أنت متاح':'✓ You are available','فعّل متاح الآن':'Set available',
+    'طلباتي':'My orders','مركز طلباتي':'My orders hub','مركز أعمالي':'My work hub','يحتاج إجراء':'Needs action','نشط':'Active','مكتمل':'Completed','قيمة الطلبات':'Order value','صافي المكتمل':'Net completed',
+    'فتح الطلب':'Open order','المحادثة':'Chat','اكتب رسالة':'Write a message','إرسال':'Send','تسليم العمل':'Deliver work','ملاحظات التسليم':'Delivery notes','إرسال التسليم':'Submit delivery','طلب تعديل':'Request revision','وش يحتاج تعديل؟':'What needs to be changed?','إرسال الطلب':'Send request',
+    'اعتماد التسليم':'Approve delivery','إضافة التقييم':'Add review','★ إضافة التقييم':'★ Add review','تعديل التقييم':'Edit review','☆ إضافة لفريقي':'☆ Add to my team',
+    'القيمة':'Amount','الطرف الآخر':'Other party','مدة التسليم المتفق عليها':'Agreed delivery time','تعديلات متبقية':'Revisions left','تاريخ إنشاء الطلب':'Order created',
+    'اختيار':'Selection','الدفع':'Payment','التنفيذ':'Work','التسليم':'Delivery','الاعتماد':'Approval','تم اختيار العرض':'Proposal selected','تأكيد المبلغ':'Confirm payment','بدء العمل':'Start work','استلام العمل':'Receive work','إغلاق الطلب':'Close order',
+    'الدفع يبدأ التنفيذ':'Payment starts the work','إكمال الدفع':'Complete payment','دفع تجريبي':'Demo payment','تم تأكيد الدفع':'Payment confirmed','لن يبدأ التنفيذ قبل الدفع':'Work starts after payment','بانتظار الدفع':'Awaiting payment',
+    'المستقلون':'Freelancers','دليل المستقلين':'Freelancer directory','التقييم':'Rating','مهمة مكتملة':'Completed task','في الموعد':'On time','متوسط الرد':'Average response','نماذج الأعمال':'Portfolio','آخر التقييمات':'Latest reviews',
+    'إرسال الدعوة':'Send invitation','مهارات':'Skills','كل المهارات':'All skills','متاح فقط':'Available only',
+    'الدعم':'Support','تذكرة دعم':'Support ticket','الموضوع':'Subject','طلبات بياناتك':'Your data requests','طلب خصوصية':'Privacy request','نوع الطلب':'Request type','الوصول للبيانات':'Access data','تصدير البيانات':'Export data','تصحيح البيانات':'Correct data','تقييد المعالجة':'Restrict processing','حذف الحساب':'Delete account',
+    'الدعم داخل مِنجاز':'MINJAZ support','متى تستخدم النزاع؟':'When should you open a dispute?','النزاعات':'Disputes','فتح نزاع':'Open dispute','الأمان':'Safety',
+    'الأرباح والسحب':'Earnings & payouts','طلب سحب':'Request payout','صافي الأرباح':'Net earnings','المتاح للسحب':'Available to withdraw','قيد المعالجة':'Processing','تم سحبه':'Paid out','مبلغ السحب':'Payout amount',
+    'المستخدمون':'Users','جاهزية الإطلاق':'Launch readiness','طلبات السحب':'Payout requests','صحة التشغيل':'Operational health','مستكشف التشغيل':'Operations explorer','الدعم':'Support','الخصوصية':'Privacy',
+    'تثبيت التطبيق':'Install app','ثبّت مِنجاز كتطبيق':'Install MINJAZ as an app','تثبيت':'Install','لاحقًا':'Later','نسخة جديدة من مِنجاز جاهزة':'A new MINJAZ version is ready','تحديث الآن':'Update now',
+    'المظهر واللغة':'Appearance & language','المظهر':'Appearance','فاتح':'Light','داكن':'Dark','حسب الجهاز':'System','اللغة':'Language','العربية':'Arabic','الإنجليزية':'English','معاينة الإعدادات':'Preferences preview',
+    'أي تعديل في النص أو الميزانية يُحفظ تلقائيًا على هذا الجهاز.':'Changes to text and budget are saved automatically on this device.',
+    'استعدنا مسودة محفوظة من هذا الجهاز.':'We restored a draft saved on this device.','يُحفظ النص تلقائيًا على هذا الجهاز حتى يتم الإرسال بنجاح.':'This text is saved on this device until it is submitted successfully.',
+    'تعذر الاتصال بخدمة مِنجاز. جرّب مرة ثانية بعد قليل':'Could not connect to MINJAZ. Please try again shortly.',
+    'صار خطأ غير متوقع — جرّب الإجراء مرة ثانية':'Something went wrong — try the action again.',
+    'تعذر تحميل الصفحة — تقدر تعيد المحاولة':'Could not load the page — you can try again.',
+    'تم تثبيت مِنجاز على جهازك':'MINJAZ was installed on your device.',
+    'راجع بيانات المهمة':'Review the task details','تم نشر المهمة':'Task published','تعذر إرسال العرض':'Could not send proposal','تم إرسال عرضك':'Proposal sent',
+    'تعذر إرسال الرسالة':'Could not send message','تم التسليم':'Delivered','تم تحديث الطلب':'Request updated','تم فتح التذكرة':'Support ticket opened',
+    'عام':'General','عاجل':'Urgent','عادي':'Normal','مرن':'Flexible','بدون تصنيف':'Uncategorized','ميزانية مفتوحة':'Open budget',
+    'تصميم':'Design','سوشيال ميديا':'Social media','كتابة ومحتوى':'Writing & content','Excel وبيانات':'Excel & data','Word وPDF':'Word & PDF','فيديو وصوت':'Video & audio','ترجمة':'Translation','أعمال':'Business','ذكاء اصطناعي':'Artificial intelligence'
+  };
+
+  const PLACEHOLDERS={
+    'مثال: صالح':'Example: Saleh',
+    'مثال: تصميم، Excel، ترجمة':'Example: design, Excel, translation',
+    'مثال: تصميم 3 منشورات لإنستغرام':'Example: design 3 Instagram posts',
+    'اشرح المطلوب والملفات والمقاس أو أي تفاصيل مهمة':'Describe the requirements, files, dimensions, and any important details',
+    'وضح وش راح تسوي وليش عرضك مناسب':'Explain what you will do and why your proposal is a good fit',
+    'اكتب رسالة':'Write a message',
+    'شفت ملفك وأعتقد المهمة تناسبك':'I saw your profile and think this task suits you',
+    'أي ملاحظة للإدارة':'Any note for the admin',
+    'اسم، رقم طلب، حالة أو موضوع':'Name, order number, status, or subject'
+  };
+
+  const regexRules=[
+    [/^(\d+)\s*فرصة$/,'$1 opportunities'],
+    [/^(\d+)\s*عرض$/,'$1 proposals'],
+    [/^(\d+)\s*إجراء$/,'$1 actions'],
+    [/^(\d+)\s*متابعة$/,'$1 follow-ups'],
+    [/^(\d+)\s*نشط$/,'$1 active'],
+    [/^(\d+)\s*مفتوح$/,'$1 open'],
+    [/^(\d+)\s*مهمة مكتملة$/,'$1 completed tasks'],
+    [/^(\d+)\s*طلب بانتظار الدفع$/,'$1 orders awaiting payment'],
+    [/^(\d+)\s*تسليم بانتظارك$/,'$1 deliveries awaiting your review'],
+    [/^(\d+)\s*طلب تعديل$/,'$1 revision requests'],
+    [/^(\d+)\s*عمل قيد التنفيذ$/,'$1 jobs in progress'],
+    [/^(\d+)\s*تسليم بانتظار العميل$/,'$1 deliveries awaiting the client'],
+    [/^(\d+)\s*س$/,'$1 h'],
+    [/^طلب #(\d+)$/,'Order #$1'],
+    [/^العميل:\s*(.+)$/,'Client: $1'],
+    [/^المستقل:\s*(.+)$/,'Freelancer: $1'],
+    [/^الحالة:\s*(.+)$/,'Status: $1'],
+    [/^الموعد:\s*(.+)$/,'Deadline: $1'],
+    [/^باقي\s*(\d+)\s*ساعة$/,'$1 hours left'],
+    [/^باقي\s*(\d+)\s*يوم$/,'$1 days left'],
+    [/^متأخر\s*(.+)$/,'Overdue by $1'],
+    [/^آخر حفظ\s*(.+)$/,'Last saved $1']
+  ];
+
+  function translateString(s){
+    if(lang!=='en')return s;
+    const raw=String(s??'');
+    const lead=raw.match(/^\s*/)?.[0]||'', trail=raw.match(/\s*$/)?.[0]||'';
+    const core=raw.trim();
+    if(!core)return raw;
+    if(EN[core])return lead+EN[core]+trail;
+    for(const [re,out] of regexRules){
+      if(re.test(core))return lead+core.replace(re,out)+trail;
+    }
+    return raw;
+  }
+
+  function translateTextNode(node){
+    if(node.nodeType!==Node.TEXT_NODE)return;
+    if(node.parentElement?.closest('script,style,noscript,template'))return;
+    if(!originalText.has(node))originalText.set(node,node.nodeValue);
+    const original=originalText.get(node);
+    const next=lang==='en'?translateString(original):original;
+    if(node.nodeValue!==next)node.nodeValue=next;
+  }
+
+  function translateAttrs(el){
+    if(!(el instanceof Element)||el.matches('script,style,noscript,template'))return;
+    if(!originalAttrs.has(el)){
+      originalAttrs.set(el,{
+        placeholder:el.getAttribute('placeholder'),
+        title:el.getAttribute('title'),
+        aria:el.getAttribute('aria-label')
+      });
+    }
+    const o=originalAttrs.get(el);
+    if(lang==='en'){
+      if(o.placeholder!=null)el.setAttribute('placeholder',PLACEHOLDERS[o.placeholder]||translateString(o.placeholder));
+      if(o.title!=null)el.setAttribute('title',translateString(o.title));
+      if(o.aria!=null)el.setAttribute('aria-label',translateString(o.aria));
+    }else{
+      if(o.placeholder!=null)el.setAttribute('placeholder',o.placeholder);
+      if(o.title!=null)el.setAttribute('title',o.title);
+      if(o.aria!=null)el.setAttribute('aria-label',o.aria);
+    }
+  }
+
+  function localizeTree(root=document.body){
+    if(localizing||!root)return;
+    localizing=true;
+    try{
+      if(root.nodeType===Node.TEXT_NODE)translateTextNode(root);
+      else{
+        translateAttrs(root);
+        const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);
+        let n;
+        while((n=walker.nextNode())){
+          if(n.nodeType===Node.TEXT_NODE)translateTextNode(n);
+          else translateAttrs(n);
+        }
+      }
+    }finally{localizing=false}
+  }
+
+  function effectiveTheme(){
+    if(themeMode==='dark')return'dark';
+    if(themeMode==='light')return'light';
+    return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  }
+
+  function themeMetaColor(){
+    return effectiveTheme()==='dark'?'#0d1020':'#11152a';
+  }
+
+  function applyTheme(){
+    document.documentElement.dataset.theme=effectiveTheme();
+    document.documentElement.dataset.themeMode=themeMode;
+    const meta=document.querySelector('meta[name="theme-color"]');
+    if(meta)meta.setAttribute('content',themeMetaColor());
+    refreshPreferenceUI();
+  }
+
+  function applyLang(){
+    document.documentElement.lang=lang;
+    document.documentElement.dir=lang==='en'?'ltr':'rtl';
+    document.title=lang==='en'?'MINJAZ — Get it done':'مِنجاز — مهمتك، لها من ينجزها';
+    localizeTree(document.body);
+    refreshPreferenceUI();
+  }
+
+  function setTheme(mode){
+    if(!supportedThemes.has(mode))return;
+    themeMode=mode;
+    localStorage.setItem(THEME_KEY,mode);
+    applyTheme();
+  }
+
+  function setLang(next){
+    if(!supportedLangs.has(next))return;
+    lang=next;
+    localStorage.setItem(LANG_KEY,next);
+    location.reload();
+  }
+
+  function refreshPreferenceUI(){
+    document.querySelectorAll('[data-theme-choice]').forEach(x=>x.classList.toggle('on',x.dataset.themeChoice===themeMode));
+    document.querySelectorAll('[data-lang-choice]').forEach(x=>x.classList.toggle('on',x.dataset.langChoice===lang));
+  }
+
+  window.minjazSetThemeV15=setTheme;
+  window.minjazSetLangV15=setLang;
+  window.minjazPrefsV15=function(){
+    const themeLabel=themeMode==='dark'?(lang==='en'?'Dark':'داكن'):themeMode==='light'?(lang==='en'?'Light':'فاتح'):(lang==='en'?'System':'حسب الجهاز');
+    const languageLabel=lang==='en'?'English':'العربية';
+    openModal('<div class="modalHead"><div><h2>'+(lang==='en'?'Appearance & language':'المظهر واللغة')+'</h2><div style="font-size:10px;color:var(--muted)">'+(lang==='en'?'Saved on this device':'تُحفظ الإعدادات على هذا الجهاز')+'</div></div><button class="x" onclick="closeModal()">×</button></div>'+
+      '<div class="preferenceGrid">'+
+        '<div class="preferenceGroup"><label>'+(lang==='en'?'Appearance':'المظهر')+'</label><div class="preferenceChoices">'+
+          '<button class="preferenceChoice '+(themeMode==='system'?'on':'')+'" data-theme-choice="system" onclick="minjazSetThemeV15(\\'system\\')">'+(lang==='en'?'System':'حسب الجهاز')+'</button>'+
+          '<button class="preferenceChoice '+(themeMode==='light'?'on':'')+'" data-theme-choice="light" onclick="minjazSetThemeV15(\\'light\\')">'+(lang==='en'?'Light':'فاتح')+'</button>'+
+          '<button class="preferenceChoice '+(themeMode==='dark'?'on':'')+'" data-theme-choice="dark" onclick="minjazSetThemeV15(\\'dark\\')">'+(lang==='en'?'Dark':'داكن')+'</button>'+
+        '</div></div>'+
+        '<div class="preferenceGroup"><label>'+(lang==='en'?'Language':'اللغة')+'</label><div class="preferenceChoices two">'+
+          '<button class="preferenceChoice '+(lang==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\\'ar\\')">العربية</button>'+
+          '<button class="preferenceChoice '+(lang==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\\'en\\')">English</button>'+
+        '</div></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v15</span></div>'+
+      '</div>');
+    refreshPreferenceUI();
+  };
+
+  function injectQuickButton(){
+    const chip=document.querySelector('.userChip');
+    if(!chip||document.getElementById('prefQuickV15'))return;
+    const b=document.createElement('button');
+    b.id='prefQuickV15';
+    b.className='prefQuick';
+    b.type='button';
+    b.setAttribute('aria-label',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.setAttribute('title',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    b.onclick=window.minjazPrefsV15;
+    chip.prepend(b);
+  }
+
+  function injectAccountPrefs(){
+    const host=document.getElementById('account');
+    if(!host||host.querySelector('[data-pref-v15]'))return;
+    const sec=document.createElement('div');
+    sec.dataset.prefV15='1';
+    sec.className='card';
+    sec.innerHTML='<div class="row space"><div><h3 style="margin:0;font-family:Alexandria;font-size:13px">'+(lang==='en'?'Appearance & language':'المظهر واللغة')+'</h3><p style="margin:5px 0 0;color:var(--muted);font-size:10px">'+(lang==='en'?'Choose light, dark, system theme, and app language.':'اختر الثيم الفاتح أو الداكن أو حسب الجهاز، ولغة التطبيق.')+'</p></div><button class="btn ghost" onclick="minjazPrefsV15()">'+(lang==='en'?'Change':'تغيير')+'</button></div>';
+    host.prepend(sec);
+  }
+
+  const baseAccount=window.renderAccount;
+  if(typeof baseAccount==='function'){
+    window.renderAccount=async function(){
+      await baseAccount();
+      injectAccountPrefs();
+      localizeTree(document.getElementById('account'));
+    };
+  }
+
+  const observer=new MutationObserver(muts=>{
+    if(localizing)return;
+    for(const m of muts){
+      m.addedNodes.forEach(n=>{
+        if(n.nodeType===Node.ELEMENT_NODE||n.nodeType===Node.TEXT_NODE)localizeTree(n);
+      });
+    }
+    injectQuickButton();
+    injectAuthPrefButton();
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
+
+  const media=window.matchMedia?.('(prefers-color-scheme: dark)');
+  if(media){
+    const onChange=()=>{if(themeMode==='system')applyTheme()};
+    if(media.addEventListener)media.addEventListener('change',onChange);
+    else if(media.addListener)media.addListener(onChange);
+  }
+
+
+  const STATUS_AR={open:'مفتوحة',matched:'تم الاختيار',awaiting_payment:'بانتظار الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',completed:'مكتملة',revision_requested:'تعديل مطلوب',cancelled:'ملغاة',disputed:'نزاع',paid:'مدفوع',unpaid:'غير مدفوع'};
+  const STATUS_EN={open:'Open',matched:'Matched',awaiting_payment:'Awaiting payment',in_progress:'In progress',delivered:'Delivered',completed:'Completed',revision_requested:'Revision requested',cancelled:'Cancelled',disputed:'Dispute',paid:'Paid',unpaid:'Unpaid'};
+
+  function applyLocaleHelpers(){
+    try{Object.assign(statusMap,lang==='en'?STATUS_EN:STATUS_AR)}catch(e){}
+    window.money=function(n){
+      const locale=lang==='en'?'en-SA':'ar-SA';
+      return Number(n||0).toLocaleString(locale,{maximumFractionDigits:2})+(lang==='en'?' SAR':' ر.س');
+    };
+    window.date=function(s){
+      if(!s)return'—';
+      return new Date(s).toLocaleDateString(lang==='en'?'en-SA':'ar-SA');
+    };
+    window.roleName=function(r){
+      if(lang==='en')return({client:'Client',freelancer:'Freelancer',admin:'Admin'}[r]||r);
+      return({client:'عميل',freelancer:'مستقل',admin:'إدارة'}[r]||r);
+    };
+    const baseToast=window.__minjazBaseToastV15||(window.__minjazBaseToastV15=window.toast);
+    if(typeof baseToast==='function')window.toast=function(s){return baseToast(lang==='en'?translateString(s):s)};
+  }
+
+  function injectAuthPrefButton(){
+    const panel=document.querySelector('.authPanel');
+    if(!panel||document.getElementById('authPrefQuickV15'))return;
+    const b=document.createElement('button');
+    b.id='authPrefQuickV15';
+    b.className='prefQuick authPrefQuickV15';
+    b.type='button';
+    b.setAttribute('aria-label',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.setAttribute('title',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10M9 3v2c0 4-2 7-5 9"/><path d="M6 10c1.5 2 3.4 3.5 5.8 4.5"/><path d="m14 20 4-10 4 10"/><path d="M15.5 17h5"/></svg>';
+    b.onclick=window.minjazPrefsV15;
+    panel.appendChild(b);
+  }
+
+  window.minjazLangV15=()=>lang;
+  window.minjazThemeModeV15=()=>themeMode;
+  applyLocaleHelpers();
+  applyTheme();
+  applyLang();
+  injectQuickButton();
+  injectAuthPrefButton();
+  setTimeout(()=>{injectQuickButton();injectAuthPrefButton();if(currentPage==='account')injectAccountPrefs();localizeTree(document.body)},80);
 })();
 </script>
 
