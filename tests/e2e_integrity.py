@@ -67,6 +67,9 @@ def run():
     freelancer=login("+9667"+seed,"freelancer","Integrity Freelancer")
     admin=login(ADMIN_PHONE,"admin","MINJAZ Admin")
     ct,ft,at=client["token"],freelancer["token"],admin["token"]
+    legal={"documents":["terms","privacy","marketplace_rules"]}
+    call("POST","/api/v1/legal/accept",legal,ct,expected=(200,))
+    call("POST","/api/v1/legal/accept",legal,ft,expected=(200,))
     cid,fid=client["user"]["id"],freelancer["user"]["id"]
 
     # Blocking lifecycle.
