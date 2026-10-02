@@ -204,6 +204,261 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
 
+
+/* MINJAZ premium polish v8 */
+:root{
+  --radius-xl:26px;
+  --radius-lg:20px;
+  --radius-md:15px;
+  --surface-soft:#fbfbfe;
+  --brand-glow:rgba(101,88,245,.18);
+}
+.auth{
+  min-height:100dvh;
+  grid-template-columns:minmax(390px,520px) minmax(0,1fr);
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.95),rgba(248,249,253,.98));
+}
+.authPanel{
+  position:relative;
+  isolation:isolate;
+}
+.authPanel:before{
+  content:"";
+  position:absolute;
+  inset:18px;
+  border:1px solid rgba(232,234,242,.75);
+  border-radius:28px;
+  pointer-events:none;
+  z-index:-1;
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.38));
+  box-shadow:0 28px 80px rgba(17,21,42,.055);
+}
+.authPanel .brand{
+  width:max-content;
+  padding:7px 10px 7px 8px;
+  border:1px solid #e8e9f1;
+  border-radius:15px;
+  background:rgba(255,255,255,.86);
+  box-shadow:0 8px 24px rgba(17,21,42,.045);
+}
+.authPanel .brand .mark{width:38px;height:38px;border-radius:12px}
+.authPanel h1{
+  max-width:440px;
+  margin-top:34px;
+  font-size:32px;
+  line-height:1.45;
+}
+.authPanel>p{max-width:450px;font-size:13px}
+.authArt{
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.authArt:before{
+  width:520px;
+  height:520px;
+  left:-160px;
+  bottom:-210px;
+  background:radial-gradient(circle,#2cc9b72e,transparent 68%);
+  filter:none;
+}
+.authArt:after{
+  width:380px;
+  height:380px;
+  right:-100px;
+  top:-90px;
+  background:radial-gradient(circle,#8a7dff35,transparent 68%);
+  filter:none;
+}
+.authArt .brand{
+  width:max-content;
+  padding:7px 11px;
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:15px;
+  background:rgba(255,255,255,.055);
+  backdrop-filter:blur(12px);
+}
+.artCopy{
+  margin-top:auto;
+  margin-bottom:8vh;
+  max-width:630px;
+}
+.artCopy:before{
+  content:"من الفكرة إلى الإنجاز";
+  display:inline-flex;
+  align-items:center;
+  min-height:29px;
+  padding:0 10px;
+  margin-bottom:15px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  color:#e9e8ff;
+  font-size:10px;
+  font-weight:700;
+}
+.artCopy h2{font-size:38px;letter-spacing:-.025em}
+.artCopy p{max-width:560px;font-size:13px;color:#d2d7e8}
+.artCards{gap:12px;margin-top:32px}
+.artCard{padding:16px;border-radius:19px}
+.artCard b{font-size:12px}
+.artCard small{font-size:9px}
+
+.shell{grid-template-columns:252px minmax(0,1fr)}
+.side{padding:20px 14px}
+.side .brand{
+  margin:0 2px 14px;
+  padding:7px 9px 17px;
+}
+.side .brand .mark{width:36px;height:36px;border-radius:12px}
+.navGroup{margin-top:14px}
+.navLabel{padding-inline:10px;font-size:8px}
+.navBtn{
+  min-height:43px;
+  padding:9px 10px;
+  border-radius:13px;
+}
+.navIcon{width:22px}
+.topbar{
+  height:74px;
+  padding-inline:28px;
+}
+.topTitle h1{font-size:17px;letter-spacing:-.015em}
+.content{max-width:1280px;padding:26px 28px 112px}
+.hero{
+  min-height:210px;
+  align-items:center;
+  border-radius:28px;
+  padding:28px;
+}
+.hero h2{font-size:27px;letter-spacing:-.025em}
+.hero p{font-size:12px;max-width:700px}
+.heroActions{margin-top:4px}
+.heroStats{gap:11px}
+.heroStat{padding:15px;border-radius:18px}
+.heroStat b{font-size:23px}
+.sectionHead{margin:27px 0 12px}
+.sectionHead h2{font-size:15px}
+.card{
+  border-radius:20px;
+  padding:16px;
+}
+.rowCard{
+  min-height:84px;
+  border-radius:19px;
+  padding:15px 16px;
+}
+.rowCard h3{font-size:11px}
+.categories{gap:11px}
+.cat{
+  min-height:112px;
+  border-radius:19px;
+  padding:15px;
+}
+.cat span{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border-radius:13px;
+  background:#f3f1ff;
+  font-size:21px;
+}
+.metric b{font-size:24px}
+.pill{padding:5px 9px}
+.modal{border-radius:26px}
+.offerCard,.attentionCard,.orderFact,.oppToolbar,.profileNudge{border-radius:18px}
+.offerCard{padding:15px}
+.chat{border-radius:18px;background:#fafafe}
+.mobileNav button{min-height:50px;transition:.15s ease}
+.mobileNav button.on{
+  background:linear-gradient(180deg,#f2f0ff,#ece9ff);
+  box-shadow:inset 0 0 0 1px #e3deff;
+}
+
+@media(max-width:1100px){
+  .shell{grid-template-columns:232px minmax(0,1fr)}
+  .content{padding-inline:20px}
+}
+@media(max-width:980px){
+  .shell{grid-template-columns:1fr}
+  .content{padding:18px 16px 96px}
+  .topbar{height:66px;padding-inline:16px}
+  .mobileNav{
+    margin:0 8px calc(8px + env(safe-area-inset-bottom));
+    left:0;
+    right:0;
+    bottom:0;
+    border:1px solid rgba(228,230,239,.95);
+    border-radius:19px;
+    overflow:hidden;
+    padding:5px;
+    box-shadow:0 14px 38px rgba(17,21,42,.14);
+  }
+  .hero{min-height:auto;padding:22px}
+}
+@media(max-width:720px){
+  .auth{display:block;min-height:100dvh}
+  .authPanel{
+    min-height:100dvh;
+    padding:34px 20px 30px;
+    justify-content:center;
+  }
+  .authPanel:before{inset:12px;border-radius:24px}
+  .authPanel h1{font-size:27px;margin-top:28px}
+  .authPanel>p{font-size:12px}
+  .roleSwitch{margin-top:3px}
+  .hero h2{font-size:21px}
+  .topTitle small{display:none}
+  .content{padding-top:12px}
+  .sectionHead{margin-top:21px}
+  .card,.rowCard,.cat,.offerCard{box-shadow:0 8px 26px rgba(17,21,42,.045)}
+}
+
+
+/* unified navigation icon system */
+.navIcon{
+  width:22px;
+  height:22px;
+  display:grid;
+  place-items:center;
+  flex:0 0 22px;
+}
+.navIcon svg,.mobileNav button>span svg{
+  width:19px;
+  height:19px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.mobileNav button>span{
+  min-height:22px;
+  display:grid;
+  place-items:center;
+  margin-bottom:2px;
+  font-size:0!important;
+}
+
+
+.notifIcon{
+  display:grid!important;
+  place-items:center;
+}
+.notifIcon svg{
+  width:18px;
+  height:18px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
 </style>
 </head>
 <body>
@@ -539,10 +794,18 @@ async function verifyOtp(){
 }
 function showAuth(){$('auth').classList.remove('hidden');$('app').classList.add('hidden')}
 async function logout(){try{await api('/api/v1/auth/logout',{method:'POST'})}catch{}localStorage.removeItem('minjaz_token');token='';me=null;showAuth()}
+const navIcons={
+ home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9 21v-6h6v6"/></svg>',
+ tasks:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="m8.5 12 2 2 5-5"/></svg>',
+ orders:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M4 12h16"/><path d="M10 12v2h4v-2"/></svg>',
+ team:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c.5-4 2.5-6 5.5-6s5 2 5.5 6"/><path d="M16 7.5a2.5 2.5 0 0 1 0 5"/><path d="M17 15c2.2.6 3.5 2.3 3.8 5"/></svg>',
+ account:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c.8-4.5 3.3-7 7.5-7s6.7 2.5 7.5 7"/></svg>',
+ admin:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>'
+};
 const navByRole={
- client:[['home','⌂','الرئيسية'],['tasks','＋','مهامي'],['orders','▣','الطلبات'],['team','☆','فريقي'],['account','○','حسابي']],
- freelancer:[['home','⌂','الرئيسية'],['tasks','⌕','المهام'],['orders','▣','أعمالي'],['account','○','حسابي']],
- admin:[['admin','⌂','لوحة الإدارة'],['tasks','▦','المهام'],['orders','▣','الطلبات'],['account','○','الحساب']]
+ client:[['home',navIcons.home,'الرئيسية'],['tasks',navIcons.tasks,'مهامي'],['orders',navIcons.orders,'الطلبات'],['team',navIcons.team,'فريقي'],['account',navIcons.account,'حسابي']],
+ freelancer:[['home',navIcons.home,'الرئيسية'],['tasks',navIcons.tasks,'المهام'],['orders',navIcons.orders,'أعمالي'],['account',navIcons.account,'حسابي']],
+ admin:[['admin',navIcons.admin,'لوحة الإدارة'],['tasks',navIcons.tasks,'المهام'],['orders',navIcons.orders,'الطلبات'],['account',navIcons.account,'الحساب']]
 };
 function buildNav(){
  const nav=navByRole[me.user.role]||navByRole.client;
@@ -1072,7 +1335,19 @@ boot();
   return res
  };
 
- const notifMeta={proposal:['💬','عرض جديد'],task_invite:['✦','دعوة خاصة'],message:['✉','رسالة'],delivery:['✓','تسليم'],revision:['↻','تعديل'],payment:['﷼','دفع'],order:['▣','طلب'],cancellation:['×','إلغاء'],payout:['↗','سحب'],general:['●','عام']};
+ const notifGlyphs={
+ proposal:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
+ invite:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.4 4.9L20 9l-4 3.9.9 5.6-4.9-2.6-4.9 2.6.9-5.6L4 9l5.6-1.1z"/></svg>',
+ message:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>',
+ delivery:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>',
+ revision:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 0-2 5"/></svg>',
+ payment:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 14h3"/></svg>',
+ order:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+ cancel:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>',
+ payout:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5"/><path d="M10 5h9v9"/></svg>',
+ general:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/></svg>'
+};
+const notifMeta={proposal:[notifGlyphs.proposal,'عرض جديد'],task_invite:[notifGlyphs.invite,'دعوة خاصة'],message:[notifGlyphs.message,'رسالة'],delivery:[notifGlyphs.delivery,'تسليم'],revision:[notifGlyphs.revision,'تعديل'],payment:[notifGlyphs.payment,'دفع'],order:[notifGlyphs.order,'طلب'],cancellation:[notifGlyphs.cancel,'إلغاء'],payout:[notifGlyphs.payout,'سحب'],general:[notifGlyphs.general,'عام']};
  let notifFilter={kind:'',unread:false};
  window.notificationsModal=function(){go('notifications')};
  const _go421=go;go=async function(id){if(id!=='notifications')return _go421(id);currentPage=id;document.querySelectorAll('.page').forEach(x=>x.classList.toggle('on',x.id===id));document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('on',x.dataset.nav===id));document.getElementById('pageTitle').textContent='الإشعارات';document.getElementById('pageSub').textContent='كل التحديثات المهمة في مكان واحد';await renderNotificationsPage()};
