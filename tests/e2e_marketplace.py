@@ -4,6 +4,8 @@ import random
 import time
 import urllib.error
 import urllib.request
+import hashlib
+import psycopg2
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -110,20 +112,33 @@ def run():
     assert same_role.get("idempotent_replay") is True, same_role
     assert activity_count(client_token, "role_switched") == role_before
 
+    def seed_session(user_id, tag):
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    raw = f"{suffix}-{tag}-{random.random()}".encode("utf-8")
+                    token_hash = hashlib.sha256(raw).hexdigest()
+                    cur.execute(
+                        "insert into sessions(user_id,token_hash,expires_at,device_label,last_seen_at) values(%s,%s,now()+interval '1 day',%s,now()) returning id",
+                        (user_id, token_hash, f"E2E {tag}"),
+                    )
+                    return int(cur.fetchone()[0])
+        finally:
+            conn.close()
+
     # Revoking an already revoked session is a successful replay, not a false 404.
-    extra_token = login(client_phone, "client", "E2E Client Updated")
-    sessions = call("GET", "/api/v1/account/sessions", token=client_token, expected=(200,)).get("items") or []
-    target = next(x for x in sessions if not x.get("current"))
+    target_id = seed_session(client_me["user"]["id"], "extra-device")
     revoked_before = activity_count(client_token, "session_revoked")
-    first_revoke = call("DELETE", f"/api/v1/account/sessions/{target['id']}", token=client_token, expected=(200,))
-    retry_revoke = call("DELETE", f"/api/v1/account/sessions/{target['id']}", token=client_token, expected=(200,))
+    first_revoke = call("DELETE", f"/api/v1/account/sessions/{target_id}", token=client_token, expected=(200,))
+    retry_revoke = call("DELETE", f"/api/v1/account/sessions/{target_id}", token=client_token, expected=(200,))
     assert first_revoke.get("idempotent_replay") is False, first_revoke
     assert retry_revoke.get("idempotent_replay") is True, retry_revoke
     assert activity_count(client_token, "session_revoked") == revoked_before + 1
 
     # Revoke-others records activity only when at least one active session actually changed.
-    login(client_phone, "client", "E2E Client Updated")
-    login(client_phone, "client", "E2E Client Updated")
+    seed_session(client_me["user"]["id"], "other-device-a")
+    seed_session(client_me["user"]["id"], "other-device-b")
     others_before = activity_count(client_token, "sessions_revoked")
     revoke_others = call("POST", "/api/v1/account/sessions/revoke-others", {}, client_token, expected=(200,))
     revoke_others_retry = call("POST", "/api/v1/account/sessions/revoke-others", {}, client_token, expected=(200,))
