@@ -66,8 +66,8 @@ jobs:
           assert "def money_decimal(value):" in server
           assert "fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))" in server
           assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
-          assert "def deliver_order_atomic(oid,user_id,note,attachments=None):" in server
-          assert "def request_revision_atomic(oid,user_id,note):" in server
+          assert "def deliver_order_atomic(oid,user_id,note,attachments=None,idempotency_key=None,idempotency_fingerprint=None):" in server
+          assert "def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def complete_order_atomic(oid,user_id):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
@@ -91,6 +91,11 @@ jobs:
           assert "def message_request_fingerprint(" in server
           assert "message_idempotency_keys" in server
           assert "__messagePendingPayloads" in ui
+          assert "def claim_order_action_idempotency(" in server
+          assert "def order_action_request_fingerprint(" in server
+          assert "order_action_idempotency_keys" in server
+          assert "__deliveryPendingPayloads" in ui
+          assert "__revisionPendingPayloads" in ui
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")
