@@ -58,6 +58,25 @@ def run():
     ct,t1,t2=client["token"],f1["token"],f2["token"]
     accept_legal(ct);accept_legal(t1);accept_legal(t2)
 
+    search_key=f"saved-search-race-{base}"
+    search_payload={"name":"Saved search retry","filters":{"urgency":"urgent","sort":"latest","min_budget":"100"},"idempotency_key":search_key}
+    search_barrier=Barrier(2)
+    def save_same_search():
+        search_barrier.wait()
+        return raw_call("POST","/api/v1/freelancer/saved-searches",search_payload,t1)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        first=ex.submit(save_same_search);second=ex.submit(save_same_search)
+        search_results=[first.result(),second.result()]
+    assert sorted(x[0] for x in search_results)==[200,201],search_results
+    search_ids={int(x[1]["id"]) for x in search_results}
+    assert len(search_ids)==1,search_results
+    assert sum(1 for _,payload in search_results if payload.get("idempotent_replay"))==1,search_results
+    saved_searches=call("GET","/api/v1/freelancer/saved-searches",token=t1,expected=(200,)).get("items") or []
+    assert len([x for x in saved_searches if int(x["id"]) in search_ids])==1,saved_searches
+    changed_search=dict(search_payload);changed_search["name"]="Changed name same key"
+    changed_result=raw_call("POST","/api/v1/freelancer/saved-searches",changed_search,t1)
+    assert changed_result[0]==409 and changed_result[1].get("error")=="idempotency_key_reused",changed_result
+
     # Concurrent double-submit with the same idempotency key creates one task and one attachment.
     idem_key=f"task-race-{base}"
     idem_payload={
