@@ -109,10 +109,40 @@ def run():
     )
     assert len(freelancer_profile.get("skills") or []) >= 3, freelancer_profile
 
+    client_profile = call(
+        "PATCH",
+        "/api/v1/client/profile",
+        {
+            "company_name": "MINJAZ E2E Client",
+            "city": "Riyadh",
+            "sector": "Digital Services",
+            "bio": "ملف عميل تجريبي لاختبار رحلة الإعداد الكاملة.",
+        },
+        client_token,
+        expected=(200,),
+    )
+    assert client_profile.get("company_name") == "MINJAZ E2E Client", client_profile
+
+    portfolio = call(
+        "POST",
+        "/api/v1/freelancer/portfolio",
+        {
+            "title": "نموذج عمل E2E",
+            "description": "نموذج تجريبي للتأكد من اكتمال خطوة معرض الأعمال.",
+            "external_url": "https://example.com/minjaz-e2e-work",
+        },
+        freelancer_token,
+    )
+    assert portfolio.get("id"), portfolio
+
     client_ready = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     freelancer_ready = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
     assert client_ready.get("complete") is True, client_ready
+    assert next(x for x in client_ready["steps"] if x.get("key") == "profile").get("done") is True, client_ready
+    assert int(client_ready.get("completion_percent") or 0) < 100, client_ready
     assert freelancer_ready.get("complete") is True, freelancer_ready
+    assert next(x for x in freelancer_ready["steps"] if x.get("key") == "portfolio").get("done") is True, freelancer_ready
+    assert int(freelancer_ready.get("completion_percent") or 0) == 100, freelancer_ready
 
     task = call(
         "POST",
@@ -132,6 +162,7 @@ def run():
     client_after_task = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     first_task_step = next(x for x in client_after_task["steps"] if x.get("key") == "first_task")
     assert first_task_step.get("done") is True, client_after_task
+    assert int(client_after_task.get("completion_percent") or 0) == 100, client_after_task
 
     opportunities = call("GET", "/api/v1/tasks", token=freelancer_token, expected=(200,)).get("items") or []
     assert any(int(item["id"]) == int(task_id) for item in opportunities), "task_not_visible"
@@ -288,6 +319,9 @@ def run():
         "onboarding_freelancer": True,
         "legal_acceptance": True,
         "freelancer_profile_readiness": True,
+        "client_profile_readiness": True,
+        "portfolio_readiness": True,
+        "onboarding_completion_100": True,
         "tasks": True,
         "proposals": True,
         "orders": True,
