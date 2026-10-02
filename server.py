@@ -1545,6 +1545,38 @@ def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,r
     if not row.get('result_id'):return None,'idempotency_conflict'
     return dict(row),None
 
+def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'saved_search',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select id,name,filters,created_at,updated_at from saved_task_searches where id=%s and freelancer_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'saved-search-create:{int(user_id)}',))
+            cur.execute('select count(*)::int n from saved_task_searches where freelancer_id=%s',(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=20:
+                c.rollback();return None,False,'saved_search_limit'
+            cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
+                           values(%s,%s,%s::jsonb)
+                           returning id,name,filters,created_at,updated_at""",
+                        (int(user_id),name,json.dumps(filters or {},ensure_ascii=False)))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def create_support_ticket_atomic(user_id,category,subject,message,priority,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
@@ -2480,7 +2512,15 @@ class H(BaseHTTPRequestHandler):
                     if not name:return self.sendj(400,{'error':'name_required'})
                     allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
                     if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
-                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=account_request_fingerprint('saved_search',{'name':name,'filters':clean}) if idempotency_key else None
+                    r,replayed,err=create_saved_search_atomic(u['id'],name,clean,idempotency_key or None,fingerprint)
+                    if err=='saved_search_limit':return self.sendj(409,{'error':err,'limit':20})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    r['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,r)
             m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
             if m and method=='DELETE':
                 u=self.require('freelancer');

@@ -141,3 +141,6 @@
                     if not name:return self.sendj(400,{'error':'name_required'})
                     allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
                     if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=account_request_fingerprint('saved_search',{'name':name,'filters':clean}) if idempotency_key else None

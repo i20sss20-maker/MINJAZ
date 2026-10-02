@@ -229,6 +229,38 @@ def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,r
     if not row.get('result_id'):return None,'idempotency_conflict'
     return dict(row),None
 
+def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'saved_search',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select id,name,filters,created_at,updated_at from saved_task_searches where id=%s and freelancer_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'saved-search-create:{int(user_id)}',))
+            cur.execute('select count(*)::int n from saved_task_searches where freelancer_id=%s',(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=20:
+                c.rollback();return None,False,'saved_search_limit'
+            cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
+                           values(%s,%s,%s::jsonb)
+                           returning id,name,filters,created_at,updated_at""",
+                        (int(user_id),name,json.dumps(filters or {},ensure_ascii=False)))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def create_support_ticket_atomic(user_id,category,subject,message,priority,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
