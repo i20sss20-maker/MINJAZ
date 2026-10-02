@@ -1750,6 +1750,63 @@ def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
     try:q("insert into account_activity(user_id,session_id,event_type,label,meta) values(%s,%s,%s,%s,%s::jsonb)",(user_id,session_id,event_type,str(label or '')[:180],json.dumps(meta or {},ensure_ascii=False)),None)
     except Exception as e:print('ACCOUNT_ACTIVITY_ERR',repr(e),flush=True)
 
+def revoke_other_sessions_atomic(user_id,current_session_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""update sessions set revoked_at=now()
+                           where user_id=%s and id<>%s and revoked_at is null and expires_at>now()
+                           returning id""",(int(user_id),int(current_session_id)))
+            revoked=cur.fetchall() or []
+            count=len(revoked)
+            if count:
+                cur.execute("""insert into account_activity(user_id,session_id,event_type,label,meta)
+                               values(%s,%s,'sessions_revoked',%s,%s::jsonb)""",
+                            (int(user_id),int(current_session_id),'تم تسجيل خروج الأجهزة الأخرى',json.dumps({'revoked_count':count},ensure_ascii=False)))
+        c.commit()
+        return count
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def set_active_role_atomic(user_id,role,session_id=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id,phone,name,role,is_verified from users where id=%s for update',(int(user_id),))
+            user=cur.fetchone()
+            if not user:
+                c.rollback();return None,False,'user_not_found'
+            if user.get('role')=='admin':
+                c.rollback();return dict(user),False,'admin_role_locked'
+            cur.execute('select enabled from user_roles where user_id=%s and role=%s',(int(user_id),role))
+            role_row=cur.fetchone()
+            role_enabled=bool(role_row and role_row.get('enabled'))
+            active_changed=str(user.get('role') or '')!=str(role)
+            membership_changed=not role_enabled
+            if membership_changed:
+                cur.execute("""insert into user_roles(user_id,role,enabled) values(%s,%s,true)
+                               on conflict(user_id,role) do update set enabled=true""",(int(user_id),role))
+            if role=='freelancer':
+                cur.execute("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(int(user_id),))
+            if active_changed:
+                cur.execute('update users set role=%s where id=%s',(role,int(user_id)))
+                cur.execute("""insert into account_activity(user_id,session_id,event_type,label,meta)
+                               values(%s,%s,'role_switched',%s,%s::jsonb)""",
+                            (int(user_id),session_id,'تم تغيير الدور النشط',json.dumps({'role':role},ensure_ascii=False)))
+            changed=active_changed or membership_changed
+            cur.execute('select id,phone,name,role,is_verified from users where id=%s',(int(user_id),))
+            current=dict(cur.fetchone())
+        c.commit()
+        return current,changed,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
     try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
     except Exception as e:print('ADMIN_AUDIT_ERR',repr(e),flush=True)
