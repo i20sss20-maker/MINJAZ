@@ -7,5 +7,11 @@
     <path android:fillColor="#2CC9B7" android:pathData="M23,69h35l8,-12h-35z"/>
     <path android:fillColor="#8A7DFF" android:pathData="M30,52h41l8,-12h-41z"/>
     <path android:fillColor="#FFFFFF" android:pathData="M37,35h48l-8,12h-48z"/>
-    <path android:fillColor="#FFFFFF" android:pathData="M70,66l5,5l11,-13" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M70,66l5,5l11,-13"/>
 </vector>
