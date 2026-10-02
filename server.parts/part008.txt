@@ -93,12 +93,15 @@
                 if method=='GET':
                     return self.sendj(200,{'items':q("select id,amount,status,note,admin_note,created_at,updated_at,resolved_at from payout_requests where freelancer_id=%s order by created_at desc limit 100",(u['id'],)),'balance':freelancer_earnings(u['id'])})
                 if method=='POST':
-                    b=self.body();r,err,available=create_payout_request(u['id'],b.get('amount'),b.get('note'))
+                    b=self.body();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    r,err,available,replayed=create_payout_request(u['id'],b.get('amount'),b.get('note'),idempotency_key or None)
                     if err=='kyc_required':return self.sendj(403,{'error':err})
                     if err=='insufficient_balance':return self.sendj(409,{'error':err,'available_balance':float(available)})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
                     if err:return self.sendj(400,{'error':err})
-                    notify(u['id'],'تم استلام طلب السحب',f"المبلغ {float(r['amount']):.2f} ر.س قيد المراجعة",'payout',None)
-                    return self.sendj(201,{'item':r,'balance':freelancer_earnings(u['id'])})
+                    if not replayed:notify(u['id'],'تم استلام طلب السحب',f"المبلغ {float(r['amount']):.2f} ر.س قيد المراجعة",'payout',None)
+                    return self.sendj(200 if replayed else 201,{'item':r,'balance':freelancer_earnings(u['id']),'idempotent_replay':bool(replayed)})
             if p=='/api/v1/freelancer/favorite-tasks' and method=='GET':
                 u=self.require('freelancer');
                 if not u:return
