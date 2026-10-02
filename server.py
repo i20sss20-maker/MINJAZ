@@ -2283,7 +2283,10 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 b=self.body();name=str(b.get('name') or '').strip()[:120]
                 if len(name)<2:return self.sendj(400,{'error':'invalid_name'})
-                r=q('update users set name=%s where id=%s returning id,phone,name,role,is_verified',(name,u['id']),'one');log_account_activity(u['id'],'profile_updated','تم تحديث الاسم الظاهر',u.get('session_id'));return self.sendj(200,r)
+                r=q('update users set name=%s where id=%s and name is distinct from %s returning id,phone,name,role,is_verified',(name,u['id'],name),'one')
+                if r:
+                    log_account_activity(u['id'],'profile_updated','تم تحديث الاسم الظاهر',u.get('session_id'));r['idempotent_replay']=False;return self.sendj(200,r)
+                r=q('select id,phone,name,role,is_verified from users where id=%s',(u['id'],),'one');r['idempotent_replay']=True;return self.sendj(200,r)
             if p=='/api/v1/privacy/export' and method=='GET':
                 u=self.require();
                 if not u:return
@@ -2317,7 +2320,15 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(200,pref)
                 if method=='PATCH':
                     b=self.body();cur=q("select * from user_preferences where user_id=%s",(u['id'],),'one') or {}; ks=('opportunity_alerts','product_updates','marketing','onboarding_dismissed'); vals={k:bool(b[k]) if k in b else bool(cur.get(k,False)) for k in ks}
-                    r=q("insert into user_preferences(user_id,opportunity_alerts,product_updates,marketing,onboarding_dismissed) values(%s,%s,%s,%s,%s) on conflict(user_id) do update set opportunity_alerts=excluded.opportunity_alerts,product_updates=excluded.product_updates,marketing=excluded.marketing,onboarding_dismissed=excluded.onboarding_dismissed,updated_at=now() returning opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at",(u['id'],vals['opportunity_alerts'],vals['product_updates'],vals['marketing'],vals['onboarding_dismissed']),'one');log_account_activity(u['id'],'preferences_updated','تم تحديث إعدادات الحساب',u.get('session_id'));return self.sendj(200,r)
+                    r=q("""insert into user_preferences(user_id,opportunity_alerts,product_updates,marketing,onboarding_dismissed) values(%s,%s,%s,%s,%s)
+                           on conflict(user_id) do update set opportunity_alerts=excluded.opportunity_alerts,product_updates=excluded.product_updates,marketing=excluded.marketing,onboarding_dismissed=excluded.onboarding_dismissed,updated_at=now()
+                           where (user_preferences.opportunity_alerts,user_preferences.product_updates,user_preferences.marketing,user_preferences.onboarding_dismissed)
+                              is distinct from (excluded.opportunity_alerts,excluded.product_updates,excluded.marketing,excluded.onboarding_dismissed)
+                           returning opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at""",
+                        (u['id'],vals['opportunity_alerts'],vals['product_updates'],vals['marketing'],vals['onboarding_dismissed']),'one')
+                    if r:
+                        log_account_activity(u['id'],'preferences_updated','تم تحديث إعدادات الحساب',u.get('session_id'));r['idempotent_replay']=False;return self.sendj(200,r)
+                    r=q("select opportunity_alerts,product_updates,marketing,onboarding_dismissed,updated_at from user_preferences where user_id=%s",(u['id'],),'one');r['idempotent_replay']=True;return self.sendj(200,r)
             if p=='/api/v1/account/activity' and method=='GET':
                 u=self.require();
                 if not u:return
@@ -2374,12 +2385,15 @@ class H(BaseHTTPRequestHandler):
                 if u['role']=='admin':return self.sendj(403,{'error':'admin_role_locked'})
                 b=self.body(); role=str(b.get('role') or '')
                 if role not in ('client','freelancer'):return self.sendj(400,{'error':'invalid_role'})
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
+                role_enabled=q("""insert into user_roles(user_id,role,enabled) values(%s,%s,true)
+                                  on conflict(user_id,role) do update set enabled=true
+                                  where user_roles.enabled is distinct from true returning user_id""",(u['id'],role),'one')
                 if role=='freelancer':q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                log_account_activity(u['id'],'role_switched','تم تغيير الدور النشط',u.get('session_id'),{'role':role})
+                role_changed=q('update users set role=%s where id=%s and role is distinct from %s returning id',(role,u['id'],role),'one')
+                changed=bool(role_enabled or role_changed)
+                if changed:log_account_activity(u['id'],'role_switched','تم تغيير الدور النشط',u.get('session_id'),{'role':role})
                 user=q('select id,phone,name,role,is_verified from users where id=%s',(u['id'],),'one'); roles=enabled_roles(u['id']); user['roles']=roles
-                return self.sendj(200,{'user':user,'roles':roles,'active_role':role})
+                return self.sendj(200,{'user':user,'roles':roles,'active_role':role,'idempotent_replay':not changed})
             if method=='POST' and p=='/api/v1/freelancer/kyc/start':
                 u=self.require('freelancer');
                 if not u:return
