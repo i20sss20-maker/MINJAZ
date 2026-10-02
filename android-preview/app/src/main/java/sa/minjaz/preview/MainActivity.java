@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
                     startActivity(intent);
                 } catch (ActivityNotFoundException missing) {
                     String fallback = intent.getStringExtra("browser_fallback_url");
-                    if (fallback != null && !fallback.isBlank()) {
+                    if (fallback != null && !fallback.trim().isEmpty()) {
                         openExternal(Uri.parse(fallback));
                     }
                 }
