@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -20,6 +22,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -38,6 +41,8 @@ public class MainActivity extends Activity {
     private WebView webView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +53,7 @@ public class MainActivity extends Activity {
 
         buildUi();
         configureWebView();
+        registerNetworkRecovery();
 
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
@@ -201,6 +207,15 @@ public class MainActivity extends Activity {
                     showError();
                 }
                 super.onReceivedHttpError(view, request, errorResponse);
+            }
+
+            @Override
+            public boolean onRenderProcessGone(
+                WebView view,
+                RenderProcessGoneDetail detail
+            ) {
+                recoverWebView();
+                return true;
             }
         });
 
@@ -360,6 +375,54 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void registerNetworkRecovery() {
+        connectivityManager =
+            (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null || Build.VERSION.SDK_INT < 24) return;
+
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                runOnUiThread(() -> {
+                    if (webView != null && errorView != null
+                        && errorView.getVisibility() == View.VISIBLE) {
+                        hideError();
+                        webView.reload();
+                    }
+                });
+            }
+        };
+
+        try {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception ignored) {
+            networkCallback = null;
+        }
+    }
+
+    private void recoverWebView() {
+        final String lastUrl =
+            webView != null && webView.getUrl() != null ? webView.getUrl() : APP_URL;
+
+        if (webView != null) {
+            root.removeView(webView);
+            try {
+                webView.destroy();
+            } catch (Exception ignored) {
+            }
+        }
+
+        webView = new WebView(this);
+        webView.setLayoutParams(new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        root.addView(webView, 0);
+        configureWebView();
+        hideError();
+        webView.loadUrl(lastUrl);
+    }
+
     private void showError() {
         if (errorView != null) errorView.setVisibility(View.VISIBLE);
     }
@@ -437,6 +500,14 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (connectivityManager != null && networkCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {
+            }
+            networkCallback = null;
+        }
+
         if (fileCallback != null) {
             fileCallback.onReceiveValue(null);
             fileCallback = null;
