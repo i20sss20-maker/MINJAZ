@@ -599,25 +599,35 @@ def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fi
     finally:
         c.close()
 
-def complete_order_atomic(oid,user_id):
+def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerprint=None):
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'complete',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from orders where id=%s and client_id=%s',(int(oid),int(user_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return dict(existing),True,None
             cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
                            where o.id=%s for update of o,t""",(int(oid),))
             o=cur.fetchone()
             if not o:
-                c.rollback();return None,'order_not_found'
+                c.rollback();return None,False,'order_not_found'
             if int(o['client_id'])!=int(user_id):
-                c.rollback();return dict(o),'client_only'
+                c.rollback();return dict(o),False,'client_only'
             if o.get('payment_status')!='paid' or o.get('status')!='delivered':
-                c.rollback();return dict(o),'invalid_order_state'
+                c.rollback();return dict(o),False,'invalid_order_state'
             cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
             active_cancel=cur.fetchone()
             if active_cancel:
-                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,'active_cancellation_exists'
+                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,False,'active_cancellation_exists'
             cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
             active_dispute=cur.fetchone()
             if active_dispute:
-                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,'active_dispute_exists'
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,False,'active_dispute_exists'

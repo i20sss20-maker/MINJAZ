@@ -1,6 +1,8 @@
             cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
             cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
-        c.commit();return dict(o),None
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(int(oid),int(user_id),idempotency_key))
+        c.commit();return dict(o),False,None
     except Exception:
         c.rollback();raise
     finally:
