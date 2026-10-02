@@ -259,6 +259,50 @@ def create_payout_request(fid,raw_amount,note=None,idempotency_key=None):
     finally:
         c.close()
 
+def portfolio_item_fingerprint(title,description=None,external_url=None):
+    payload={'title':str(title or '').strip()[:160],'description':str(description or '').strip()[:1500],'external_url':str(external_url or '').strip()[:1000]}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_portfolio_item_atomic(fid,title,description=None,external_url=None,idempotency_key=None):
+    title=str(title or '').strip()[:160]
+    description=str(description or '').strip()[:1500] or None
+    external_url=str(external_url or '').strip()[:1000] or None
+    fingerprint=portfolio_item_fingerprint(title,description,external_url) if idempotency_key else None
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id from users where id=%s for update',(int(fid),))
+            if not cur.fetchone():
+                c.rollback();return None,False,'freelancer_not_found'
+            if idempotency_key:
+                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
+                existing=cur.fetchone()
+                if existing:
+                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
+            if int(cur.fetchone()['n'] or 0)>=12:
+                c.rollback();return None,False,'portfolio_limit'
+            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
+                           values(%s,%s,%s,%s,%s,%s)
+                           returning id,title,description,external_url,created_at""",
+                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
+            row=dict(cur.fetchone())
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        if not idempotency_key:raise
+        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
+        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
+            return existing,True,None
+        return None,False,'idempotency_key_reused'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_manual_kyc_status(uid,status):
     c=db_connect()
     try:
