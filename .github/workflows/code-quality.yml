@@ -307,6 +307,13 @@ jobs:
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_kyc_payout_consistency.py
 
+      - name: Run admin operations E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_operations.py
+
       - name: Show server logs on failure
         if: failure()
         run: cat /tmp/minjaz-ci.log || true
