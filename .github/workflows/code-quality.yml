@@ -99,6 +99,11 @@ jobs:
           assert "__completePendingKeys" in ui
           assert "__disputePendingPayloads" in ui
           assert "__cancellationPendingPayloads" in ui
+          assert "def create_support_ticket_atomic(" in server
+          assert "def create_privacy_request_atomic(" in server
+          assert "account_request_idempotency_keys" in server
+          assert "__supportPendingPayload" in ui
+          assert "__privacyPendingPayload" in ui
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")

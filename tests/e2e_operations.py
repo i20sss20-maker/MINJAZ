@@ -121,9 +121,16 @@ def run():
     assert resumed["status"]=="in_progress",resumed
 
     # Support.
-    ticket=call("POST","/api/v1/support/tickets",{
-        "category":"technical","subject":"اختبار الدعم","message":"تذكرة اختبار آلي للتحقق من لوحة الدعم.","priority":"normal"
-    },ct)
+    support_key=f"support-ops-{seed}"
+    support_payload={
+        "category":"technical","subject":"اختبار الدعم","message":"تذكرة اختبار آلي للتحقق من لوحة الدعم.","priority":"normal",
+        "idempotency_key":support_key
+    }
+    ticket=call("POST","/api/v1/support/tickets",support_payload,ct,expected=(201,))
+    ticket_retry=call("POST","/api/v1/support/tickets",support_payload,ct,expected=(200,))
+    assert int(ticket_retry["id"])==int(ticket["id"]) and ticket_retry.get("idempotent_replay") is True,(ticket,ticket_retry)
+    own_tickets=call("GET","/api/v1/support/tickets",token=ct,expected=(200,)).get("items") or []
+    assert len([x for x in own_tickets if x.get("subject")=="اختبار الدعم"])==1,own_tickets
     tickets=call("GET","/api/admin/support",token=at,expected=(200,)).get("items") or []
     assert any(int(x["id"])==int(ticket["id"]) for x in tickets)
     tres=call("PATCH",f"/api/admin/support/{ticket['id']}",{
@@ -136,9 +143,13 @@ def run():
     assert tres_retry.get("idempotent_replay") is True,tres_retry
 
     # Privacy.
-    privacy=call("POST","/api/v1/privacy/requests",{
-        "request_type":"access","details":"طلب اختبار آلي لحقوق الوصول للبيانات."
-    },ct)
+    privacy_key=f"privacy-ops-{seed}"
+    privacy_payload={"request_type":"access","details":"طلب اختبار آلي لحقوق الوصول للبيانات.","idempotency_key":privacy_key}
+    privacy=call("POST","/api/v1/privacy/requests",privacy_payload,ct,expected=(201,))
+    privacy_retry=call("POST","/api/v1/privacy/requests",privacy_payload,ct,expected=(200,))
+    assert int(privacy_retry["id"])==int(privacy["id"]) and privacy_retry.get("idempotent_replay") is True,(privacy,privacy_retry)
+    own_privacy=call("GET","/api/v1/privacy/requests",token=ct,expected=(200,)).get("items") or []
+    assert len([x for x in own_privacy if x.get("request_type")=="access"])==1,own_privacy
     plist=call("GET","/api/admin/privacy",token=at,expected=(200,)).get("items") or []
     assert any(int(x["id"])==int(privacy["id"]) for x in plist)
     pres=call("PATCH",f"/api/admin/privacy/{privacy['id']}",{
@@ -178,6 +189,7 @@ def run():
         "cancellation_refund":True,"dispute_resume":True,
         "support_admin":True,"privacy_admin":True,"safety_admin":True,
         "support_admin_retry_safe":True,"privacy_admin_retry_safe":True,
+        "support_create_retry_idempotent":True,"privacy_create_retry_idempotent":True,
         "admin_summary":True,"admin_operations":True,
         "completed_order_id":order1["id"],"cancelled_order_id":order2["id"],
         "disputed_order_id":order3["id"],"payout_id":payout_id

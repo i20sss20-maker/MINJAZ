@@ -1321,6 +1321,87 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
     finally:
         c.close()
 
+def account_request_fingerprint(kind,payload):
+    normalized={'kind':str(kind),'payload':payload or {}}
+    return hashlib.sha256(json.dumps(normalized,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,request_fingerprint):
+    cur.execute("""insert into account_request_idempotency_keys(user_id,idempotency_key,request_kind,request_fingerprint)
+                   values(%s,%s,%s,%s) on conflict(user_id,idempotency_key) do nothing
+                   returning user_id""",(int(user_id),idempotency_key,request_kind,request_fingerprint))
+    if cur.fetchone():
+        return None,None
+    cur.execute('select request_kind,request_fingerprint,result_id from account_request_idempotency_keys where user_id=%s and idempotency_key=%s',(int(user_id),idempotency_key))
+    row=cur.fetchone()
+    if not row:return None,'idempotency_conflict'
+    if str(row.get('request_kind') or '')!=str(request_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
+        return None,'idempotency_key_reused'
+    if not row.get('result_id'):return None,'idempotency_conflict'
+    return dict(row),None
+
+def create_support_ticket_atomic(user_id,category,subject,message,priority,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'support',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from support_tickets where id=%s and user_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'support-create:{int(user_id)}',))
+            cur.execute("select count(*)::int n from support_tickets where user_id=%s and created_at>now()-interval '1 day'",(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=10:
+                c.rollback();return None,False,'support_rate_limited'
+            cur.execute("""insert into support_tickets(user_id,category,subject,message,priority,status)
+                           values(%s,%s,%s,%s,%s,'open') returning *""",
+                        (int(user_id),category,subject,message,priority))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def create_privacy_request_atomic(user_id,request_type,details,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'privacy',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from privacy_requests where id=%s and user_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'privacy-create:{int(user_id)}',))
+            cur.execute("select id from privacy_requests where user_id=%s and request_type=%s and status in ('pending','in_progress')",(int(user_id),request_type))
+            if cur.fetchone():
+                c.rollback();return None,False,'active_request_exists'
+            cur.execute("select count(*)::int n from privacy_requests where user_id=%s and created_at>now()-interval '1 day'",(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=5:
+                c.rollback();return None,False,'privacy_rate_limited'
+            cur.execute('insert into privacy_requests(user_id,request_type,details) values(%s,%s,%s) returning *',(int(user_id),request_type,details))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_support_ticket(tid,status,admin_reply=None):
     c=db_connect()
     try:
@@ -2660,10 +2741,18 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 if method=='GET':return self.sendj(200,{'items':q('select * from support_tickets where user_id=%s order by updated_at desc',(u['id'],))})
                 if method=='POST':
-                    if q("select count(*)::int n from support_tickets where user_id=%s and created_at>now()-interval '1 day'",(u['id'],),'one')['n']>=10:return self.sendj(429,{'error':'support_rate_limited','retry_after_seconds':86400})
                     b=self.body();sub=str(b.get('subject') or '').strip();msg=str(b.get('message') or '').strip()
                     if not sub or not msg:return self.sendj(400,{'error':'missing_fields'})
-                    return self.sendj(201,q("insert into support_tickets(user_id,category,subject,message,priority,status) values(%s,%s,%s,%s,%s,'open') returning *",(u['id'],b.get('category') or 'general',sub[:180],msg[:5000],b.get('priority') or 'normal'),'one'))
+                    category=str(b.get('category') or 'general')[:80];priority=str(b.get('priority') or 'normal')[:40]
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    payload={'category':category,'subject':sub[:180],'message':msg[:5000],'priority':priority}
+                    fingerprint=account_request_fingerprint('support',payload) if idempotency_key else None
+                    ticket,replayed,err=create_support_ticket_atomic(u['id'],category,sub[:180],msg[:5000],priority,idempotency_key or None,fingerprint)
+                    if err=='support_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
+                    if err:return self.sendj(409,{'error':err})
+                    ticket['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,ticket)
             if p=='/api/v1/privacy/requests':
                 u=self.require();
                 if not u:return
@@ -2671,9 +2760,17 @@ class H(BaseHTTPRequestHandler):
                 if method=='POST':
                     b=self.body();typ=str(b.get('request_type') or '')
                     if typ not in ('access','export','correct','delete','restrict'):return self.sendj(400,{'error':'invalid_type'})
-                    if q("select id from privacy_requests where user_id=%s and request_type=%s and status in ('pending','in_progress')",(u['id'],typ),'one'):return self.sendj(409,{'error':'active_request_exists'})
-                    if q("select count(*)::int n from privacy_requests where user_id=%s and created_at>now()-interval '1 day'",(u['id'],),'one')['n']>=5:return self.sendj(429,{'error':'privacy_rate_limited','retry_after_seconds':86400})
-                    return self.sendj(201,q('insert into privacy_requests(user_id,request_type,details) values(%s,%s,%s) returning *',(u['id'],typ,str(b.get('details') or '')[:2500] or None),'one'))
+                    details=str(b.get('details') or '')[:2500] or None
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    payload={'request_type':typ,'details':details}
+                    fingerprint=account_request_fingerprint('privacy',payload) if idempotency_key else None
+                    req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
+                    if err=='active_request_exists':return self.sendj(409,{'error':err})
+                    if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
+                    if err:return self.sendj(409,{'error':err})
+                    req['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,req)
             if p.startswith('/api/admin'):
                 u=self.require('admin');
                 if not u:return
