@@ -10,8 +10,8 @@ android {
         applicationId "sa.minjaz.preview"
         minSdk 24
         targetSdk 36
-        versionCode 6
-        versionName "0.6-release-prep"
+        versionCode 7
+        versionName "0.7-theme-i18n"
     }
 
     buildFeatures {
