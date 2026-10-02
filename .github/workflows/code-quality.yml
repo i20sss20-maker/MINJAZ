@@ -96,6 +96,7 @@ jobs:
           assert "order_action_idempotency_keys" in server
           assert "__deliveryPendingPayloads" in ui
           assert "__revisionPendingPayloads" in ui
+          assert "__completePendingKeys" in ui
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")
