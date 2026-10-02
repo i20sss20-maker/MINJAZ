@@ -1830,6 +1830,71 @@ def auth(headers):
             pass
     return row
 
+def verify_otp_atomic(challenge_id,code,requested_role,name,user_agent,ip):
+    cid=str(challenge_id or '')
+    code=str(code or '')
+    name=str(name or 'مستخدم').strip()[:120]
+    role=requested_role if requested_role in ('client','freelancer') else 'client'
+    raw=sha('otp-session:'+cid+':'+SECRET)
+    token_hash=sha(raw+SECRET)
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s for update",(cid,))
+            ch=cur.fetchone()
+            if not ch:
+                c.rollback();return None,'challenge_not_found'
+            if ch.get('attempts',0)>=5 and not ch.get('verified_at'):
+                c.rollback();return None,'too_many_attempts'
+            if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
+                if not ch.get('verified_at'):
+                    cur.execute('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],));c.commit()
+                else:c.rollback()
+                return None,'invalid_code'
+            if ADMIN_PHONE and ch['phone']==ADMIN_PHONE:role='admin'
+            if ch.get('verified_at'):
+                if (ch.get('verified_role') and ch.get('verified_role')!=role) or (ch.get('verified_name') and ch.get('verified_name')!=name):
+                    c.rollback();return None,'verification_replay_mismatch'
+                sid=ch.get('verified_session_id')
+                if not sid:
+                    c.rollback();return None,'already_verified'
+                cur.execute("""select s.id session_id,u.id,u.phone,u.name,u.role,u.is_verified
+                               from sessions s join users u on u.id=s.user_id
+                               where s.id=%s and s.token_hash=%s and s.revoked_at is null and s.expires_at>now()""",(sid,token_hash))
+                row=cur.fetchone()
+                if not row:
+                    c.rollback();return None,'verified_session_unavailable'
+                c.rollback()
+                return {'raw':raw,'session_id':row['session_id'],'user':{k:as_json(row.get(k)) for k in ('id','phone','name','role','is_verified')},'replayed':True},None
+            if ch.get('expired'):
+                c.rollback();return None,'otp_expired'
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(ch['phone'],))
+            cur.execute('select * from users where phone=%s for update',(ch['phone'],))
+            u=cur.fetchone()
+            if not u:
+                cur.execute('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role));u=cur.fetchone()
+            else:
+                cur.execute('update users set name=%s,is_verified=true where id=%s returning *',(name,u['id']));u=cur.fetchone()
+            cur.execute("""insert into user_roles(user_id,role,enabled) values(%s,%s,true)
+                           on conflict(user_id,role) do update set enabled=true""",(u['id'],role))
+            if role=='freelancer':
+                cur.execute("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],))
+            cur.execute('update users set role=%s where id=%s returning *',(role,u['id']));u=cur.fetchone()
+            cur.execute("""insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at)
+                           values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id""",
+                        (u['id'],token_hash,SESSION_TTL_DAYS,str(user_agent or '')[:500],friendly_device(str(user_agent or '')[:500]),sha(str(ip or '')+SECRET)[:24] if ip else None))
+            sid=cur.fetchone()['id']
+            cur.execute("""update otp_challenges
+                           set verified_at=now(),verified_role=%s,verified_name=%s,verified_session_id=%s
+                           where id=%s""",(role,name,sid,ch['id']))
+        c.commit()
+        return {'raw':raw,'session_id':sid,'user':{k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')},'replayed':False},None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def refresh_freelancer(fid):
     try:
         q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
