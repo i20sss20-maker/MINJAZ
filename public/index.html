@@ -204,6 +204,219 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
 
+
+/* MINJAZ premium polish v8 */
+:root{
+  --radius-xl:26px;
+  --radius-lg:20px;
+  --radius-md:15px;
+  --surface-soft:#fbfbfe;
+  --brand-glow:rgba(101,88,245,.18);
+}
+.auth{
+  min-height:100dvh;
+  grid-template-columns:minmax(390px,520px) minmax(0,1fr);
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.95),rgba(248,249,253,.98));
+}
+.authPanel{
+  position:relative;
+  isolation:isolate;
+}
+.authPanel:before{
+  content:"";
+  position:absolute;
+  inset:18px;
+  border:1px solid rgba(232,234,242,.75);
+  border-radius:28px;
+  pointer-events:none;
+  z-index:-1;
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.38));
+  box-shadow:0 28px 80px rgba(17,21,42,.055);
+}
+.authPanel .brand{
+  width:max-content;
+  padding:7px 10px 7px 8px;
+  border:1px solid #e8e9f1;
+  border-radius:15px;
+  background:rgba(255,255,255,.86);
+  box-shadow:0 8px 24px rgba(17,21,42,.045);
+}
+.authPanel .brand .mark{width:38px;height:38px;border-radius:12px}
+.authPanel h1{
+  max-width:440px;
+  margin-top:34px;
+  font-size:32px;
+  line-height:1.45;
+}
+.authPanel>p{max-width:450px;font-size:13px}
+.authArt{
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.authArt:before{
+  width:520px;
+  height:520px;
+  left:-160px;
+  bottom:-210px;
+  background:radial-gradient(circle,#2cc9b72e,transparent 68%);
+  filter:none;
+}
+.authArt:after{
+  width:380px;
+  height:380px;
+  right:-100px;
+  top:-90px;
+  background:radial-gradient(circle,#8a7dff35,transparent 68%);
+  filter:none;
+}
+.authArt .brand{
+  width:max-content;
+  padding:7px 11px;
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:15px;
+  background:rgba(255,255,255,.055);
+  backdrop-filter:blur(12px);
+}
+.artCopy{
+  margin-top:auto;
+  margin-bottom:8vh;
+  max-width:630px;
+}
+.artCopy:before{
+  content:"من الفكرة إلى الإنجاز";
+  display:inline-flex;
+  align-items:center;
+  min-height:29px;
+  padding:0 10px;
+  margin-bottom:15px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  color:#e9e8ff;
+  font-size:10px;
+  font-weight:700;
+}
+.artCopy h2{font-size:38px;letter-spacing:-.025em}
+.artCopy p{max-width:560px;font-size:13px;color:#d2d7e8}
+.artCards{gap:12px;margin-top:32px}
+.artCard{padding:16px;border-radius:19px}
+.artCard b{font-size:12px}
+.artCard small{font-size:9px}
+
+.shell{grid-template-columns:252px minmax(0,1fr)}
+.side{padding:20px 14px}
+.side .brand{
+  margin:0 2px 14px;
+  padding:7px 9px 17px;
+}
+.side .brand .mark{width:36px;height:36px;border-radius:12px}
+.navGroup{margin-top:14px}
+.navLabel{padding-inline:10px;font-size:8px}
+.navBtn{
+  min-height:43px;
+  padding:9px 10px;
+  border-radius:13px;
+}
+.navIcon{width:22px}
+.topbar{
+  height:74px;
+  padding-inline:28px;
+}
+.topTitle h1{font-size:17px;letter-spacing:-.015em}
+.content{max-width:1280px;padding:26px 28px 112px}
+.hero{
+  min-height:210px;
+  align-items:center;
+  border-radius:28px;
+  padding:28px;
+}
+.hero h2{font-size:27px;letter-spacing:-.025em}
+.hero p{font-size:12px;max-width:700px}
+.heroActions{margin-top:4px}
+.heroStats{gap:11px}
+.heroStat{padding:15px;border-radius:18px}
+.heroStat b{font-size:23px}
+.sectionHead{margin:27px 0 12px}
+.sectionHead h2{font-size:15px}
+.card{
+  border-radius:20px;
+  padding:16px;
+}
+.rowCard{
+  min-height:84px;
+  border-radius:19px;
+  padding:15px 16px;
+}
+.rowCard h3{font-size:11px}
+.categories{gap:11px}
+.cat{
+  min-height:112px;
+  border-radius:19px;
+  padding:15px;
+}
+.cat span{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border-radius:13px;
+  background:#f3f1ff;
+  font-size:21px;
+}
+.metric b{font-size:24px}
+.pill{padding:5px 9px}
+.modal{border-radius:26px}
+.offerCard,.attentionCard,.orderFact,.oppToolbar,.profileNudge{border-radius:18px}
+.offerCard{padding:15px}
+.chat{border-radius:18px;background:#fafafe}
+.mobileNav button{min-height:50px;transition:.15s ease}
+.mobileNav button.on{
+  background:linear-gradient(180deg,#f2f0ff,#ece9ff);
+  box-shadow:inset 0 0 0 1px #e3deff;
+}
+
+@media(max-width:1100px){
+  .shell{grid-template-columns:232px minmax(0,1fr)}
+  .content{padding-inline:20px}
+}
+@media(max-width:980px){
+  .shell{grid-template-columns:1fr}
+  .content{padding:18px 16px 96px}
+  .topbar{height:66px;padding-inline:16px}
+  .mobileNav{
+    margin:0 8px calc(8px + env(safe-area-inset-bottom));
+    left:0;
+    right:0;
+    bottom:0;
+    border:1px solid rgba(228,230,239,.95);
+    border-radius:19px;
+    overflow:hidden;
+    padding:5px;
+    box-shadow:0 14px 38px rgba(17,21,42,.14);
+  }
+  .hero{min-height:auto;padding:22px}
+}
+@media(max-width:720px){
+  .auth{display:block;min-height:100dvh}
+  .authPanel{
+    min-height:100dvh;
+    padding:34px 20px 30px;
+    justify-content:center;
+  }
+  .authPanel:before{inset:12px;border-radius:24px}
+  .authPanel h1{font-size:27px;margin-top:28px}
+  .authPanel>p{font-size:12px}
+  .roleSwitch{margin-top:3px}
+  .hero h2{font-size:21px}
+  .topTitle small{display:none}
+  .content{padding-top:12px}
+  .sectionHead{margin-top:21px}
+  .card,.rowCard,.cat,.offerCard{box-shadow:0 8px 26px rgba(17,21,42,.045)}
+}
+
 </style>
 </head>
 <body>
