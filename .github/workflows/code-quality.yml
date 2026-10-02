@@ -77,6 +77,8 @@ jobs:
           assert "def create_order_atomic(proposal_id,client_id):" in server
           assert "def pay_mock_atomic(oid,user_id):" in server
           assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
+          assert "from freelancer_portfolio_items where freelancer_id=%s" in server
+          assert "from freelancer_portfolio where freelancer_id=%s" not in server
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")
