@@ -37,7 +37,8 @@ def login(phone,role,name):
             raise
     code=ch.get("dev_code") or "1234"
     out=call("POST","/api/v1/auth/verify-otp",{"challenge_id":ch["challenge_id"],"code":code,"role":role,"name":name})
-    assert out.get("token") and out["user"]["role"]==role,out
+    effective_roles=out.get("roles") or out.get("user",{}).get("roles") or [out.get("user",{}).get("role")]
+    assert out.get("token") and role in effective_roles,out
     return out
 
 def create_order(ct,ft,category_id,title,price=120):
