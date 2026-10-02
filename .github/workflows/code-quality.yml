@@ -102,6 +102,8 @@ jobs:
           assert "__completePendingKeys" in ui
           assert "__disputePendingPayloads" in ui
           assert "__cancellationPendingPayloads" in ui
+          assert "def create_safety_report_atomic(" in server
+          assert "__safetyPendingPayloads" in ui
           assert "def create_support_ticket_atomic(" in server
           assert "def create_privacy_request_atomic(" in server
           assert "account_request_idempotency_keys" in server
@@ -321,6 +323,11 @@ jobs:
           E2E_ADMIN_PHONE: "+966599999995"
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_operations.py
+
+      - name: Run safety report idempotency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: python tests/e2e_safety_idempotency.py
 
       - name: Show server logs on failure
         if: failure()
