@@ -86,6 +86,26 @@ def run():
     loser=next(payload for _,(status,payload) in c1 if status==409)
     assert loser.get("error")=="active_cancellation_exists",loser
 
+    cxl_item=call("GET",f"/api/v1/orders/{o1['id']}/cancellation",token=ct,expected=(200,)).get("item")
+    assert cxl_item and cxl_item.get("id"),cxl_item
+    cxl_id=int(cxl_item["id"])
+    review_body={"status":"in_review","admin_note":"مراجعة إدارية ثابتة"}
+    review1=call("PATCH",f"/api/admin/cancellations/{cxl_id}",review_body,at)
+    review2=call("PATCH",f"/api/admin/cancellations/{cxl_id}",review_body,at)
+    assert review1.get("status")=="in_review" and not review1.get("idempotent_replay"),review1
+    assert review2.get("idempotent_replay") is True,review2
+    cb=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ct,expected=(200,)).get("items") or []
+    fb=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ft,expected=(200,)).get("items") or []
+    reject_body={"status":"rejected","admin_note":"رفض إداري ثابت"}
+    reject1=call("PATCH",f"/api/admin/cancellations/{cxl_id}",reject_body,at)
+    reject2=call("PATCH",f"/api/admin/cancellations/{cxl_id}",reject_body,at)
+    assert reject1.get("status")=="rejected" and not reject1.get("idempotent_replay"),reject1
+    assert reject2.get("idempotent_replay") is True,reject2
+    ca=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ct,expected=(200,)).get("items") or []
+    fa=call("GET","/api/v1/notifications?kind=cancellation&limit=100",token=ft,expected=(200,)).get("items") or []
+    assert len(ca)==len(cb)+1,(cb,ca)
+    assert len(fa)==len(fb)+1,(fb,fa)
+
     # Two dispute opens at the same instant: exactly one active dispute.
     _,o2=create_paid_order(ct,ft,cat,"اختبار نزاع مزدوج")
     d1=concurrent([
