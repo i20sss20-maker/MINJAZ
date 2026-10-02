@@ -31,6 +31,8 @@ def call(method, path, body=None, token=None, expected=(200, 201)):
             payload = json.loads(raw or b"{}")
         except Exception:
             payload = {"raw": raw.decode("utf-8", errors="replace")}
+        if exc.code in expected:
+            return payload
         raise AssertionError((path, exc.code, payload)) from exc
 
 
@@ -86,15 +88,64 @@ def run():
     assert freelancer_onboarding["role"] == "freelancer" and isinstance(freelancer_onboarding.get("steps"), list), freelancer_onboarding
     assert any(x.get("key") == "portfolio" for x in freelancer_onboarding["steps"]), freelancer_onboarding
 
-    for tok in (client_token, freelancer_token):
-        accepted = call(
-            "POST",
-            "/api/v1/legal/accept",
-            {"documents": ["terms", "privacy", "marketplace_rules"]},
-            tok,
-            expected=(200,),
-        )
-        assert accepted.get("complete") is True, accepted
+    # Starting a new marketplace commitment requires current legal acceptance.
+    blocked_task = call(
+        "POST",
+        "/api/v1/tasks",
+        {
+            "category_id": categories[0]["id"],
+            "title": "مهمة يجب رفضها قبل الموافقة",
+            "description": "اختبار آلي للتأكد أن المنصة تمنع بدء تعامل جديد قبل قبول المستندات القانونية الحالية.",
+            "budget_min": 100,
+            "budget_max": 150,
+            "urgency": "normal",
+        },
+        client_token,
+        expected=(428,),
+    )
+    assert blocked_task.get("error") == "legal_acceptance_required", blocked_task
+    assert set(blocked_task.get("missing_documents") or []) == {"terms", "privacy", "marketplace_rules"}, blocked_task
+
+    client_accepted = call(
+        "POST",
+        "/api/v1/legal/accept",
+        {"documents": ["terms", "privacy", "marketplace_rules"]},
+        client_token,
+        expected=(200,),
+    )
+    assert client_accepted.get("complete") is True, client_accepted
+
+    gate_task = call(
+        "POST",
+        "/api/v1/tasks",
+        {
+            "category_id": categories[0]["id"],
+            "title": "مهمة بوابة الموافقة القانونية",
+            "description": "مهمة مؤقتة لاختبار رفض عرض المستقل قبل موافقته على المستندات القانونية الحالية.",
+            "budget_min": 100,
+            "budget_max": 150,
+            "urgency": "normal",
+        },
+        client_token,
+    )
+    blocked_proposal = call(
+        "POST",
+        f"/api/v1/tasks/{gate_task['id']}/proposals",
+        {"price": 110, "delivery_hours": 24, "revisions": 1, "message": "يجب رفض هذا العرض قبل الموافقة."},
+        freelancer_token,
+        expected=(428,),
+    )
+    assert blocked_proposal.get("error") == "legal_acceptance_required", blocked_proposal
+    call("POST", f"/api/v1/tasks/{gate_task['id']}/close", {}, client_token, expected=(200,))
+
+    freelancer_accepted = call(
+        "POST",
+        "/api/v1/legal/accept",
+        {"documents": ["terms", "privacy", "marketplace_rules"]},
+        freelancer_token,
+        expected=(200,),
+    )
+    assert freelancer_accepted.get("complete") is True, freelancer_accepted
 
     freelancer_profile = call(
         "PATCH",
@@ -318,6 +369,7 @@ def run():
         "onboarding_client": True,
         "onboarding_freelancer": True,
         "legal_acceptance": True,
+        "legal_precondition_enforced": True,
         "freelancer_profile_readiness": True,
         "client_profile_readiness": True,
         "portfolio_readiness": True,
