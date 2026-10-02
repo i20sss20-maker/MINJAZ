@@ -43,8 +43,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(91, 33, 182));
-        getWindow().setNavigationBarColor(Color.WHITE);
+        if (Build.VERSION.SDK_INT < 35) {
+            getWindow().setStatusBarColor(Color.rgb(91, 33, 182));
+            getWindow().setNavigationBarColor(Color.WHITE);
+        } else {
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        }
 
         buildUi();
         configureWebView();
@@ -63,9 +68,12 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(
+            Build.VERSION.SDK_INT >= 35 ? Color.rgb(91, 33, 182) : Color.WHITE
+        );
 
         webView = new WebView(this);
+        webView.setBackgroundColor(Color.WHITE);
         webView.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -79,7 +87,7 @@ public class MainActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        if (Build.VERSION.SDK_INT >= 30) {
+        if (Build.VERSION.SDK_INT >= 35) {
             root.setOnApplyWindowInsetsListener((view, insets) -> {
                 android.graphics.Insets bars = insets.getInsets(
                     WindowInsets.Type.statusBars()
@@ -156,7 +164,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.4");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.6");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
