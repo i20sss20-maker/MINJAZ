@@ -433,6 +433,50 @@ def pay_mock_atomic(oid,user_id):
     finally:
         c.close()
 
+def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.id,o.client_id,o.freelancer_id,o.status
+                           from orders o where o.id=%s for update""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),'client_only'
+            if o.get('status')!='completed':
+                c.rollback();return None,dict(o),'invalid_order_state'
+            normalized_comment=str(comment or '')[:2000] or None
+            cur.execute('select * from reviews where order_id=%s for update',(int(oid),))
+            existing=cur.fetchone()
+            if existing:
+                same=(int(existing['quality'])==int(quality)
+                      and int(existing['timeliness'])==int(timeliness)
+                      and int(existing['communication'])==int(communication)
+                      and (existing.get('comment') or None)==normalized_comment)
+                if same:
+                    c.rollback()
+                    return {'id':existing['id'],'state':'unchanged','created':False,'updated':False},dict(o),None
+                cur.execute("""update reviews
+                               set quality=%s,timeliness=%s,communication=%s,comment=%s
+                               where order_id=%s returning *""",
+                            (int(quality),int(timeliness),int(communication),normalized_comment,int(oid)))
+                row=dict(cur.fetchone());c.commit()
+                return {'id':row['id'],'state':'updated','created':False,'updated':True},dict(o),None
+            cur.execute("""insert into reviews(order_id,reviewer_id,reviewee_id,quality,timeliness,communication,comment)
+                           values(%s,%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),o['freelancer_id'],int(quality),int(timeliness),int(communication),normalized_comment))
+            row=dict(cur.fetchone());c.commit()
+            return {'id':row['id'],'state':'created','created':True,'updated':False},dict(o),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        return None,None,'review_conflict_retry'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def deliver_order_atomic(oid,user_id,note,attachments=None):
     cleaned=clean_attachments(attachments,uploaded_by=user_id)
     c=db_connect()
@@ -1941,11 +1985,22 @@ class H(BaseHTTPRequestHandler):
                     refresh_freelancer(locked['freelancer_id']);notify(locked['freelancer_id'],'تم إكمال الطلب','اعتمد العميل التسليم','completed',oid)
                     return self.sendj(200,{'ok':True})
                 if action=='review':
-                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('status')!='completed':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    b=self.body(); vals=[int(b.get(k) or 0) for k in ('quality','timeliness','communication')]
+                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
+                    b=self.body()
+                    try:vals=[int(b.get(k) or 0) for k in ('quality','timeliness','communication')]
+                    except Exception:return self.sendj(400,{'error':'invalid_rating'})
                     if any(x<1 or x>5 for x in vals):return self.sendj(400,{'error':'invalid_rating'})
-                    q("insert into reviews(order_id,reviewer_id,reviewee_id,quality,timeliness,communication,comment) values(%s,%s,%s,%s,%s,%s,%s) on conflict(order_id) do update set quality=excluded.quality,timeliness=excluded.timeliness,communication=excluded.communication,comment=excluded.comment",(oid,u['id'],o['freelancer_id'],*vals,str(b.get('comment') or '')[:2000] or None),None);refresh_freelancer(o['freelancer_id']);notify(o['freelancer_id'],'وصلك تقييم جديد',str(b.get('comment') or 'تم تحديث تقييمك')[:220],'review',oid);return self.sendj(201,{'ok':True})
+                    review,locked,err=upsert_review_atomic(oid,u['id'],*vals,b.get('comment'))
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='client_only':return self.sendj(403,{'error':err})
+                    if err=='invalid_order_state':return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    if err=='review_conflict_retry':return self.sendj(409,{'error':err,'retry_after_seconds':1})
+                    if err:return self.sendj(409,{'error':err})
+                    if review['state']!='unchanged':
+                        refresh_freelancer(locked['freelancer_id'])
+                        ttl='وصلك تقييم جديد' if review['created'] else 'تم تحديث تقييمك'
+                        notify(locked['freelancer_id'],ttl,str(b.get('comment') or ('تم تحديث تقييمك' if review['updated'] else 'تم تقييمك'))[:220],'review',oid)
+                    return self.sendj(201 if review['created'] else 200,{'ok':True,**review})
             m=re.fullmatch(r'/api/v1/orders/(\d+)/dispute',p)
             if m:
                 u=self.require()
