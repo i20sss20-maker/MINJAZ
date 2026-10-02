@@ -2407,9 +2407,8 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/account/sessions/revoke-others' and method=='POST':
                 u=self.require();
                 if not u:return
-                q('update sessions set revoked_at=now() where user_id=%s and id<>%s and revoked_at is null',(u['id'],u['session_id']),None)
-                log_account_activity(u['id'],'sessions_revoked','تم تسجيل خروج الأجهزة الأخرى',u.get('session_id'))
-                return self.sendj(200,{'ok':True})
+                revoked_count=revoke_other_sessions_atomic(u['id'],u['session_id'])
+                return self.sendj(200,{'ok':True,'revoked_count':revoked_count,'idempotent_replay':revoked_count==0})
             m=re.fullmatch(r'/api/v1/account/sessions/(\d+)',p)
             if m and method=='DELETE':
                 u=self.require();
@@ -2428,15 +2427,13 @@ class H(BaseHTTPRequestHandler):
             if method=='PATCH' and p=='/api/v1/me/active-role':
                 u=self.require();
                 if not u:return
-                if u['role']=='admin':return self.sendj(403,{'error':'admin_role_locked'})
                 b=self.body(); role=str(b.get('role') or '')
                 if role not in ('client','freelancer'):return self.sendj(400,{'error':'invalid_role'})
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
-                if role=='freelancer':q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                log_account_activity(u['id'],'role_switched','تم تغيير الدور النشط',u.get('session_id'),{'role':role})
-                user=q('select id,phone,name,role,is_verified from users where id=%s',(u['id'],),'one'); roles=enabled_roles(u['id']); user['roles']=roles
-                return self.sendj(200,{'user':user,'roles':roles,'active_role':role})
+                user,changed,err=set_active_role_atomic(u['id'],role,u.get('session_id'))
+                if err=='admin_role_locked':return self.sendj(403,{'error':err})
+                if err:return self.sendj(404,{'error':err})
+                roles=enabled_roles(u['id']);user['roles']=roles
+                return self.sendj(200,{'user':user,'roles':roles,'active_role':user['role'],'idempotent_replay':not changed})
             if method=='POST' and p=='/api/v1/freelancer/kyc/start':
                 u=self.require('freelancer');
                 if not u:return
