@@ -72,13 +72,8 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                String host = uri.getHost() == null ? "" : uri.getHost();
-                if ("minjaz-app-prod-production.up.railway.app".equalsIgnoreCase(host)) {
-                    return false;
-                }
-                openExternal(uri);
-                return true;
+                if (!request.isForMainFrame()) return false;
+                return handleNavigation(request.getUrl());
             }
         });
 
@@ -104,6 +99,10 @@ public class MainActivity extends Activity {
             }
         });
 
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
+            handleNavigation(Uri.parse(url))
+        );
+
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
@@ -116,6 +115,38 @@ public class MainActivity extends Activity {
         } else {
             webView.restoreState(savedInstanceState);
         }
+    }
+
+    private boolean handleNavigation(Uri uri) {
+        if (uri == null) return false;
+
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        String host = uri.getHost() == null ? "" : uri.getHost();
+
+        if ("https".equals(scheme)
+            && "minjaz-app-prod-production.up.railway.app".equalsIgnoreCase(host)) {
+            return false;
+        }
+
+        if ("intent".equals(scheme)) {
+            try {
+                Intent intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                try {
+                    startActivity(intent);
+                } catch (ActivityNotFoundException missing) {
+                    String fallback = intent.getStringExtra("browser_fallback_url");
+                    if (fallback != null && !fallback.isBlank()) {
+                        openExternal(Uri.parse(fallback));
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return true;
+        }
+
+        openExternal(uri);
+        return true;
     }
 
     private void openExternal(Uri uri) {
