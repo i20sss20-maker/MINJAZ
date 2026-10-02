@@ -389,6 +389,45 @@ def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,
     finally:
         c.close()
 
+def update_task_atomic(task_id,client_id,title,description,budget_min,budget_max,urgency,due_at):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from tasks where id=%s for update',(int(task_id),))
+            task=cur.fetchone()
+            if not task:
+                c.rollback();return None,[],False,'task_not_found'
+            if int(task['client_id'])!=int(client_id):
+                c.rollback();return dict(task),[],False,'client_only'
+            if task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s limit 1',(int(task_id),))
+                has_order=cur.fetchone()
+                c.rollback();return dict(task),[],False,'task_has_order' if has_order else 'task_not_open'
+            changed=(
+                str(task.get('title') or '')!=str(title)
+                or str(task.get('description') or '')!=str(description)
+                or task.get('budget_min')!=budget_min
+                or task.get('budget_max')!=budget_max
+                or str(task.get('urgency') or 'normal')!=str(urgency)
+                or task.get('due_at')!=due_at
+            )
+            if not changed:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(task).items()},[],False,None
+            cur.execute("select freelancer_id,status from proposals where task_id=%s for update",(int(task_id),))
+            proposals=cur.fetchall()
+            freelancer_ids=sorted({int(x['freelancer_id']) for x in proposals if x.get('status')=='sent'})
+            cur.execute("""update tasks set title=%s,description=%s,budget_min=%s,budget_max=%s,urgency=%s,due_at=%s,updated_at=now()
+                           where id=%s returning *""",(title,description,budget_min,budget_max,urgency,due_at,int(task_id)))
+            updated=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in updated.items()},freelancer_ids,True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def close_task_atomic(task_id,client_id):
     c=db_connect()
     try:
