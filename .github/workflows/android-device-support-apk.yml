@@ -6,6 +6,7 @@ on:
       - main
       - 'android-*'
       - 'brand-*'
+      - 'theme-*'
       - android-stability-v04
       - android-resilience-v05
     paths:
