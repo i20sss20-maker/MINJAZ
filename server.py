@@ -3018,8 +3018,8 @@ class H(BaseHTTPRequestHandler):
                 m=re.fullmatch(r'/api/admin/safety/reports/(\d+)',p)
                 if m and method=='PATCH':
                     rid=int(m.group(1));b=self.body()
-                    st=str(b.get('status') or 'open')
-                    if st not in ('open','in_review','resolved','dismissed'):return self.sendj(400,{'error':'invalid_status'})
+                    st=str(b.get('status') or '')
+                    if st and st not in ('open','in_review','resolved','dismissed'):return self.sendj(400,{'error':'invalid_status'})
                     note=str(b.get('admin_note') or '')[:3000] or None
                     ta=str(b.get('task_action') or '');ua=str(b.get('user_action') or '')
                     r,sr,effects,err=update_safety_report_admin(rid,u['id'],st,note,ta,ua)
@@ -3030,10 +3030,11 @@ class H(BaseHTTPRequestHandler):
                     if effects and effects.get('user_changed') and sr.get('reported_user_id'):
                         restricted=ua=='restrict'
                         notify(sr['reported_user_id'],'تحديث من فريق الأمان','تم تقييد التعاملات الجديدة على الحساب مؤقتًا' if restricted else 'تم رفع تقييد التعاملات الجديدة عن الحساب','safety',None,sr.get('task_id'))
-                    if effects and effects.get('report_changed') and st in ('resolved','dismissed'):
-                        notify(sr['reporter_id'],'تم تحديث بلاغ الأمان','تمت مراجعة البلاغ وإغلاقه' if st=='resolved' else 'تمت مراجعة البلاغ ولم يتطلب إجراء إضافيًا','safety',sr.get('order_id'),sr.get('task_id'))
+                    final_status=str(r.get('status') or st)
+                    if effects and effects.get('report_changed') and final_status in ('resolved','dismissed'):
+                        notify(sr['reporter_id'],'تم تحديث بلاغ الأمان','تمت مراجعة البلاغ وإغلاقه' if final_status=='resolved' else 'تمت مراجعة البلاغ ولم يتطلب إجراء إضافيًا','safety',sr.get('order_id'),sr.get('task_id'))
                     if changed:
-                        admin_audit(u['id'],'safety_report_updated','safety_report',rid,{'status':st,'task_action':ta,'user_action':ua})
+                        admin_audit(u['id'],'safety_report_updated','safety_report',rid,{'status':final_status,'task_action':ta,'user_action':ua})
                     r['idempotent_replay']=not changed
                     r['effects']=effects or {}
                     return self.sendj(200,r)
