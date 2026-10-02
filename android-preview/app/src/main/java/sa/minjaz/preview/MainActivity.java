@@ -56,10 +56,8 @@ public class MainActivity extends Activity {
             );
         }
 
-        if (savedInstanceState == null) {
+        if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             loadLaunchDestination(getIntent());
-        } else {
-            webView.restoreState(savedInstanceState);
         }
     }
 
@@ -398,6 +396,24 @@ public class MainActivity extends Activity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+            if (webView.getUrl() == null && webView.copyBackForwardList().getSize() == 0) {
+                loadLaunchDestination(getIntent());
+            }
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        if (webView != null) webView.onPause();
+        CookieManager.getInstance().flush();
+        super.onPause();
     }
 
     @Override
