@@ -161,6 +161,10 @@ jobs:
           assert "o.status==='awaiting_payment'&&o.payment_status==='unpaid'" in ui
           assert "o.status==='completed'&&!o.review_id" in ui
           assert "★ إضافة التقييم" in ui
+          assert "editReview" in ui
+          assert "تعديل التقييم" in ui
+          assert "تقييم العميل" in ui
+          assert "reviewAvg.toFixed(1)" in ui
           assert "credentials:'same-origin'" in ui
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
