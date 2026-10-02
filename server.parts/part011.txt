@@ -35,73 +35,32 @@
                 if method=='GET':
                     return self.sendj(200,{'item':q('select d.*,us.name opened_by_name from order_disputes d join users us on us.id=d.opened_by where d.order_id=%s order by d.created_at desc limit 1',(oid,),'one')})
                 if method=='POST':
-                    b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
-                    if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    d,locked,err=open_dispute_atomic(oid,u['id'],reason,details)
-                    if err=='order_not_found':return self.sendj(404,{'error':err})
-                    if err in ('active_dispute_exists','active_cancellation_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
-                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
-                    return self.sendj(201,d)
-            m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
-            if m:
-                u=self.require()
-                if not u:return
-                oid=int(m.group(1))
-                o=q('select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)',(oid,u['id'],u['id']),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                if method=='GET':
-                    return self.sendj(200,{'item':q('select cr.*,us.name requested_by_name from order_cancellation_requests cr join users us on us.id=cr.requested_by where cr.order_id=%s order by cr.created_at desc limit 1',(oid,),'one')})
-                if method=='POST':
-                    b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
-                    if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    cr,locked,err=open_cancellation_atomic(oid,u['id'],reason,details)
-                    if err=='order_not_found':return self.sendj(404,{'error':err})
-                    if err in ('active_cancellation_exists','active_dispute_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
-                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
-                    return self.sendj(201,cr)
-            m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
-            if m and method=='GET':
-                u=self.require();
-                if not u:return
-                oid=int(m.group(1));o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                return self.sendj(200,{'items':order_timeline(oid)})
-            m=re.fullmatch(r'/api/v1/orders/(\d+)/revisions',p)
-            if m and method=='GET':
-                u=self.require();
-                if not u:return
-                oid=int(m.group(1));o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                return self.sendj(200,{'items':q('select rr.*,us.name requested_by_name from order_revision_requests rr join users us on us.id=rr.requested_by where rr.order_id=%s order by rr.sequence_no',(oid,))})
-            m=re.fullmatch(r'/api/v1/orders/(\d+)/(attachments|deliveries)',p)
-            if m and method=='GET':
-                u=self.require();
-                if not u:return
-                oid=int(m.group(1));kind=m.group(2);o=q('select * from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                if kind=='attachments':return self.sendj(200,{'items':public_attachments(q('select a.*,us.name uploaded_by_name from attachments a join users us on us.id=a.uploaded_by where a.order_id=%s order by a.created_at',(oid,)))})
-                ds=q('select * from deliveries where order_id=%s order by created_at desc',(oid,))
-                for d in ds:d['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where delivery_id=%s order by created_at',(d['id'],)))
-                return self.sendj(200,{'items':ds})
-            m=re.fullmatch(r'/api/v1/orders/(\d+)/messages',p)
-            if m:
-                u=self.require();
-                if not u:return
-                oid=int(m.group(1)); o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,u['id'],u['id']),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                if method=='GET':
-                    msgs=q('select m.*,us.name sender_name,us.role sender_role from messages m join users us on us.id=m.sender_id where m.order_id=%s order by m.created_at',(oid,))
-                    for msg in msgs: msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
-                    return self.sendj(200,{'items':msgs})
-                if method=='POST':
-                    if q("select count(*)::int n from messages where sender_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=180:return self.sendj(429,{'error':'message_rate_limited','retry_after_seconds':3600})
-                    b=self.body(); txt=str(b.get('body') or '').strip(); atts=clean_attachments(b.get('attachments'),uploaded_by=u['id'])
-                    if not txt and not atts:return self.sendj(400,{'error':'message_required'})
+                    b=self.body(); txt=str(b.get('body') or '').strip()
                     if len(txt)>4000:return self.sendj(400,{'error':'message_too_long','maximum':4000})
-                    msg=q('insert into messages(order_id,sender_id,body) values(%s,%s,%s) returning *',(oid,u['id'],txt or 'مرفق'),'one')
-                    insert_attachments(u['id'],atts,order_id=oid,message_id=msg['id']); msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],))); rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid); return self.sendj(201,msg)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=message_request_fingerprint(oid,txt,b.get('attachments')) if idempotency_key else None
+                    if idempotency_key:
+                        idem=q('select request_fingerprint,message_id from message_idempotency_keys where sender_id=%s and idempotency_key=%s',(u['id'],idempotency_key),'one')
+                        if idem:
+                            if str(idem.get('request_fingerprint') or '')!=fingerprint:return self.sendj(409,{'error':'idempotency_key_reused'})
+                            existing=q('select * from messages where id=%s and sender_id=%s',(idem.get('message_id'),u['id']),'one') if idem.get('message_id') else None
+                            if existing:
+                                existing['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(existing['id'],)))
+                                existing['idempotent_replay']=True
+                                return self.sendj(200,existing)
+                    atts=clean_attachments(b.get('attachments'),uploaded_by=u['id'])
+                    if not txt and not atts:return self.sendj(400,{'error':'message_required'})
+                    if q("select count(*)::int n from messages where sender_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=180:return self.sendj(429,{'error':'message_rate_limited','retry_after_seconds':3600})
+                    msg,replayed,err=create_message_atomic(oid,u['id'],txt,atts,idempotency_key or None,fingerprint)
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
+                    msg['idempotent_replay']=bool(replayed)
+                    if not replayed:
+                        rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
+                    return self.sendj(200 if replayed else 201,msg)
+
             if p=='/api/v1/notifications' and method=='GET':
                 u=self.require();
                 if not u:return
