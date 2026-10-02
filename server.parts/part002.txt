@@ -266,5 +266,5 @@ def update_manual_kyc_status(uid,status):
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select id from users where id=%s for update',(int(uid),))
             if not cur.fetchone():
-                c.rollback();return None,None,'freelancer_not_found'
+                c.rollback();return None,None,False,'freelancer_not_found'
             cur.execute(
