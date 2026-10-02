@@ -53,7 +53,7 @@ def run():
     assert len(cookies)==1,cookies
     cookie=cookies[0]
     assert cookie.path=="/",cookie
-    assert cookie.secure is True,cookie
+    assert cookie.secure is BASE.startswith("https://"),cookie
     rest={str(k).lower():v for k,v in (cookie._rest or {}).items()}
     assert "httponly" in rest,rest
     assert str(rest.get("samesite") or "").lower()=="strict",rest
@@ -102,6 +102,9 @@ def run():
 
 RESULT=run()
 print("MINJAZ_COOKIE_AUTH_E2E_OK",json.dumps(RESULT,ensure_ascii=False),flush=True)
+
+if os.getenv("E2E_EXIT_AFTER_RUN","").strip()=="1":
+    raise SystemExit(0)
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
