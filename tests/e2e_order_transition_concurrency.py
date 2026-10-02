@@ -26,6 +26,11 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     assert status in expected,(method,path,status,payload)
     return payload
 
+def accept_legal(token):
+    out=call("POST","/api/v1/legal/accept",{"documents":["terms","privacy","marketplace_rules"]},token)
+    assert out.get("complete") is True,out
+    return out
+
 def login(phone,role,name):
     ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
     code=ch.get("dev_code") or "1234"
@@ -67,6 +72,7 @@ def run():
     client=login("+9665"+seed,"client","Transition Race Client")
     freelancer=login("+9667"+seed,"freelancer","Transition Race Freelancer")
     ct,ft=client["token"],freelancer["token"]
+    accept_legal(ct);accept_legal(ft)
 
     # Two cancellation requests at the same instant: exactly one active case.
     _,o1=create_paid_order(ct,ft,cat,"اختبار إلغاء مزدوج")
