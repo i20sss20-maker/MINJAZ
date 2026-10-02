@@ -4,6 +4,8 @@ import random
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.getenv("E2E_BASE_URL", "https://minjaz-stage-source-production.up.railway.app").rstrip("/")
@@ -232,21 +234,34 @@ def run():
     )
     proposal_id = proposal["id"]
 
-    # Client can invite the freelancer to the open task and freelancer receives the invitation.
-    invite = call(
-        "POST",
-        f"/api/v1/freelancers/{freelancer_me['user']['id']}/invite",
-        {"task_id": task_id, "note": "دعوة اختبار للمستقل قبل اعتماد العرض."},
-        client_token,
-    )
-    assert int(invite["task_id"]) == int(task_id), invite
+    # Concurrent retries of the same invite must resolve to one logical invitation and one notification.
+    invite_payload = {"task_id": task_id, "note": "دعوة اختبار للمستقل قبل اعتماد العرض."}
+    invite_barrier = Barrier(2)
+    def invite_same(_):
+        invite_barrier.wait()
+        return call(
+            "POST",
+            f"/api/v1/freelancers/{freelancer_me['user']['id']}/invite",
+            invite_payload,
+            client_token,
+            expected=(200, 201),
+        )
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        invite_results = list(ex.map(invite_same, (1, 2)))
+    assert len({int(x["id"]) for x in invite_results}) == 1, invite_results
+    assert sum(1 for x in invite_results if x.get("idempotent_replay")) == 1, invite_results
+    assert all(int(x["task_id"]) == int(task_id) for x in invite_results), invite_results
     invite_notifications = call(
         "GET",
         "/api/v1/notifications?kind=task_invite&unread=1",
         token=freelancer_token,
         expected=(200,),
     )
-    assert any(int(item.get("task_id") or 0) == int(task_id) for item in (invite_notifications.get("items") or [])), invite_notifications
+    task_invite_notes = [
+        item for item in (invite_notifications.get("items") or [])
+        if int(item.get("task_id") or 0) == int(task_id)
+    ]
+    assert len(task_invite_notes) == 1, task_invite_notes
 
     proposals = call(
         "GET",
@@ -387,6 +402,7 @@ def run():
         "earnings": True,
         "notifications": True,
         "task_invite": True,
+        "task_invite_retry_safe": True,
         "trusted_team": True,
         "notifications_read_all": True,
         "task_id": task_id,
