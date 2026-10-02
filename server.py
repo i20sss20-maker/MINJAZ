@@ -424,6 +424,52 @@ def create_task_atomic(client_id,category_id,service_id,title,description,budget
     finally:
         c.close()
 
+def repeat_task_fingerprint(source_task_id):
+    payload={'repeat_source_task_id':int(source_task_id)}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def repeat_task_atomic(source_task_id,client_id,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                cur.execute("""insert into task_idempotency_keys(client_id,idempotency_key,request_fingerprint)
+                               values(%s,%s,%s) on conflict(client_id,idempotency_key) do nothing
+                               returning client_id""",(int(client_id),idempotency_key,idempotency_fingerprint))
+                claimed=cur.fetchone()
+                if not claimed:
+                    cur.execute('select request_fingerprint,task_id from task_idempotency_keys where client_id=%s and idempotency_key=%s',(int(client_id),idempotency_key))
+                    record=cur.fetchone()
+                    if not record:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    if str(record.get('request_fingerprint') or '')!=str(idempotency_fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    if not record.get('task_id'):
+                        c.rollback();return None,False,'idempotency_conflict'
+                    cur.execute('select * from tasks where id=%s and client_id=%s',(record['task_id'],int(client_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('select * from tasks where id=%s and client_id=%s for update',(int(source_task_id),int(client_id)))
+            source=cur.fetchone()
+            if not source:
+                c.rollback();return None,False,'task_not_found'
+            cur.execute("""insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status)
+                           values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *""",
+                        (int(client_id),source.get('category_id'),source.get('service_id'),source['title'],source['description'],source.get('budget_min'),source.get('budget_max'),source.get('urgency') or 'normal'))
+            task=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update task_idempotency_keys set task_id=%s where client_id=%s and idempotency_key=%s',(task['id'],int(client_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in task.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def message_request_fingerprint(order_id,body,attachments):
     refs=[]
     if isinstance(attachments,list):
@@ -2365,9 +2411,15 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 legal_block=legal_action_precondition(u['id'])
                 if legal_block:return self.sendj(428,legal_block)
-                t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
+                tid=int(m.group(1));b=self.body();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                fingerprint=repeat_task_fingerprint(tid) if idempotency_key else None
+                task,replayed,err=repeat_task_atomic(tid,u['id'],idempotency_key or None,fingerprint)
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                task['idempotent_replay']=bool(replayed)
+                return self.sendj(200 if replayed else 201,task)
             m=re.fullmatch(r'/api/v1/tasks/(\d+)/close',p)
             if m and method=='POST':
                 u=self.require('client');
