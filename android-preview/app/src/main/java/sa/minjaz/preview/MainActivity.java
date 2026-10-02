@@ -48,8 +48,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(91, 33, 182));
-        getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().setStatusBarColor(Color.rgb(17, 21, 42));
+        getWindow().setNavigationBarColor(Color.rgb(247, 248, 252));
 
         buildUi();
         configureWebView();
@@ -69,7 +69,7 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(247, 248, 252));
 
         webView = new WebView(this);
         webView.setLayoutParams(new FrameLayout.LayoutParams(
@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         box.setPadding(dp(28), dp(28), dp(28), dp(28));
-        box.setBackgroundColor(Color.WHITE);
+        box.setBackgroundColor(Color.rgb(247, 248, 252));
 
         TextView title = new TextView(this);
         title.setText("تعذر الاتصال بمِنجاز");
@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.5");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.6");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);

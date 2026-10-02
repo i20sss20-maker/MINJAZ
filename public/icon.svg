@@ -1,13 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="مِنجاز">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3157f6"/>
-      <stop offset="1" stop-color="#06b6d4"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#11152A"/>
+      <stop offset="1" stop-color="#1B2452"/>
     </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C6DFF"/>
+      <stop offset=".55" stop-color="#6558F5"/>
+      <stop offset="1" stop-color="#2CC9B7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#050714" flood-opacity=".34"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="128" fill="#0b1020"/>
-  <path d="M116 151h210l-35 58H81z" fill="url(#g)"/>
-  <path d="M151 227h210l-35 58H116z" fill="url(#g)" opacity=".9"/>
-  <path d="M186 303h175l-35 58H151z" fill="url(#g)" opacity=".78"/>
-  <path d="M382 132c29 36 43 58 43 79a43 43 0 1 1-86 0c0-21 14-43 43-79z" fill="#f8fafc"/>
+  <rect width="512" height="512" rx="126" fill="url(#bg)"/>
+  <circle cx="390" cy="112" r="118" fill="#7C6DFF" opacity=".09"/>
+  <circle cx="100" cy="414" r="142" fill="#2CC9B7" opacity=".07"/>
+  <g filter="url(#shadow)">
+    <path d="M110 333h166l38-58H148z" fill="#2CC9B7"/>
+    <path d="M143 251h193l39-59H182z" fill="#8A7DFF"/>
+    <path d="M176 168h225l-39 59H137z" fill="url(#brand)"/>
+  </g>
+  <path d="M354 301l23 23 51-61" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

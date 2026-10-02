@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'android-*'
+      - 'brand-*'
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-release-artifacts.yml'

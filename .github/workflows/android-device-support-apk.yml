@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'android-*'
+      - 'brand-*'
       - android-stability-v04
       - android-resilience-v05
     paths:
