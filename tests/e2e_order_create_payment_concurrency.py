@@ -255,6 +255,34 @@ def run():
     payment_notes=[x for x in notes if int(x.get("order_id") or 0)==int(order["id"])]
     assert len(payment_notes)==1,payment_notes
 
+    # Double-send/retry of the same chat message creates one message, one attachment and one notification.
+    message_key=f"msg-race-{base}"
+    message_payload={
+        "body":"رسالة ثابتة لاختبار منع التكرار",
+        "idempotency_key":message_key,
+        "attachments":[{"name":"مرفق رسالة.pdf","url":"https://example.com/minjaz-message.pdf","mime_type":"application/pdf","size_bytes":4321}],
+    }
+    message_barrier=Barrier(2)
+    def send_same_message(_):
+        message_barrier.wait()
+        return raw_call("POST",f"/api/v1/orders/{order['id']}/messages",message_payload,ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        message_results=list(ex.map(send_same_message,(1,2)))
+    assert sorted(x[0] for x in message_results)==[200,201],message_results
+    message_ids={int(x[1]["id"]) for x in message_results}
+    assert len(message_ids)==1,message_results
+    message_replay=next(x[1] for x in message_results if x[0]==200)
+    assert message_replay.get("idempotent_replay") is True,message_replay
+    chat=call("GET",f"/api/v1/orders/{order['id']}/messages",token=ct,expected=(200,)).get("items") or []
+    stable=[x for x in chat if x.get("body")=="رسالة ثابتة لاختبار منع التكرار"]
+    assert len(stable)==1 and len(stable[0].get("attachments") or [])==1,stable
+    message_notes=call("GET","/api/v1/notifications?kind=message&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    message_notes=[x for x in message_notes if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(message_notes)==1,message_notes
+    changed_message=dict(message_payload);changed_message["body"]="رسالة مختلفة بنفس المفتاح"
+    message_conflict=raw_call("POST",f"/api/v1/orders/{order['id']}/messages",changed_message,ct)
+    assert message_conflict[0]==409 and message_conflict[1].get("error")=="idempotency_key_reused",message_conflict
+
     # Complete the same order and verify concurrent identical reviews are idempotent.
     call("POST",f"/api/v1/orders/{order['id']}/deliver",{"note":"تسليم لاختبار ثبات التقييم."},winner_token)
     call("POST",f"/api/v1/orders/{order['id']}/complete",{},ct)
@@ -310,6 +338,8 @@ def run():
         "mock_payment_idempotent":True,
         "single_payment_event":True,
         "single_payment_notification":True,
+        "message_send_idempotent":True,
+        "single_message_notification":True,
         "concurrent_identical_review_idempotent":True,
         "single_initial_review_notification":True,
         "unchanged_review_no_side_effect":True,
