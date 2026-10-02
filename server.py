@@ -2387,12 +2387,17 @@ class H(BaseHTTPRequestHandler):
                 if method=='POST':
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    d,locked,err=open_dispute_atomic(oid,u['id'],reason,details)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'dispute',reason+'\n'+details) if idempotency_key else None
+                    d,locked,replayed,err=open_dispute_atomic(oid,u['id'],reason,details,idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err in ('active_dispute_exists','active_cancellation_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
-                    return self.sendj(201,d)
+                    if not replayed:
+                        other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم فتح نزاع على الطلب',reason[:220],'dispute',oid);notify_admins('نزاع جديد يحتاج مراجعة',reason[:220],'dispute',oid)
+                    d['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,d)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/cancellation',p)
             if m:
                 u=self.require()
@@ -2405,12 +2410,17 @@ class H(BaseHTTPRequestHandler):
                 if method=='POST':
                     b=self.body();reason=str(b.get('reason') or '').strip();details=str(b.get('details') or '').strip()
                     if len(reason)<3:return self.sendj(400,{'error':'reason_required'})
-                    cr,locked,err=open_cancellation_atomic(oid,u['id'],reason,details)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'cancellation',reason+'\n'+details) if idempotency_key else None
+                    cr,locked,replayed,err=open_cancellation_atomic(oid,u['id'],reason,details,idempotency_key or None,fingerprint)
                     if err=='order_not_found':return self.sendj(404,{'error':err})
                     if err in ('active_cancellation_exists','active_dispute_exists'):return self.sendj(409,{'error':err,'id':locked.get('active_id') if locked else None})
                     if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                    other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
-                    return self.sendj(201,cr)
+                    if not replayed:
+                        other=locked['freelancer_id'] if int(u['id'])==int(locked['client_id']) else locked['client_id'];notify(other,'تم تقديم طلب إلغاء',reason[:220],'cancellation',oid);notify_admins('طلب إلغاء يحتاج مراجعة',f"{locked.get('title') or ('طلب #'+str(oid))}: {reason[:160]}",'cancellation',oid)
+                    cr['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,cr)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/timeline',p)
             if m and method=='GET':
                 u=self.require();
