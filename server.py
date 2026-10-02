@@ -1943,6 +1943,18 @@ class H(BaseHTTPRequestHandler):
                 t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
+            m=re.fullmatch(r'/api/v1/tasks/(\d+)/close',p)
+            if m and method=='POST':
+                u=self.require('client');
+                if not u:return
+                task,freelancer_ids,err=close_task_atomic(int(m.group(1)),u['id'])
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='client_only':return self.sendj(403,{'error':err})
+                if err in ('task_has_order','task_not_open'):return self.sendj(409,{'error':err,'state':task.get('status') if task else None})
+                if err:return self.sendj(409,{'error':err})
+                for fid in freelancer_ids:
+                    notify(fid,'تم إغلاق المهمة','أغلق العميل المهمة قبل اختيار مستقل','task',None,int(m.group(1)))
+                return self.sendj(200,{'ok':True,'status':'cancelled','task_id':int(m.group(1)),'notified_freelancers':len(freelancer_ids)})
             m=re.fullmatch(r'/api/v1/tasks/(\d+)/proposals',p)
             if m and method=='POST':
                 u=self.require('freelancer');
