@@ -413,6 +413,8 @@ def run():
         "single_delivery_notification":True,
         "revision_retry_idempotent":True,
         "single_revision_notification":True,
+        "complete_retry_idempotent":True,
+        "single_complete_notification":True,
         "concurrent_identical_review_idempotent":True,
         "single_initial_review_notification":True,
         "unchanged_review_no_side_effect":True,
