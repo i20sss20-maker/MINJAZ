@@ -2743,13 +2743,14 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
                     if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
-                    r,pr,err=update_payout_status(pid,st,b.get('admin_note'))
+                    r,pr,changed,err=update_payout_status(pid,st,b.get('admin_note'))
                     if err=='payout_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
-                    notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
-                    admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st,'previous_status':pr.get('status')})
-                    return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id'])})
+                    if changed:
+                        ttl={'processing':'طلب السحب قيد المعالجة','paid':'تم تنفيذ السحب','rejected':'تم رفض طلب السحب','cancelled':'تم إلغاء طلب السحب'}[st]
+                        notify(pr['freelancer_id'],ttl,str(b.get('admin_note') or '')[:220] or None,'payout',None)
+                        admin_audit(u['id'],'payout_status_updated','payout',pid,{'status':st,'previous_status':pr.get('status')})
+                    return self.sendj(200,{'item':r,'balance':freelancer_earnings(pr['freelancer_id']),'idempotent_replay':not changed})
                 if p=='/api/admin/support' and method=='GET':return self.sendj(200,{'items':q('select s.*,us.name,us.phone from support_tickets s join users us on us.id=s.user_id order by s.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/support/(\d+)',p)
                 if m and method=='PATCH':
