@@ -196,6 +196,13 @@ async function demoApi(path,opt={}){
     const s=d.tasks.find(x=>x.id==m[1]&&x.client_id===u.id);if(!s)return demoResp(404,{error:'task_not_found'});
     const t={...s,id:next('task'),status:'open',created_at:now()};d.tasks.push(t);demoSave(d);return demoResp(201,t)
   }
+  m=path.match(/^\/api\/v1\/tasks\/(\d+)\/close$/);
+  if(m&&method==='POST'){
+    if(u.role!=='client')return demoResp(403,{error:'client_only'});const tid=+m[1],t=d.tasks.find(x=>x.id===tid);
+    if(!t)return demoResp(404,{error:'task_not_found'});if(t.client_id!==u.id)return demoResp(403,{error:'client_only'});
+    if(t.status!=='open'){const hasOrder=d.orders.some(x=>x.task_id===tid);return demoResp(409,{error:hasOrder?'task_has_order':'task_not_open',state:t.status})}
+    t.status='cancelled';d.proposals.filter(x=>x.task_id===tid&&x.status==='sent').forEach(x=>x.status='rejected');demoSave(d);return demoResp(200,{ok:true,status:'cancelled',task_id:tid})
+  }
   m=path.match(/^\/api\/v1\/tasks\/(\d+)\/proposals$/);
   if(m&&method==='POST'){
     if(u.role!=='freelancer')return demoResp(403,{error:'freelancer_only'});const tid=+m[1];let p=d.proposals.find(x=>x.task_id===tid&&x.freelancer_id===u.id);
