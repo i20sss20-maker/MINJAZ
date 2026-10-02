@@ -58,6 +58,35 @@ def run():
     ct,t1,t2=client["token"],f1["token"],f2["token"]
     accept_legal(ct);accept_legal(t1);accept_legal(t2)
 
+    # Concurrent double-submit with the same idempotency key creates one task and one attachment.
+    idem_key=f"task-race-{base}"
+    idem_payload={
+        "category_id":cats[0]["id"],"title":"اختبار منع تكرار إنشاء المهمة",
+        "description":"اختبار آلي للتأكد أن الضغط المزدوج أو إعادة نفس الطلب لا ينشئ مهمتين.",
+        "budget_min":"100","budget_max":"180","urgency":"normal",
+        "idempotency_key":idem_key,
+        "attachments":[{"name":"مرجع اختبار.pdf","url":"https://example.com/minjaz-idempotency.pdf","mime_type":"application/pdf","size_bytes":1234}],
+    }
+    idem_barrier=Barrier(2)
+    def create_same_task():
+        idem_barrier.wait()
+        return raw_call("POST","/api/v1/tasks",idem_payload,ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        first=ex.submit(create_same_task);second=ex.submit(create_same_task)
+        idem_results=[first.result(),second.result()]
+    assert sorted(x[0] for x in idem_results)==[200,201],idem_results
+    ids={int(x[1]["id"]) for x in idem_results}
+    assert len(ids)==1,idem_results
+    replay=next(x[1] for x in idem_results if x[0]==200)
+    assert replay.get("idempotent_replay") is True,replay
+    idem_task_id=next(iter(ids))
+    idem_files=call("GET",f"/api/v1/tasks/{idem_task_id}/attachments",token=ct,expected=(200,)).get("items") or []
+    assert len(idem_files)==1,idem_files
+    changed=dict(idem_payload);changed["title"]="عنوان مختلف بنفس المفتاح"
+    reused=raw_call("POST","/api/v1/tasks",changed,ct)
+    assert reused[0]==409 and reused[1].get("error")=="idempotency_key_reused",reused
+    call("POST",f"/api/v1/tasks/{idem_task_id}/close",{},ct,expected=(200,))
+
     # A client can close an open task; sent proposals are rejected and no new proposal can appear afterward.
     close_task=call("POST","/api/v1/tasks",{
         "category_id":cats[0]["id"],"title":"اختبار إغلاق مهمة مفتوحة",
@@ -270,7 +299,7 @@ def run():
     assert reviewed_order["review_comment"]=="تم تعديل التقييم مرة واحدة",reviewed_order
 
     return {
-        "ok":True,"version":health.get("version"),
+        "ok":True,"version":health.get("version"),"task_creation_idempotent":True,
         "task_close_supported":True,
         "task_close_proposal_write_race_safe":True,
         "task_close_accept_race_safe":True,
