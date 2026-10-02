@@ -2512,7 +2512,15 @@ class H(BaseHTTPRequestHandler):
                     if not name:return self.sendj(400,{'error':'name_required'})
                     allowed={'q','category_id','urgency','proposal','min_budget','sort'};clean={k:str(v)[:160] for k,v in filters.items() if k in allowed and str(v).strip()}
                     if len(clean)>8:return self.sendj(400,{'error':'invalid_filters'})
-                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=account_request_fingerprint('saved_search',{'name':name,'filters':clean}) if idempotency_key else None
+                    r,replayed,err=create_saved_search_atomic(u['id'],name,clean,idempotency_key or None,fingerprint)
+                    if err=='saved_search_limit':return self.sendj(409,{'error':err,'limit':20})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    r['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,r)
             m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
             if m and method=='DELETE':
                 u=self.require('freelancer');
