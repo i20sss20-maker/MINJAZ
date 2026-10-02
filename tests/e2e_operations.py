@@ -69,6 +69,9 @@ def run():
     admin=login(ADMIN_PHONE,"admin","MINJAZ Admin")
     ct,ft,at=client["token"],freelancer["token"],admin["token"]
     fid=freelancer["user"]["id"]
+    docs={"documents":["terms","privacy","marketplace_rules"]}
+    assert call("POST","/api/v1/legal/accept",docs,ct,expected=(200,)).get("complete") is True
+    assert call("POST","/api/v1/legal/accept",docs,ft,expected=(200,)).get("complete") is True
 
     sessions=call("GET","/api/v1/account/sessions",token=ct,expected=(200,))
     assert sessions.get("items") and any(x.get("current") for x in sessions["items"]),sessions
@@ -126,7 +129,11 @@ def run():
     tres=call("PATCH",f"/api/admin/support/{ticket['id']}",{
         "status":"resolved","admin_reply":"تمت معالجة تذكرة الاختبار."
     },at,expected=(200,))
-    assert tres["status"]=="resolved",tres
+    assert tres["status"]=="resolved" and tres.get("idempotent_replay") is False,tres
+    tres_retry=call("PATCH",f"/api/admin/support/{ticket['id']}",{
+        "status":"resolved","admin_reply":"تمت معالجة تذكرة الاختبار."
+    },at,expected=(200,))
+    assert tres_retry.get("idempotent_replay") is True,tres_retry
 
     # Privacy.
     privacy=call("POST","/api/v1/privacy/requests",{
@@ -137,7 +144,17 @@ def run():
     pres=call("PATCH",f"/api/admin/privacy/{privacy['id']}",{
         "status":"completed","admin_note":"تم اختبار معالجة طلب الخصوصية."
     },at,expected=(200,))
-    assert pres["status"]=="completed",pres
+    assert pres["status"]=="completed" and pres.get("idempotent_replay") is False,pres
+    pres_retry=call("PATCH",f"/api/admin/privacy/{privacy['id']}",{
+        "status":"completed","admin_note":"تم اختبار معالجة طلب الخصوصية."
+    },at,expected=(200,))
+    assert pres_retry.get("idempotent_replay") is True,pres_retry
+    ops_after_retries=call("GET","/api/admin/operations",token=at,expected=(200,))
+    audit=ops_after_retries.get("audit") or []
+    support_audit=[x for x in audit if x.get("action")=="support_updated" and str(x.get("target_id"))==str(ticket["id"])]
+    privacy_audit=[x for x in audit if x.get("action")=="privacy_request_updated" and str(x.get("target_id"))==str(privacy["id"])]
+    assert len(support_audit)==1,support_audit
+    assert len(privacy_audit)==1,privacy_audit
 
     # Safety report review without punitive moderation.
     safety=call("POST","/api/v1/safety/reports",{
@@ -160,6 +177,7 @@ def run():
         "admin_auth":True,"sessions":True,"payout_lifecycle":True,
         "cancellation_refund":True,"dispute_resume":True,
         "support_admin":True,"privacy_admin":True,"safety_admin":True,
+        "support_admin_retry_safe":True,"privacy_admin_retry_safe":True,
         "admin_summary":True,"admin_operations":True,
         "completed_order_id":order1["id"],"cancelled_order_id":order2["id"],
         "disputed_order_id":order3["id"],"payout_id":payout_id
@@ -167,6 +185,9 @@ def run():
 
 RESULT=run()
 print("MINJAZ_OPERATIONS_E2E_OK",json.dumps(RESULT,ensure_ascii=False),flush=True)
+
+if os.getenv("E2E_EXIT_AFTER_RUN")=="1":
+    raise SystemExit(0)
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
