@@ -1163,11 +1163,11 @@ html{scroll-behavior:smooth}body{overscroll-behavior-y:none}.btn,.navBtn,.mobile
 
  // Better empty-state actions without changing business logic.
  const _renderClientHomeRC2=window.renderClientHome;
- window.renderClientHome=async function(){await _renderClientHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="newTaskModal()">أنشئ أول مهمة</button></div>')})};
+ window.renderClientHome=async function(){await _renderClientHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction,.btn'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="newTaskModal()">أنشئ أول مهمة</button></div>')})};
  const _renderFreelancerHomeRC2=window.renderFreelancerHome;
- window.renderFreelancerHome=async function(){await _renderFreelancerHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn ghost" onclick="go(\'account\')">حدّث مهاراتك</button><button class="btn primary" onclick="go(\'tasks\')">تصفح الفرص</button></div>')})};
+ window.renderFreelancerHome=async function(){await _renderFreelancerHomeRC2();const host=document.getElementById('home');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction,.btn'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn ghost" onclick="go(\'account\')">حدّث مهاراتك</button><button class="btn primary" onclick="go(\'tasks\')">تصفح الفرص</button></div>')})};
  const _renderTeamRC2=window.renderTeam;
- if(typeof _renderTeamRC2==='function')window.renderTeam=async function(){await _renderTeamRC2();const host=document.getElementById('team');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="go(\'freelancers\')">استكشف المستقلين</button></div>')})};
+ if(typeof _renderTeamRC2==='function')window.renderTeam=async function(){await _renderTeamRC2();const host=document.getElementById('team');host?.querySelectorAll('.empty').forEach(e=>{if(!e.querySelector('.emptyAction,.btn'))e.insertAdjacentHTML('beforeend','<div class="emptyAction"><button class="btn primary" onclick="go(\'freelancers\')">استكشف المستقلين</button></div>')})};
 
  // Keep demo behavior aligned with production input boundaries.
  if(typeof demoApi==='function'){
