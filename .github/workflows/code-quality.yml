@@ -71,11 +71,19 @@ jobs:
           assert "def complete_order_atomic(oid,user_id):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          assert "def withdraw_proposal_atomic(task_id,freelancer_id):" in server
           assert "def create_order_atomic(proposal_id,client_id):" in server
           assert "def pay_mock_atomic(oid,user_id):" in server
           assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
           review_start=server.index("def upsert_review_atomic")
+          withdraw_start=server.index("def withdraw_proposal_atomic")
           create_start=server.index("def create_order_atomic")
+          withdraw_block=server[withdraw_start:create_start]
+          assert "select id,status from tasks where id=%s for update" in withdraw_block
+          assert "select id,task_id,freelancer_id,status from proposals where task_id=%s and freelancer_id=%s for update" in withdraw_block
+          assert withdraw_block.index("select id,status from tasks where id=%s for update") < withdraw_block.index("select id,task_id,freelancer_id,status from proposals where task_id=%s and freelancer_id=%s for update")
+          assert "select 1 from orders where proposal_id=%s limit 1" in withdraw_block
+          assert "delete from proposals where id=%s" in withdraw_block
           review_block=server[review_start:server.index("def deliver_order_atomic")]
           assert "from orders o where o.id=%s for update" in review_block
           assert "select * from reviews where order_id=%s for update" in review_block
