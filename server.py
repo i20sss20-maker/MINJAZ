@@ -1178,18 +1178,29 @@ def admin_transition_dispute(did,admin_id,status,action='',resolution_note=None)
             if not d:
                 c.rollback();return None,None,None,'dispute_not_found'
             current=str(d.get('status') or '')
+            note=str(resolution_note or '')[:3000] or None
+            action=str(action or '')
             if current=='resolved':
+                if status=='resolved' and str(d.get('resolution_action') or '')==action and (d.get('resolution_note') or None)==note:
+                    refund='not_needed'
+                    if action=='cancel':
+                        ps=str(d.get('payment_status') or '')
+                        refund='refunded' if ps=='refunded' else ('manual_required' if ps=='paid' else 'not_needed')
+                    row={k:as_json(v) for k,v in dict(d).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(d),refund,None
                 c.rollback();return None,dict(d),None,'dispute_finalized'
             if current not in ('open','in_review'):
                 c.rollback();return None,dict(d),None,'invalid_dispute_state'
-            note=str(resolution_note or '')[:3000] or None
             if status=='in_review':
+                if current=='in_review' and (d.get('resolution_note') or None)==note:
+                    row={k:as_json(v) for k,v in dict(d).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(d),'not_needed',None
                 cur.execute("update order_disputes set status='in_review',resolution_note=%s,updated_at=now() where id=%s returning *",(note,int(did)))
                 row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(d),'not_needed',None
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(d),'not_needed',None
             if status!='resolved':
                 c.rollback();return None,dict(d),None,'invalid_status'
-            action=str(action or '')
             if action not in ('resume','cancel'):
                 c.rollback();return None,dict(d),None,'invalid_resolution_action'
             cur.execute('select id,status from tasks where id=%s for update',(d['task_id'],))
@@ -1221,7 +1232,8 @@ def admin_transition_dispute(did,admin_id,status,action='',resolution_note=None)
                            where id=%s returning *""",
                         (action,note,int(admin_id),int(did)))
             row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},dict(d),refund,None
+            out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+            return out,dict(d),refund,None
     except Exception:
         c.rollback();raise
     finally:
@@ -1240,6 +1252,9 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
                 c.rollback();return None,None,None,'cancellation_not_found'
             note=str(admin_note or '')[:3000] or None
             if mark_refunded:
+                if cr.get('status')=='approved' and cr.get('refund_status')=='refunded' and (cr.get('admin_note') or None)==note:
+                    row={k:as_json(v) for k,v in dict(cr).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(cr),'refunded',None
                 if cr.get('status')!='approved' or cr.get('refund_status') not in ('manual_required','pending'):
                     c.rollback();return None,dict(cr),None,'refund_not_markable'
                 cur.execute("update orders set payment_status='refunded' where id=%s",(cr['order_id'],))
@@ -1247,23 +1262,35 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
                                set refund_status='refunded',admin_note=coalesce(%s,admin_note),updated_at=now()
                                where id=%s returning *""",(note,int(cid)))
                 row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),'refunded',None
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),'refunded',None
             current=str(cr.get('status') or '')
             if status=='in_review':
+                if current=='in_review' and (cr.get('admin_note') or None)==note:
+                    row={k:as_json(v) for k,v in dict(cr).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(cr),cr.get('refund_status') or 'not_needed',None
                 if current not in ('pending','in_review'):
                     c.rollback();return None,dict(cr),None,'cancellation_finalized'
                 cur.execute("update order_cancellation_requests set status='in_review',admin_note=%s,updated_at=now() where id=%s returning *",(note,int(cid)))
                 row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),cr.get('refund_status') or 'not_needed',None
             if status=='rejected':
+                if current=='rejected' and (cr.get('admin_note') or None)==note:
+                    row={k:as_json(v) for k,v in dict(cr).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(cr),cr.get('refund_status') or 'not_needed',None
                 if current not in ('pending','in_review'):
                     c.rollback();return None,dict(cr),None,'cancellation_finalized'
                 cur.execute("""update order_cancellation_requests
                                set status='rejected',admin_note=%s,resolved_by=%s,resolved_at=now(),updated_at=now()
                                where id=%s returning *""",(note,int(admin_id),int(cid)))
                 row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),cr.get('refund_status') or 'not_needed',None
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),cr.get('refund_status') or 'not_needed',None
             if status=='approved':
+                if current=='approved' and (cr.get('admin_note') or None)==note:
+                    row={k:as_json(v) for k,v in dict(cr).items()};row['idempotent_replay']=True
+                    c.rollback();return row,dict(cr),cr.get('refund_status') or 'not_needed',None
                 if current not in ('pending','in_review'):
                     c.rollback();return None,dict(cr),None,'cancellation_finalized'
                 cur.execute('select id,status from tasks where id=%s for update',(cr['task_id'],))
@@ -1286,7 +1313,8 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
                                where id=%s returning *""",
                             (refund,note,int(admin_id),int(cid)))
                 row=dict(cur.fetchone());c.commit()
-                return {k:as_json(v) for k,v in row.items()},dict(cr),refund,None
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),refund,None
             c.rollback();return None,dict(cr),None,'invalid_status'
     except Exception:
         c.rollback();raise
