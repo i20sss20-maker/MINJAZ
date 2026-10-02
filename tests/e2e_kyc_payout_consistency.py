@@ -123,10 +123,19 @@ def run():
     assert find_payout(at,pid1)["status"]=="pending"
 
     call("PATCH",f"/api/admin/freelancers/{fid}/kyc",{"status":"approved"},at)
+    before_processing_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
     processing=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"processing"},at)
     assert processing["item"]["status"]=="processing",processing
+    processing_replay=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"processing"},at)
+    assert processing_replay.get("idempotent_replay") is True,processing_replay
+    after_processing_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
+    assert len(after_processing_notes)==len(before_processing_notes)+1,(before_processing_notes,after_processing_notes)
     paid=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
     assert paid["item"]["status"]=="paid",paid
+    paid_replay=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
+    assert paid_replay.get("idempotent_replay") is True,paid_replay
+    after_paid_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
+    assert len(after_paid_notes)==len(after_processing_notes)+1,(after_processing_notes,after_paid_notes)
 
     # Second payout: race KYC rejection vs final payout decision.
     payout2=call("POST","/api/v1/freelancer/payouts",{"amount":"25.00","note":"KYC race test"},ft)["item"]
@@ -168,6 +177,8 @@ def run():
         "payout_request_retry_idempotent":True,
         "single_payout_request_notification":True,
         "payout_requires_current_kyc":True,
+        "payout_status_retry_idempotent":True,
+        "single_payout_status_notification":True,
         "kyc_reapproval_allows_payout":True,
         "kyc_payout_race_deadlock_free":True,
         "non_negative_balance":True,
