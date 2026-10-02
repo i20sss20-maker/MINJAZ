@@ -148,6 +148,7 @@ jobs:
               end=server.find("\ndef ",start+5)
               block=server[start:end if end!=-1 else len(server)]
               assert "for update of o,t" in block
+          assert "def update_manual_kyc_status(uid,status):" in server
           assert "def update_payout_status(pid,status,admin_note=None):" in server
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")
