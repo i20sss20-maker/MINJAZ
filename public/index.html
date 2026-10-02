@@ -737,10 +737,10 @@ boot();
    host.appendChild(sec);
  };
  window.adminPayoutModal=function(id,status){
-   openModal(`<div class="modalHead"><h2>معالجة طلب السحب</h2><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>ملاحظة الإدارة</label><textarea id="payoutAdminNote"></textarea></div><div class="actions">${status==='pending'?`<button class="btn soft" onclick="adminPayoutAction(${id},'processing')">قيد التحويل</button>`:''}<button class="btn green" onclick="adminPayoutAction(${id},'paid')">تم التحويل</button><button class="btn danger" onclick="adminPayoutAction(${id},'rejected')">رفض</button></div>`);
+   openModal(`<div class="modalHead"><h2>معالجة طلب السحب</h2><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>ملاحظة الإدارة</label><textarea id="payoutAdminNote"></textarea></div><div class="actions">${status==='pending'?`<button class="btn soft" onclick="adminPayoutAction(${id},'processing',event)">قيد التحويل</button>`:''}<button class="btn green" onclick="adminPayoutAction(${id},'paid',event)">تم التحويل</button><button class="btn danger" onclick="adminPayoutAction(${id},'rejected',event)">رفض</button></div>`);
  };
- window.adminPayoutAction=async function(id,status){
-   const note=document.getElementById('payoutAdminNote').value,btn=event?.currentTarget;
+ window.adminPayoutAction=async function(id,status,ev){
+   const note=document.getElementById('payoutAdminNote').value,btn=ev?.currentTarget;
    if(btn?.disabled)return;if(btn){btn.disabled=true;btn.textContent='جاري الحفظ…'}
    const reset=()=>{if(btn){btn.disabled=false;btn.textContent=status==='paid'?'تم التحويل':status==='processing'?'قيد التحويل':'رفض'}};
    let response;try{response=await api('/api/admin/payouts/'+id,{method:'PATCH',body:JSON.stringify({status,admin_note:note})})}catch(e){reset();return toast('تعذر تأكيد تحديث طلب السحب')}
