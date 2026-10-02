@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - android-device-support-v2
+      - android-compat-only-v3
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-device-support-apk.yml'
