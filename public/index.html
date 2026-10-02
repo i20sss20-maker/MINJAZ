@@ -1141,9 +1141,86 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   #admin .kpiGrid{grid-template-columns:1fr 1fr}
 }
 
+
+/* MINJAZ PWA + navigation polish v11 */
+.skipLink{
+  position:fixed;
+  z-index:300;
+  inset-inline-start:14px;
+  top:12px;
+  transform:translateY(-160%);
+  padding:9px 12px;
+  border-radius:12px;
+  background:#11152a;
+  color:#fff;
+  text-decoration:none;
+  font:700 10px Alexandria;
+  box-shadow:0 12px 30px rgba(17,21,42,.2);
+  transition:transform .16s ease;
+}
+.skipLink:focus{transform:translateY(0)}
+.pwaAction{
+  position:fixed;
+  z-index:210;
+  inset-inline:18px;
+  bottom:calc(18px + env(safe-area-inset-bottom));
+  margin:auto;
+  max-width:560px;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:11px;
+  align-items:center;
+  padding:12px 13px;
+  border:1px solid #ddd9ff;
+  border-radius:18px;
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(18px);
+  box-shadow:0 20px 60px rgba(17,21,42,.18);
+}
+.pwaAction.hidden{display:none}
+.pwaActionIcon{
+  width:42px;height:42px;
+  display:grid;place-items:center;
+  border-radius:14px;
+  color:#fff;
+  background:linear-gradient(145deg,#6558f5,#7568ff 62%,#2cc9b7);
+  box-shadow:0 10px 24px rgba(101,88,245,.2);
+}
+.pwaActionIcon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pwaAction b{font:700 10px Alexandria}
+.pwaAction p{margin:3px 0 0;font-size:8.5px;line-height:1.65;color:#6c7187}
+.pwaActionButtons{display:flex;gap:6px}
+.pwaInstallCard{
+  border:1px solid #ddd9ff!important;
+  background:
+    radial-gradient(circle at 95% 0,rgba(101,88,245,.08),transparent 11rem),
+    linear-gradient(180deg,#fff,#faf9ff)!important;
+}
+.pwaInstallCard .row{align-items:center}
+.routeFocusFlash{animation:minjazRouteFocus .28s ease-out}
+@keyframes minjazRouteFocus{
+  from{box-shadow:0 0 0 5px rgba(101,88,245,.13)}
+  to{box-shadow:none}
+}
+[data-nav][aria-current="page"]{position:relative}
+@media(max-width:700px){
+  .pwaAction{
+    inset-inline:10px;
+    bottom:calc(84px + env(safe-area-inset-bottom));
+    grid-template-columns:auto 1fr;
+  }
+  .pwaActionButtons{
+    grid-column:1/-1;
+    display:grid;
+    grid-template-columns:1fr auto;
+  }
+  .pwaActionButtons .btn:first-child{width:100%}
+}
+
 </style>
 </head>
 <body>
+<a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="connectionBanner" class="connectionBanner hidden" role="status" aria-live="polite"></div>
 
@@ -1183,9 +1260,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 <div id="app" class="shell hidden">
   <aside class="side">
     <div class="brand"><div class="mark">≋</div><span>مِنجاز</span></div>
-    <div id="sideNav"></div>
+    <nav id="sideNav" aria-label="التنقل الرئيسي"></nav>
   </aside>
-  <main class="main">
+  <main class="main" id="mainContent" tabindex="-1">
     <header class="topbar">
       <div class="topTitle"><h1 id="pageTitle">الرئيسية</h1><small id="pageSub">لوحة مِنجاز</small></div>
       <div class="userChip"><div class="avatar" id="avatar">م</div><div><b id="userName">—</b><small id="userRole">—</small></div><button class="btn ghost" onclick="logout()">خروج</button></div>
@@ -1202,7 +1279,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
       <section id="admin" class="page"></section>
     </div>
   </main>
-  <nav id="mobileNav" class="mobileNav"></nav>
+  <nav id="mobileNav" class="mobileNav" aria-label="التنقل السريع"></nav>
 </div>
 
 <div id="modalOverlay" class="overlay" onclick="if(event.target===this)closeModal()">
@@ -2562,6 +2639,167 @@ body{font-size:14px;line-height:1.65}
   .profileIdentityOrb{width:52px;height:52px;flex-basis:52px;border-radius:17px}
 }
 </style>
+
+
+<script id="minjazPwaV11">
+(function(){
+  const VALID_ROUTES=new Set(['home','tasks','orders','notifications','freelancers','team','account','admin']);
+  let deferredInstallPrompt=null;
+  let updatePromptShown=false;
+  const hadControllerAtLoad=!!navigator.serviceWorker?.controller;
+
+  function ensurePwaBanner(){
+    let b=document.getElementById('pwaActionV11');
+    if(b)return b;
+    b=document.createElement('div');
+    b.id='pwaActionV11';
+    b.className='pwaAction hidden';
+    b.setAttribute('role','status');
+    b.setAttribute('aria-live','polite');
+    document.body.appendChild(b);
+    return b;
+  }
+
+  const installIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>';
+  const updateIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v6h-6"/></svg>';
+
+  function showPwaBanner(mode){
+    const b=ensurePwaBanner();
+    if(mode==='install' && deferredInstallPrompt){
+      b.innerHTML='<div class="pwaActionIcon">'+installIcon+'</div><div><b>ثبّت مِنجاز كتطبيق</b><p>يفتح من الشاشة الرئيسية بشكل مستقل وأسهل على الجوال.</p></div><div class="pwaActionButtons"><button class="btn primary" onclick="installMinjazV11()">تثبيت</button><button class="btn ghost" onclick="dismissPwaV11()">لاحقًا</button></div>';
+      b.classList.remove('hidden');
+    }else if(mode==='update'){
+      b.innerHTML='<div class="pwaActionIcon">'+updateIcon+'</div><div><b>نسخة جديدة من مِنجاز جاهزة</b><p>حدّث الصفحة لتحصل على آخر تحسينات الواجهة والثبات.</p></div><div class="pwaActionButtons"><button class="btn primary" onclick="location.reload()">تحديث الآن</button><button class="btn ghost" onclick="dismissPwaV11()">لاحقًا</button></div>';
+      b.classList.remove('hidden');
+    }
+  }
+
+  window.dismissPwaV11=function(){
+    ensurePwaBanner().classList.add('hidden');
+  };
+
+  window.installMinjazV11=async function(){
+    if(!deferredInstallPrompt)return;
+    const p=deferredInstallPrompt;
+    deferredInstallPrompt=null;
+    try{
+      await p.prompt();
+      await p.userChoice;
+    }catch(e){}
+    ensurePwaBanner().classList.add('hidden');
+    syncInstallCard();
+  };
+
+  function isStandalone(){
+    return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true;
+  }
+
+  function syncInstallCard(){
+    const host=document.getElementById('account');
+    if(!host||host.querySelector('[data-pwa-install-v11]'))return;
+    if(isStandalone())return;
+    const sec=document.createElement('div');
+    sec.dataset.pwaInstallV11='1';
+    sec.className='card pwaInstallCard';
+    sec.innerHTML='<div class="row space"><div><h3 style="font-family:Alexandria;font-size:12px;margin:0">تطبيق مِنجاز</h3><p style="font-size:8.5px;color:#6c7187;line-height:1.7;margin:5px 0 0">'+(deferredInstallPrompt?'تقدر تثبّت مِنجاز على جهازك وفتحه كتطبيق مستقل.':'إذا كان متصفحك يدعم التثبيت، راح يظهر خيار التثبيت تلقائيًا.')+'</p></div>'+(deferredInstallPrompt?'<button class="btn primary" onclick="installMinjazV11()">تثبيت التطبيق</button>':'<span class="pill gray">PWA</span>')+'</div>';
+    host.appendChild(sec);
+  }
+
+  window.addEventListener('beforeinstallprompt',e=>{
+    e.preventDefault();
+    deferredInstallPrompt=e;
+    if(!isStandalone())showPwaBanner('install');
+    if(currentPage==='account')syncInstallCard();
+  });
+
+  window.addEventListener('appinstalled',()=>{
+    deferredInstallPrompt=null;
+    ensurePwaBanner().classList.add('hidden');
+    toast('تم تثبيت مِنجاز على جهازك');
+  });
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(hadControllerAtLoad && !updatePromptShown){
+        updatePromptShown=true;
+        showPwaBanner('update');
+      }
+    });
+    navigator.serviceWorker.ready.then(reg=>{
+      const check=()=>reg.update().catch(()=>{});
+      check();
+      document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')check()});
+    }).catch(()=>{});
+  }
+
+  function routeFromLocation(){
+    const id=(location.hash||'').replace(/^#/,'');
+    return VALID_ROUTES.has(id)?id:null;
+  }
+
+  function syncAriaRoute(id){
+    document.querySelectorAll('[data-nav]').forEach(el=>{
+      if(el.dataset.nav===id)el.setAttribute('aria-current','page');
+      else el.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.page').forEach(page=>{
+      page.setAttribute('aria-hidden',page.id===id?'false':'true');
+    });
+  }
+
+  document.addEventListener('click',e=>{
+    const nav=e.target.closest?.('[data-nav]');
+    if(!nav||!nav.dataset.nav||!VALID_ROUTES.has(nav.dataset.nav))return;
+    const next='#'+nav.dataset.nav;
+    if(location.hash!==next){
+      try{history.pushState({minjazRoute:nav.dataset.nav},'',next)}catch{}
+    }
+  },true);
+
+  let handlingPop=false;
+  window.addEventListener('popstate',async()=>{
+    const id=routeFromLocation();
+    if(!id||!me?.user||handlingPop)return;
+    handlingPop=true;
+    try{
+      await go(id);
+      syncAriaRoute(id);
+      const main=document.getElementById('mainContent');
+      main?.classList.add('routeFocusFlash');
+      setTimeout(()=>main?.classList.remove('routeFocusFlash'),320);
+    }finally{handlingPop=false}
+  });
+
+  const baseGoV11=window.go;
+  window.go=async function(id){
+    await baseGoV11(id);
+    syncAriaRoute(id);
+    if(id==='account')syncInstallCard();
+  };
+
+  const baseBuildNavV11=window.buildNav;
+  window.buildNav=function(){
+    baseBuildNavV11();
+    syncAriaRoute(currentPage);
+  };
+
+  const baseAccountV11=window.renderAccount;
+  window.renderAccount=async function(){
+    await baseAccountV11();
+    syncInstallCard();
+  };
+
+  window.addEventListener('load',()=>{
+    setTimeout(async()=>{
+      const id=routeFromLocation();
+      if(id&&me?.user&&id!==currentPage){
+        try{await go(id)}catch(e){}
+      }
+      syncAriaRoute(currentPage);
+    },250);
+  });
+})();
+</script>
 
 </body>
 </html>

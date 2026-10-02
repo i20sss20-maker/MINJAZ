@@ -1,4 +1,4 @@
-const VERSION='0.5.5-rc5';
+const VERSION='web-v11';
 const CACHE=`minjaz-shell-${VERSION}`;
 const SHELL=['/','/manifest.webmanifest','/icon.svg'];
 
@@ -26,8 +26,11 @@ self.addEventListener('fetch',event=>{
     return;
   }
 
-  event.respondWith(caches.match(req).then(cached=>cached||fetch(req).then(res=>{
-    if(res.ok){const copy=res.clone();caches.open(CACHE).then(cache=>cache.put(req,copy));}
-    return res;
-  })));
+  event.respondWith(caches.match(req).then(cached=>{
+    const fresh=fetch(req).then(res=>{
+      if(res.ok){const copy=res.clone();caches.open(CACHE).then(cache=>cache.put(req,copy));}
+      return res;
+    }).catch(()=>cached);
+    return cached||fresh;
+  }));
 });
