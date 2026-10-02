@@ -1044,33 +1044,60 @@ def freelancer_earnings(fid):
     available=max(Decimal('0'),net-paid-pending)
     return {'gross_earned':float(Decimal(str(totals.get('gross_earned') or 0))),'platform_fees':float(Decimal(str(totals.get('platform_fees') or 0))),'net_earned':float(net),'paid_out':float(paid),'pending_payouts':float(pending),'available_balance':float(available),'completed_orders':int(totals.get('completed_orders') or 0)}
 
-def create_payout_request(fid,raw_amount,note=None):
+def payout_request_fingerprint(amount,note=None):
+    normalized_note=str(note or '').strip()[:500]
+    payload={'amount':format(money_decimal(amount),'.2f'),'note':normalized_note}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_payout_request(fid,raw_amount,note=None,idempotency_key=None):
     try:
         amount=money_decimal(raw_amount)
     except Exception:
-        return None,'invalid_amount',None
+        return None,'invalid_amount',None,False
     if amount<=0:
-        return None,'invalid_amount',None
+        return None,'invalid_amount',None,False
+    normalized_note=str(note or '').strip()[:500] or None
+    fingerprint=payout_request_fingerprint(amount,normalized_note) if idempotency_key else None
     c=db_connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select id from users where id=%s for update',(fid,))
             if not cur.fetchone():
-                c.rollback();return None,'user_not_found',None
+                c.rollback();return None,'user_not_found',None,False
+            if idempotency_key:
+                cur.execute('select * from payout_requests where freelancer_id=%s and idempotency_key=%s',(fid,idempotency_key))
+                existing=cur.fetchone()
+                if existing:
+                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
+                        c.rollback();return None,'idempotency_key_reused',None,False
+                    cur.execute("""select
+                        coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned
+                        from orders where freelancer_id=%s""",(fid,))
+                    net=Decimal(str(cur.fetchone()['net_earned'] or 0))
+                    cur.execute("""select
+                        coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,
+                        coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts
+                        from payout_requests where freelancer_id=%s""",(fid,))
+                    pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0))
+                    available=max(Decimal('0'),net-paid-pending)
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(existing).items()},None,available,True
             cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
             fp=cur.fetchone()
             if not fp or fp.get('kyc_status')!='approved':
-                c.rollback();return None,'kyc_required',None
+                c.rollback();return None,'kyc_required',None,False
             cur.execute("""select coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned from orders where freelancer_id=%s""",(fid,))
             net=Decimal(str(cur.fetchone()['net_earned'] or 0))
             cur.execute("""select coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts from payout_requests where freelancer_id=%s""",(fid,))
             pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0));available=max(Decimal('0'),net-paid-pending)
             if amount>available:
-                c.rollback();return None,'insufficient_balance',available
-            cur.execute("insert into payout_requests(freelancer_id,amount,note,status) values(%s,%s,%s,'pending') returning *",(fid,amount,str(note or '')[:500] or None))
+                c.rollback();return None,'insufficient_balance',available,False
+            cur.execute("""insert into payout_requests(freelancer_id,amount,note,status,idempotency_key,request_fingerprint)
+                           values(%s,%s,%s,'pending',%s,%s) returning *""",
+                        (fid,amount,normalized_note,idempotency_key,fingerprint))
             row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},None,max(Decimal('0'),available-amount)
+            return {k:as_json(v) for k,v in row.items()},None,max(Decimal('0'),available-amount),False
     except Exception:
         c.rollback();raise
     finally:
@@ -2016,12 +2043,15 @@ class H(BaseHTTPRequestHandler):
                 if method=='GET':
                     return self.sendj(200,{'items':q("select id,amount,status,note,admin_note,created_at,updated_at,resolved_at from payout_requests where freelancer_id=%s order by created_at desc limit 100",(u['id'],)),'balance':freelancer_earnings(u['id'])})
                 if method=='POST':
-                    b=self.body();r,err,available=create_payout_request(u['id'],b.get('amount'),b.get('note'))
+                    b=self.body();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    r,err,available,replayed=create_payout_request(u['id'],b.get('amount'),b.get('note'),idempotency_key or None)
                     if err=='kyc_required':return self.sendj(403,{'error':err})
                     if err=='insufficient_balance':return self.sendj(409,{'error':err,'available_balance':float(available)})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
                     if err:return self.sendj(400,{'error':err})
-                    notify(u['id'],'تم استلام طلب السحب',f"المبلغ {float(r['amount']):.2f} ر.س قيد المراجعة",'payout',None)
-                    return self.sendj(201,{'item':r,'balance':freelancer_earnings(u['id'])})
+                    if not replayed:notify(u['id'],'تم استلام طلب السحب',f"المبلغ {float(r['amount']):.2f} ر.س قيد المراجعة",'payout',None)
+                    return self.sendj(200 if replayed else 201,{'item':r,'balance':freelancer_earnings(u['id']),'idempotent_replay':bool(replayed)})
             if p=='/api/v1/freelancer/favorite-tasks' and method=='GET':
                 u=self.require('freelancer');
                 if not u:return

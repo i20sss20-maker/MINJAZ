@@ -705,15 +705,25 @@ boot();
  window.payoutModal=function(max){
    openModal('<div class="modalHead"><div><h2>طلب سحب أرباح</h2><div style="font-size:9px;color:#64748b">المتاح: '+money(max)+'</div></div><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>المبلغ</label><input id="payoutAmount" inputmode="decimal" value="'+Number(max).toFixed(2)+'"></div><div class="field"><label>ملاحظة — اختياري</label><textarea id="payoutNote" placeholder="أي ملاحظة للإدارة"></textarea></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="submitPayout()">إرسال طلب السحب</button></div>');
  };
+ window.__payoutPendingPayload=window.__payoutPendingPayload||null;
  window.submitPayout=async function(){
-   const amount=Number(document.getElementById('payoutAmount').value),note=document.getElementById('payoutNote').value;
-   const {r,j}=await api('/api/v1/freelancer/payouts',{method:'POST',body:JSON.stringify({amount,note})});
+   const amount=Number(document.getElementById('payoutAmount').value),note=document.getElementById('payoutNote').value,btn=document.querySelector('.actions .btn.primary');
+   if(!Number.isFinite(amount)||amount<=0)return toast('راجع مبلغ السحب');
+   if(btn?.disabled)return;if(btn){btn.disabled=true;btn.textContent='جاري الإرسال…'}
+   const reset=()=>{if(btn){btn.disabled=false;btn.textContent='إرسال طلب السحب'}};
+   let pending=window.__payoutPendingPayload;
+   if(pending&&(Number(pending.amount)!==amount||String(pending.note||'')!==String(note||''))){window.__payoutPendingPayload=null;pending=null}
+   if(!pending){pending={amount,note,idempotency_key:'payout-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))};window.__payoutPendingPayload=pending}
+   let response;try{response=await api('/api/v1/freelancer/payouts',{method:'POST',body:JSON.stringify(pending)})}catch(e){reset();return toast('تعذر تأكيد طلب السحب — تقدر تعيد المحاولة بأمان')}
+   const {r,j}=response;
    if(!r.ok){
+     reset();
+     if(j?.error==='idempotency_key_reused'){window.__payoutPendingPayload=null;return toast('تغيّرت بيانات طلب السحب؛ أعد المحاولة')}
      if(j?.error==='kyc_required')return toast('يلزم اعتماد التوثيق قبل السحب');
      if(j?.error==='insufficient_balance')return toast('المبلغ أكبر من الرصيد المتاح');
      return toast('راجع مبلغ السحب');
    }
-   closeModal();toast('تم إرسال طلب السحب');renderAccount();if(window.refreshNotifBadge)refreshNotifBadge();
+   window.__payoutPendingPayload=null;closeModal();toast(j?.idempotent_replay?'طلب السحب مسجل مسبقًا':'تم إرسال طلب السحب');renderAccount();if(window.refreshNotifBadge)refreshNotifBadge();
  };
 
  const baseAdmin=window.renderAdmin;

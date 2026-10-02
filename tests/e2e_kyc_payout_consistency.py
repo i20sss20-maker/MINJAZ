@@ -87,6 +87,29 @@ def run():
     earnings=call("GET","/api/v1/freelancer/earnings",token=ft,expected=(200,))
     assert float(earnings.get("available_balance") or 0)>=75,earnings
 
+    # Same payout retry must create one request and one notification.
+    payout_key=f"payout-idem-{seed}"
+    payout_payload={"amount":"10.00","note":"Payout idempotency test","idempotency_key":payout_key}
+    before_notes=call("GET","/api/v1/notifications?kind=payout&limit=50",token=ft,expected=(200,)).get("items") or []
+    payout_barrier=Barrier(2)
+    def submit_same_payout(_):
+        payout_barrier.wait()
+        return raw_call("POST","/api/v1/freelancer/payouts",payout_payload,ft)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        payout_retry=list(ex.map(submit_same_payout,(1,2)))
+    assert sorted(x[0] for x in payout_retry)==[200,201],payout_retry
+    payout_ids={int(x[1]["item"]["id"]) for x in payout_retry}
+    assert len(payout_ids)==1,payout_retry
+    assert sum(1 for _,x in payout_retry if x.get("idempotent_replay"))==1,payout_retry
+    after_notes=call("GET","/api/v1/notifications?kind=payout&limit=50",token=ft,expected=(200,)).get("items") or []
+    assert len(after_notes)==len(before_notes)+1,(before_notes,after_notes)
+    changed=dict(payout_payload);changed["amount"]="11.00"
+    conflict=raw_call("POST","/api/v1/freelancer/payouts",changed,ft)
+    assert conflict[0]==409 and conflict[1].get("error")=="idempotency_key_reused",conflict
+    idem_pid=next(iter(payout_ids))
+    rejected_idem=call("PATCH",f"/api/admin/payouts/{idem_pid}",{"status":"rejected","admin_note":"Release idempotency test balance"},at)
+    assert rejected_idem["item"]["status"]=="rejected",rejected_idem
+
     payout1=call("POST","/api/v1/freelancer/payouts",{"amount":"50.00","note":"KYC gate test"},ft)["item"]
     pid1=payout1["id"]
 
@@ -142,6 +165,8 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),
+        "payout_request_retry_idempotent":True,
+        "single_payout_request_notification":True,
         "payout_requires_current_kyc":True,
         "kyc_reapproval_allows_payout":True,
         "kyc_payout_race_deadlock_free":True,
