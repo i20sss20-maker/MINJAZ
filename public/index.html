@@ -2440,5 +2440,128 @@ body{font-size:14px;line-height:1.65}
 }
 </style>
 
+
+<script>
+(function(){
+  const walletIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 10h5v5h-5a2.5 2.5 0 0 1 0-5Z"/><path d="M7 6V4h10v2"/></svg>';
+
+  const baseOrderV10=window.orderModal;
+  if(typeof baseOrderV10==='function'){
+    window.orderModal=async function(id){
+      await baseOrderV10(id);
+      const modal=document.getElementById('modal');
+      if(!modal||modal.querySelector('[data-payment-v10]'))return;
+      let o=null;
+      try{const x=await api('/api/v1/orders/'+id);o=x.j}catch(e){}
+      if(!o||me?.user?.role!=='client'||o.status!=='awaiting_payment'||o.payment_status!=='unpaid')return;
+      const panel=document.createElement('div');
+      panel.dataset.paymentV10='1';
+      panel.className='paymentPanel';
+      panel.innerHTML='<div class="paymentIcon">'+walletIcon+'</div><div><b>الدفع يبدأ التنفيذ</b><p>المستقل لن يبدأ العمل إلا بعد تأكيد الدفع. المبلغ الحالي: '+money(o.amount)+'</p></div><button class="btn primary" onclick="payOrder('+id+')">'+(DEMO_MODE?'دفع تجريبي':'إكمال الدفع')+'</button>';
+      const grid=modal.querySelector('.grid.two');
+      if(grid)grid.insertAdjacentElement('afterend',panel);
+      else modal.querySelector('.modalHead')?.insertAdjacentElement('afterend',panel);
+    };
+  }
+
+  function addGuide(kind,title,text){
+    const modal=document.getElementById('modal');
+    if(!modal||modal.querySelector('[data-guide-v10="'+kind+'"]'))return;
+    const guide=document.createElement('div');
+    guide.dataset.guideV10=kind;
+    guide.className='modalGuide';
+    guide.innerHTML='<b>'+title+'</b><p>'+text+'</p>';
+    modal.querySelector('.modalHead')?.insertAdjacentElement('afterend',guide);
+  }
+
+  const baseSupportV10=window.supportModal;
+  if(typeof baseSupportV10==='function'){
+    window.supportModal=function(){
+      baseSupportV10();
+      addGuide('support','الدعم داخل مِنجاز','اكتب المشكلة ورقم الطلب أو المهمة إن وجد، وتجنب مشاركة كلمات المرور أو بيانات الدفع الحساسة.');
+    };
+  }
+
+  const basePrivacyV10=window.privacyModal;
+  if(typeof basePrivacyV10==='function'){
+    window.privacyModal=function(){
+      basePrivacyV10();
+      addGuide('privacy','طلبات بياناتك','اختر نوع الطلب المناسب. طلبات الوصول أو التصحيح أو الحذف تُراجع من الإدارة قبل التنفيذ.');
+    };
+  }
+
+  const baseDisputeV10=window.disputeModal;
+  if(typeof baseDisputeV10==='function'){
+    window.disputeModal=function(id){
+      baseDisputeV10(id);
+      addGuide('dispute','متى تستخدم النزاع؟','استخدم النزاع عند وجود مشكلة فعلية في طلب قائم. لبلاغات الاحتيال أو الإساءة استخدم مسار الثقة والأمان.');
+    };
+  }
+
+  const baseFreelancerV10=window.freelancerPublicModal;
+  if(typeof baseFreelancerV10==='function'){
+    window.freelancerPublicModal=async function(fid){
+      await baseFreelancerV10(fid);
+      const modal=document.getElementById('modal'),hero=modal?.querySelector('.profileHero');
+      if(!hero||hero.querySelector('[data-profile-orb-v10]'))return;
+      let p=null;try{const x=await api('/api/v1/freelancers/'+fid+'/public');p=x.j}catch(e){}
+      if(!p)return;
+      const orb=document.createElement('div');
+      orb.dataset.profileOrbV10='1';
+      orb.className='profileIdentityOrb';
+      orb.textContent=(p.name||'م')[0];
+      hero.prepend(orb);
+    };
+  }
+
+  if(typeof notifMeta==='object'){
+    notifMeta.safety=['<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v5c0 4.8-2.8 8-7 10-4.2-2-7-5.2-7-10V6z"/><path d="m9 12 2 2 4-5"/></svg>','الأمان'];
+  }
+})();
+</script>
+<style>
+.modalGuide{
+  margin:0 0 14px;
+  padding:12px 13px;
+  border:1px solid #e3e0ff;
+  border-radius:15px;
+  background:linear-gradient(180deg,#f9f8ff,#f5f3ff);
+}
+.modalGuide b{font:700 10px Alexandria;color:#4e43d7}
+.modalGuide p{margin:4px 0 0;font-size:8.5px;line-height:1.75;color:#686d82}
+.profileIdentityOrb{
+  width:62px;height:62px;
+  flex:0 0 62px;
+  display:grid;place-items:center;
+  border-radius:20px;
+  margin-inline-end:14px;
+  color:#fff;
+  font:800 22px Alexandria;
+  background:linear-gradient(145deg,#7c6dff,#6558f5 58%,#2cc9b7);
+  border:1px solid rgba(255,255,255,.22);
+  box-shadow:0 14px 30px rgba(8,10,22,.22);
+}
+.profileHero:has(.profileIdentityOrb){
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+}
+.notifIcon svg{
+  width:19px;height:19px;
+  fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+@media(max-width:600px){
+  .profileHero:has(.profileIdentityOrb){
+    grid-template-columns:auto 1fr;
+  }
+  .profileHero:has(.profileIdentityOrb)>.pill{
+    grid-column:1/-1;
+    width:max-content;
+  }
+  .profileIdentityOrb{width:52px;height:52px;flex-basis:52px;border-radius:17px}
+}
+</style>
+
 </body>
 </html>
