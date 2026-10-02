@@ -104,6 +104,9 @@ jobs:
           assert "__cancellationPendingPayloads" in ui
           assert "def create_safety_report_atomic(" in server
           assert "__safetyPendingPayloads" in ui
+          assert "def update_safety_report_admin(" in server
+          assert "idempotent_replay" in server[server.index("def update_safety_report_admin"):server.index("def update_support_ticket")]
+          assert "adminSafetyPatch422" in ui
           assert "def create_support_ticket_atomic(" in server
           assert "def create_privacy_request_atomic(" in server
           assert "account_request_idempotency_keys" in server
