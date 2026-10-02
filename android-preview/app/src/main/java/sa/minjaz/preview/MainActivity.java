@@ -174,50 +174,11 @@ public class MainActivity extends Activity {
 
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (!request.isForMainFrame()) return false;
-                return handleNavigation(request.getUrl());
-            }
-
-            @Override
-            public void onPageCommitVisible(WebView view, String url) {
-                hideError();
-                super.onPageCommitVisible(view, url);
-            }
-
-            @Override
-            public void onReceivedError(
-                WebView view,
-                WebResourceRequest request,
-                WebResourceError error
-            ) {
-                if (request.isForMainFrame()) showError();
-                super.onReceivedError(view, request, error);
-            }
-
-            @Override
-            public void onReceivedHttpError(
-                WebView view,
-                WebResourceRequest request,
-                WebResourceResponse errorResponse
-            ) {
-                if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
-                    showError();
-                }
-                super.onReceivedHttpError(view, request, errorResponse);
-            }
-
-            @Override
-            public boolean onRenderProcessGone(
-                WebView view,
-                RenderProcessGoneDetail detail
-            ) {
-                recoverWebView();
-                return true;
-            }
-        });
+        webView.setWebViewClient(
+            Build.VERSION.SDK_INT >= 26
+                ? new Api26MinjazWebViewClient()
+                : new MinjazWebViewClient()
+        );
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -372,6 +333,53 @@ public class MainActivity extends Activity {
             intent.addCategory(Intent.CATEGORY_BROWSABLE);
             startActivity(intent);
         } catch (ActivityNotFoundException ignored) {
+        }
+    }
+
+    private class MinjazWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (!request.isForMainFrame()) return false;
+            return handleNavigation(request.getUrl());
+        }
+
+        @Override
+        public void onPageCommitVisible(WebView view, String url) {
+            hideError();
+            super.onPageCommitVisible(view, url);
+        }
+
+        @Override
+        public void onReceivedError(
+            WebView view,
+            WebResourceRequest request,
+            WebResourceError error
+        ) {
+            if (request.isForMainFrame()) showError();
+            super.onReceivedError(view, request, error);
+        }
+
+        @Override
+        public void onReceivedHttpError(
+            WebView view,
+            WebResourceRequest request,
+            WebResourceResponse errorResponse
+        ) {
+            if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
+                showError();
+            }
+            super.onReceivedHttpError(view, request, errorResponse);
+        }
+    }
+
+    private class Api26MinjazWebViewClient extends MinjazWebViewClient {
+        @Override
+        public boolean onRenderProcessGone(
+            WebView view,
+            RenderProcessGoneDetail detail
+        ) {
+            recoverWebView();
+            return true;
         }
     }
 
