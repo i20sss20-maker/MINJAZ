@@ -1,23 +1,4 @@
-                self.set_session_cookie(raw)
-                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
-                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
-            if method=='POST' and p=='/api/v1/auth/session-cookie':
-                u=self.require();
-                if not u:return
-                raw,transport=session_token_from_headers(self.headers)
-                if not raw:return self.sendj(401,{'error':'unauthorized'})
-                self.set_session_cookie(raw)
-                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
-                return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
-            if method=='POST' and p=='/api/v1/auth/logout':
-                u=self.require();
-                if not u:return
-                q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
-            if method=='GET' and p=='/api/v1/me':
-                u=self.require();
-                if not u:return
-                roles=enabled_roles(u['id'])
+bled_roles(u['id'])
                 if not roles:
                     q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
                 prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
