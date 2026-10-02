@@ -830,6 +830,317 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .modal .grid.two{grid-template-columns:1fr}
 }
 
+
+/* MINJAZ experience polish v10 */
+/* Freelancer discovery + public profile */
+.freelancerToolbar{
+  border-radius:22px;
+  padding:15px;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+  border:1px solid var(--line);
+  box-shadow:0 12px 34px rgba(17,21,42,.045);
+}
+.freelancerGrid{
+  gap:13px;
+}
+.freelancerCard{
+  position:relative;
+  overflow:hidden;
+  border-radius:21px;
+  border:1px solid #e8eaf2;
+  background:linear-gradient(180deg,#fff,#fcfcff);
+  box-shadow:0 12px 34px rgba(17,21,42,.05);
+  transition:.16s ease;
+}
+.freelancerCard:hover{
+  transform:translateY(-2px);
+  border-color:#d9d5ff;
+  box-shadow:0 18px 42px rgba(17,21,42,.075);
+}
+.freelancerCard:after{
+  content:"";
+  position:absolute;
+  width:130px;height:130px;border-radius:50%;
+  inset-inline-end:-55px;top:-60px;
+  background:radial-gradient(circle,rgba(101,88,245,.09),transparent 68%);
+  pointer-events:none;
+}
+.freelancerCard .offerAvatar{
+  width:45px;height:45px;border-radius:15px;
+}
+.freelancerCard>p{
+  min-height:48px;
+  line-height:1.8;
+}
+.freelancerCardFoot{
+  padding-top:12px;
+  margin-top:12px;
+  border-top:1px solid #eeeef4;
+}
+.profileHero{
+  position:relative;
+  overflow:hidden;
+  padding:22px;
+  border-radius:24px;
+  color:#fff;
+  background:
+    radial-gradient(circle at 90% 10%,rgba(124,109,255,.38),transparent 28%),
+    radial-gradient(circle at 10% 100%,rgba(44,201,183,.15),transparent 25%),
+    linear-gradient(135deg,#11152a,#202a58 54%,#594ee2);
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 22px 60px rgba(17,21,42,.14);
+}
+.profileHero h2{font-size:21px;margin-bottom:7px}
+.profileHero p{color:#d8dced;max-width:620px}
+.profileMetrics{
+  gap:9px;
+  margin:12px 0 18px;
+}
+.profileMetric{
+  min-height:78px;
+  display:grid;
+  place-content:center;
+  border-radius:17px;
+  background:linear-gradient(180deg,#fff,#fafafe);
+  box-shadow:0 8px 26px rgba(17,21,42,.04);
+}
+.profileMetric b{font-size:15px}
+.portfolioGrid,.portfolioManage{gap:11px}
+.portfolioCard{
+  border-radius:18px;
+  border:1px solid #e7e8ef;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+  box-shadow:0 9px 28px rgba(17,21,42,.04);
+}
+.reviewCard{
+  border-radius:17px;
+  background:linear-gradient(180deg,#fff,#fbfbfe);
+  box-shadow:0 8px 24px rgba(17,21,42,.04);
+}
+.inviteBox{
+  border-radius:19px;
+  padding:15px;
+  background:linear-gradient(180deg,#f8f7ff,#f3f1ff);
+  border-color:#dfdbff;
+}
+
+/* Notifications */
+.notifToolbar{
+  padding:10px;
+  border:1px solid #e9eaf1;
+  border-radius:17px;
+  background:rgba(255,255,255,.78);
+}
+.notifToolbar .btn{
+  min-height:34px;
+  padding:7px 10px;
+}
+.notifToolbar .btn.on{
+  background:linear-gradient(135deg,#6558f5,#7568ff);
+  border-color:transparent;
+  box-shadow:0 8px 18px rgba(101,88,245,.18);
+}
+.notifPageList{gap:10px}
+.notifPageItem{
+  min-height:74px;
+  padding:14px;
+  border-radius:19px;
+  transition:.16s ease;
+}
+.notifPageItem:hover{
+  border-color:#dbd8ff;
+  box-shadow:0 10px 30px rgba(17,21,42,.05);
+}
+.notifPageItem.unread{
+  background:linear-gradient(90deg,#fbfaff,#fff);
+  border-color:#dcd8ff;
+  box-shadow:inset -3px 0 #6558f5;
+}
+.notifIcon{
+  width:42px;height:42px;
+  color:#5a4de9;
+  background:linear-gradient(145deg,#f1efff,#eafaf7);
+}
+
+/* Account, support, privacy, sessions */
+.safetyPanel{
+  border-radius:21px!important;
+  background:linear-gradient(180deg,#fff,#fbfbfe)!important;
+  border:1px solid #e8eaf2!important;
+  box-shadow:0 10px 32px rgba(17,21,42,.045)!important;
+}
+.blockedItem,.sessionItem,.readinessItem{
+  border-radius:15px;
+  background:#fff;
+}
+.sessionItem.current{
+  border-color:#d9d4ff;
+  background:#f9f8ff;
+}
+.readinessGrid{gap:10px}
+.readinessItem{
+  min-height:60px;
+}
+.readinessSummary{
+  border-radius:16px;
+  padding:13px;
+}
+#account .rowCard{
+  border-radius:18px;
+}
+#account .rowCard p{
+  max-width:780px;
+}
+#account .sectionHead:not(:first-child){
+  margin-top:24px;
+}
+
+/* Payment state */
+.paymentPanel{
+  margin:12px 0;
+  padding:14px;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:12px;
+  align-items:center;
+  border:1px solid #ddd8ff;
+  border-radius:18px;
+  background:
+    radial-gradient(circle at 95% 0,rgba(101,88,245,.08),transparent 11rem),
+    linear-gradient(180deg,#fbfaff,#f7f5ff);
+}
+.paymentIcon{
+  width:43px;height:43px;
+  display:grid;place-items:center;
+  border-radius:14px;
+  color:#fff;
+  background:linear-gradient(135deg,#6558f5,#7568ff);
+  box-shadow:0 10px 24px rgba(101,88,245,.2);
+}
+.paymentIcon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.paymentPanel b{font:700 11px Alexandria}
+.paymentPanel p{margin:4px 0 0;color:#6d7185;font-size:8.5px;line-height:1.7}
+.paymentPanel .btn{white-space:nowrap}
+
+/* Disputes + safety */
+.disputeBanner{
+  border-radius:18px!important;
+  padding:13px 14px!important;
+  box-shadow:0 8px 24px rgba(154,52,18,.06);
+}
+.disputeGrid,.safetyGrid{gap:11px!important}
+.disputeCard,.safetyCard{
+  border-radius:18px!important;
+  background:linear-gradient(180deg,#fff,#fbfbfe)!important;
+  box-shadow:0 9px 28px rgba(17,21,42,.04);
+}
+.safetyWarn{
+  border-radius:14px!important;
+}
+.safetyActions{
+  gap:8px!important;
+}
+.safetyAudit{
+  border:1px solid #e8eaf2;
+  border-radius:17px;
+  background:#fff;
+  padding:4px 12px;
+}
+.safetyAuditItem:last-child{border-bottom:0}
+
+/* Admin dashboard */
+#admin .kpiGrid .card{
+  min-height:108px;
+  display:grid;
+  align-content:center;
+  border-radius:20px;
+  background:linear-gradient(180deg,#fff,#fafafe);
+}
+#admin .kpiGrid .metric b{
+  font-size:26px;
+}
+#admin>.sectionHead{
+  margin-top:27px;
+}
+#admin .grid.three .card{
+  min-height:92px;
+  border-radius:18px;
+}
+#admin .table{
+  min-width:660px;
+}
+#admin .table th{
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+
+/* Support / privacy modal polish */
+#modal textarea{
+  min-height:115px;
+  resize:vertical;
+}
+#modal .safetyCard{
+  margin-bottom:12px;
+}
+#modal .safetyActions{
+  padding-top:6px;
+}
+#modal .filePick{
+  border-radius:14px;
+}
+
+/* Attachments */
+.attachSection{
+  border-radius:17px!important;
+  background:linear-gradient(180deg,#fff,#fbfbfe)!important;
+}
+.attachChip{
+  border-radius:12px!important;
+  background:#fff!important;
+  transition:.15s ease;
+}
+.attachChip:hover{
+  transform:translateY(-1px);
+  border-color:#cfc9ff!important;
+  background:#f8f7ff!important;
+}
+
+/* Mobile */
+@media(max-width:760px){
+  .freelancerToolbar{
+    grid-template-columns:1fr 1fr!important;
+  }
+  .freelancerToolbar .wide{grid-column:1/-1}
+  .freelancerToolbar>div:last-child{grid-column:1/-1}
+  .freelancerToolbar>div:last-child .btn{flex:1}
+  .freelancerGrid{grid-template-columns:1fr!important}
+  .profileHero{padding:18px;border-radius:20px}
+  .profileMetrics{grid-template-columns:1fr 1fr}
+  .portfolioGrid,.portfolioManage{grid-template-columns:1fr!important}
+  .notifPageItem{
+    grid-template-columns:auto 1fr;
+  }
+  .notifPageItem>.btn{
+    grid-column:1/-1;
+    width:100%;
+  }
+  .paymentPanel{
+    grid-template-columns:auto 1fr;
+  }
+  .paymentPanel>.btn{
+    grid-column:1/-1;
+    width:100%;
+  }
+  #admin .kpiGrid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:430px){
+  .freelancerToolbar{grid-template-columns:1fr!important}
+  .freelancerToolbar .wide,.freelancerToolbar>div:last-child{grid-column:auto}
+  .profileMetrics{grid-template-columns:1fr 1fr}
+  #admin .kpiGrid{grid-template-columns:1fr 1fr}
+}
+
 </style>
 </head>
 <body>
