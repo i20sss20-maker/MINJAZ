@@ -52,6 +52,42 @@ def run():
     f2=login(phones[2],"freelancer","Order Race Freelancer B")
     ct,t1,t2=client["token"],f1["token"],f2["token"]
 
+    # A freelancer can withdraw an open proposal, and withdrawal is serialized with client acceptance.
+    withdraw_task=call("POST","/api/v1/tasks",{
+        "category_id":cats[0]["id"],"title":"اختبار سحب العرض",
+        "description":"اختبار آلي للتأكد من سحب العرض قبل الاختيار ومنع السباق مع قبول العميل.",
+        "budget_min":"80","budget_max":"160","urgency":"normal"
+    },ct)
+    withdrawn_proposal=call("POST",f"/api/v1/tasks/{withdraw_task['id']}/proposals",{
+        "price":"99.00","delivery_hours":12,"revisions":1,"message":"عرض قابل للسحب"
+    },t1)
+    withdrawn=call("DELETE",f"/api/v1/tasks/{withdraw_task['id']}/proposals",token=t1,expected=(200,))
+    assert withdrawn.get("withdrawn") is True and int(withdrawn.get("proposal_id"))==int(withdrawn_proposal["id"]),withdrawn
+    remaining=call("GET",f"/api/v1/tasks/{withdraw_task['id']}/proposals",token=t1,expected=(200,)).get("items") or []
+    assert not remaining,remaining
+
+    race_task=call("POST","/api/v1/tasks",{
+        "category_id":cats[0]["id"],"title":"اختبار سباق سحب وقبول العرض",
+        "description":"اختبار آلي لقفل المهمة والعرض عند السحب والقبول المتزامنين.",
+        "budget_min":"100","budget_max":"180","urgency":"normal"
+    },ct)
+    race_proposal=call("POST",f"/api/v1/tasks/{race_task['id']}/proposals",{
+        "price":"110.00","delivery_hours":18,"revisions":1,"message":"عرض سباق السحب"
+    },t2)
+    withdraw_barrier=Barrier(2)
+    def withdraw_race():
+        withdraw_barrier.wait()
+        return raw_call("DELETE",f"/api/v1/tasks/{race_task['id']}/proposals",token=t2)
+    def accept_race():
+        withdraw_barrier.wait()
+        return raw_call("POST","/api/v1/orders",{"proposal_id":race_proposal["id"]},ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fw=ex.submit(withdraw_race);fa=ex.submit(accept_race)
+        withdraw_result,accept_result=fw.result(),fa.result()
+    assert (withdraw_result[0],accept_result[0]) in ((200,404),(409,201)),(withdraw_result,accept_result)
+    if withdraw_result[0]==409:assert withdraw_result[1].get("error")=="proposal_locked",withdraw_result
+    if accept_result[0]==404:assert accept_result[1].get("error")=="proposal_not_found",accept_result
+
     task=call("POST","/api/v1/tasks",{
         "category_id":cats[0]["id"],"title":"اختبار سباق قبول العروض والدفع",
         "description":"اختبار آلي للتأكد من إنشاء طلب واحد فقط ومنع تكرار أثر الدفع عند الطلبات المتزامنة.",
@@ -158,6 +194,8 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),
+        "proposal_withdrawal_supported":True,
+        "proposal_withdraw_accept_race_safe":True,
         "single_order_under_concurrency":True,
         "stable_order_conflict":True,
         "mock_payment_idempotent":True,
