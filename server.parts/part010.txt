@@ -38,6 +38,8 @@
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 b=self.body()
                 try: proposal_id=int(b.get('proposal_id'))
                 except Exception:return self.sendj(400,{'error':'proposal_id_required'})
