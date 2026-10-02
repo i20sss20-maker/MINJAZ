@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'sa.minjaz.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'sa.minjaz.app'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-preview'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.preview'
+            versionNameSuffix '-debug'
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {}
