@@ -1186,6 +1186,50 @@ def create_payout_request(fid,raw_amount,note=None,idempotency_key=None):
     finally:
         c.close()
 
+def portfolio_item_fingerprint(title,description=None,external_url=None):
+    payload={'title':str(title or '').strip()[:160],'description':str(description or '').strip()[:1500],'external_url':str(external_url or '').strip()[:1000]}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_portfolio_item_atomic(fid,title,description=None,external_url=None,idempotency_key=None):
+    title=str(title or '').strip()[:160]
+    description=str(description or '').strip()[:1500] or None
+    external_url=str(external_url or '').strip()[:1000] or None
+    fingerprint=portfolio_item_fingerprint(title,description,external_url) if idempotency_key else None
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id from users where id=%s for update',(int(fid),))
+            if not cur.fetchone():
+                c.rollback();return None,False,'freelancer_not_found'
+            if idempotency_key:
+                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
+                existing=cur.fetchone()
+                if existing:
+                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
+            if int(cur.fetchone()['n'] or 0)>=12:
+                c.rollback();return None,False,'portfolio_limit'
+            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
+                           values(%s,%s,%s,%s,%s,%s)
+                           returning id,title,description,external_url,created_at""",
+                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
+            row=dict(cur.fetchone())
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        if not idempotency_key:raise
+        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
+        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
+            return existing,True,None
+        return None,False,'idempotency_key_reused'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_manual_kyc_status(uid,status):
     c=db_connect()
     try:
@@ -2274,17 +2318,30 @@ class H(BaseHTTPRequestHandler):
                 if not u:return
                 if method=='GET':return self.sendj(200,{'items':q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
                 if method=='POST':
+                    b=self.body();title=str(b.get('title') or '').strip();desc=str(b.get('description') or '').strip();url=str(b.get('external_url') or '').strip();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if len(title)<3:return self.sendj(400,{'error':'invalid_title'})
+                    if url and not url.startswith('https://'):return self.sendj(400,{'error':'https_url_required'})
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    r,replayed,err=create_portfolio_item_atomic(u['id'],title,desc,url,idempotency_key or None)
+                    if err=='portfolio_limit':return self.sendj(409,{'error':err})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(400,{'error':err})
+                    r['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,r)
+            m=re.fullmatch(r'/api/v1/freelancer/portfolio/(\d+)',p)
+            if m:
+                u=self.require('freelancer');
+                if not u:return
+                pid=int(m.group(1))
+                if method=='PATCH':
                     b=self.body();title=str(b.get('title') or '').strip();desc=str(b.get('description') or '').strip();url=str(b.get('external_url') or '').strip()
                     if len(title)<3:return self.sendj(400,{'error':'invalid_title'})
                     if url and not url.startswith('https://'):return self.sendj(400,{'error':'https_url_required'})
-                    n=q('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(u['id'],),'one')['n']
-                    if n>=12:return self.sendj(409,{'error':'portfolio_limit'})
-                    r=q('insert into freelancer_portfolio_items(freelancer_id,title,description,external_url) values(%s,%s,%s,%s) returning id,title,description,external_url,created_at',(u['id'],title[:160],desc[:1500] or None,url[:1000] or None),'one');return self.sendj(201,r)
-            m=re.fullmatch(r'/api/v1/freelancer/portfolio/(\d+)',p)
-            if m and method=='DELETE':
-                u=self.require('freelancer');
-                if not u:return
-                q('delete from freelancer_portfolio_items where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
+                    r=q('update freelancer_portfolio_items set title=%s,description=%s,external_url=%s where id=%s and freelancer_id=%s returning id,title,description,external_url,created_at',(title[:160],desc[:1500] or None,url[:1000] or None,pid,u['id']),'one')
+                    return self.sendj(404,{'error':'portfolio_item_not_found'}) if not r else self.sendj(200,r)
+                if method=='DELETE':
+                    r=q('delete from freelancer_portfolio_items where id=%s and freelancer_id=%s returning id',(pid,u['id']),'one')
+                    return self.sendj(404,{'error':'portfolio_item_not_found'}) if not r else self.sendj(200,{'ok':True})
             m=re.fullmatch(r'/api/v1/freelancers/(\d+)/invite',p)
             if m and method=='POST':
                 u=self.require('client');
