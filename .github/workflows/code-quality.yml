@@ -102,6 +102,9 @@ jobs:
           assert "__deliveryPendingPayloads" in ui
           assert "__revisionPendingPayloads" in ui
           assert "__completePendingKeys" in ui
+          assert "def create_portfolio_item_atomic(" in server
+          assert "__portfolioPendingPayload" in ui
+          assert "portfolioModalById" in ui
           assert "__disputePendingPayloads" in ui
           assert "__cancellationPendingPayloads" in ui
           assert "def create_safety_report_atomic(" in server
