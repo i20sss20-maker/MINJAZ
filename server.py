@@ -2361,19 +2361,28 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/account/sessions/revoke-others' and method=='POST':
                 u=self.require();
                 if not u:return
-                q('update sessions set revoked_at=now() where user_id=%s and id<>%s and revoked_at is null',(u['id'],u['session_id']),None)
-                log_account_activity(u['id'],'sessions_revoked','تم تسجيل خروج الأجهزة الأخرى',u.get('session_id'))
-                return self.sendj(200,{'ok':True})
+                rows=q('update sessions set revoked_at=now() where user_id=%s and id<>%s and revoked_at is null returning id',(u['id'],u['session_id']))
+                changed=bool(rows)
+                if changed:log_account_activity(u['id'],'sessions_revoked','تم تسجيل خروج الأجهزة الأخرى',u.get('session_id'),{'revoked_count':len(rows)})
+                return self.sendj(200,{'ok':True,'revoked_count':len(rows),'idempotent_replay':not changed})
             m=re.fullmatch(r'/api/v1/account/sessions/(\d+)',p)
             if m and method=='DELETE':
                 u=self.require();
                 if not u:return
-                sid=int(m.group(1)); row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
-                if not row:return self.sendj(404,{'error':'session_not_found'})
+                sid=int(m.group(1))
+                existing=q('select id,revoked_at from sessions where id=%s and user_id=%s',(sid,u['id']),'one')
+                if not existing:return self.sendj(404,{'error':'session_not_found'})
                 current_revoked=sid==int(u.get('session_id') or 0)
+                if existing.get('revoked_at'):
+                    return self.sendj(200,{'ok':True,'current_revoked':current_revoked,'idempotent_replay':True})
+                row=q('update sessions set revoked_at=now() where id=%s and user_id=%s and revoked_at is null returning id',(sid,u['id']),'one')
+                if not row:
+                    existing=q('select id,revoked_at from sessions where id=%s and user_id=%s',(sid,u['id']),'one')
+                    if existing and existing.get('revoked_at'):return self.sendj(200,{'ok':True,'current_revoked':current_revoked,'idempotent_replay':True})
+                    return self.sendj(404,{'error':'session_not_found'})
                 if current_revoked:self.clear_session_cookie()
                 log_account_activity(u['id'],'session_revoked','تم إنهاء جلسة جهاز',u.get('session_id'),{'revoked_session_id':sid})
-                return self.sendj(200,{'ok':True,'current_revoked':current_revoked})
+                return self.sendj(200,{'ok':True,'current_revoked':current_revoked,'idempotent_replay':False})
             if method=='GET' and p=='/api/v1/me/roles':
                 u=self.require();
                 if not u:return
