@@ -77,6 +77,30 @@ def run():
     client_phone = "+9665" + suffix
     freelancer_phone = "+9666" + suffix
 
+    # The same OTP challenge must never create two sessions under concurrent verification.
+    otp_phone = "+9667" + suffix
+    otp_challenge = call("POST", "/api/v1/auth/request-otp", {"phone": otp_phone})
+    otp_payload = {
+        "challenge_id": otp_challenge["challenge_id"],
+        "code": otp_challenge.get("dev_code") or "1234",
+        "role": "client",
+        "name": "E2E OTP Race",
+    }
+    otp_barrier = Barrier(2)
+    def verify_same_otp(_):
+        otp_barrier.wait()
+        return call("POST", "/api/v1/auth/verify-otp", otp_payload, expected=(200, 409))
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        otp_results = list(ex.map(verify_same_otp, (1, 2)))
+    otp_success = [x for x in otp_results if x.get("token")]
+    otp_rejected = [x for x in otp_results if x.get("error") == "already_verified"]
+    assert len(otp_success) == 1 and len(otp_rejected) == 1, otp_results
+    otp_token = otp_success[0]["token"]
+    otp_sessions = call("GET", "/api/v1/account/sessions", token=otp_token, expected=(200,)).get("items") or []
+    assert len(otp_sessions) == 1 and otp_sessions[0].get("current") is True, otp_sessions
+    otp_activity = call("GET", "/api/v1/account/activity", token=otp_token, expected=(200,)).get("items") or []
+    assert sum(1 for x in otp_activity if x.get("event_type") == "login") == 1, otp_activity
+
     client_token = login(client_phone, "client", "E2E Client")
     freelancer_token = login(freelancer_phone, "freelancer", "E2E Freelancer")
 
@@ -463,6 +487,7 @@ def run():
         "version": health["version"],
         "ready_for_beta": True,
         "auth": True,
+        "otp_verification_serialized": True,
         "account_updates_retry_safe": True,
         "session_revocation_retry_safe": True,
         "onboarding_client": True,
