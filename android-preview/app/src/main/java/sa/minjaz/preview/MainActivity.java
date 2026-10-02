@@ -1,27 +1,42 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.URLUtil;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 public class MainActivity extends Activity {
     private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
+    private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
     private static final int FILE_CHOOSER_REQUEST = 7001;
 
+    private FrameLayout root;
     private WebView webView;
+    private View errorView;
     private ValueCallback<Uri[]> fileCallback;
 
     @Override
@@ -31,14 +46,43 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(91, 33, 182));
         getWindow().setNavigationBarColor(Color.WHITE);
 
+        buildUi();
+        configureWebView();
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                this::handleBack
+            );
+        }
+
+        if (savedInstanceState == null) {
+            loadLaunchDestination(getIntent());
+        } else {
+            webView.restoreState(savedInstanceState);
+        }
+    }
+
+    private void buildUi() {
+        root = new FrameLayout(this);
+        root.setBackgroundColor(Color.WHITE);
+
         webView = new WebView(this);
-        webView.setLayoutParams(new ViewGroup.LayoutParams(
+        webView.setLayoutParams(new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        root.addView(webView);
+
+        errorView = buildErrorView();
+        errorView.setVisibility(View.GONE);
+        root.addView(errorView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
         if (Build.VERSION.SDK_INT >= 30) {
-            webView.setOnApplyWindowInsetsListener((view, insets) -> {
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
                 android.graphics.Insets bars = insets.getInsets(
                     WindowInsets.Type.statusBars()
                         | WindowInsets.Type.navigationBars()
@@ -49,7 +93,57 @@ public class MainActivity extends Activity {
             });
         }
 
-        setContentView(webView);
+        setContentView(root);
+    }
+
+    private View buildErrorView() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(28), dp(28), dp(28), dp(28));
+        box.setBackgroundColor(Color.WHITE);
+
+        TextView title = new TextView(this);
+        title.setText("تعذر الاتصال بمِنجاز");
+        title.setTextSize(20);
+        title.setTextColor(Color.rgb(15, 23, 42));
+        title.setGravity(Gravity.CENTER);
+        box.addView(title);
+
+        TextView message = new TextView(this);
+        message.setText("تحقق من اتصال الإنترنت ثم حاول مرة أخرى.");
+        message.setTextSize(14);
+        message.setTextColor(Color.rgb(100, 116, 139));
+        message.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        messageParams.topMargin = dp(10);
+        box.addView(message, messageParams);
+
+        Button retry = new Button(this);
+        retry.setText("إعادة المحاولة");
+        retry.setOnClickListener(v -> {
+            hideError();
+            if (webView.getUrl() == null || webView.getUrl().trim().isEmpty()) {
+                webView.loadUrl(APP_URL);
+            } else {
+                webView.reload();
+            }
+        });
+        LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            dp(48)
+        );
+        retryParams.topMargin = dp(18);
+        box.addView(retry, retryParams);
+
+        return box;
+    }
+
+    private void configureWebView() {
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -59,7 +153,12 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.3");
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setTextZoom(100);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.4");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
@@ -69,11 +168,41 @@ public class MainActivity extends Activity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, false);
 
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (!request.isForMainFrame()) return false;
                 return handleNavigation(request.getUrl());
+            }
+
+            @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                hideError();
+                super.onPageCommitVisible(view, url);
+            }
+
+            @Override
+            public void onReceivedError(
+                WebView view,
+                WebResourceRequest request,
+                WebResourceError error
+            ) {
+                if (request.isForMainFrame()) showError();
+                super.onReceivedError(view, request, error);
+            }
+
+            @Override
+            public void onReceivedHttpError(
+                WebView view,
+                WebResourceRequest request,
+                WebResourceResponse errorResponse
+            ) {
+                if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
+                    showError();
+                }
+                super.onReceivedHttpError(view, request, errorResponse);
             }
         });
 
@@ -99,39 +228,45 @@ public class MainActivity extends Activity {
             }
         });
 
-        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
-            handleNavigation(Uri.parse(url))
-        );
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            Uri uri = Uri.parse(url);
+            if (isInternalUri(uri)) {
+                enqueueDownload(url, userAgent, contentDisposition, mimeType);
+            } else {
+                openExternal(uri);
+            }
+        });
+    }
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                this::handleBack
-            );
-        }
-
-        if (savedInstanceState == null) {
-            webView.loadUrl(APP_URL);
+    private void loadLaunchDestination(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        if (isInternalUri(data)) {
+            webView.loadUrl(data.toString());
         } else {
-            webView.restoreState(savedInstanceState);
+            webView.loadUrl(APP_URL);
+            if (data != null) openExternal(data);
         }
+    }
+
+    private boolean isInternalUri(Uri uri) {
+        if (uri == null) return false;
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        String host = uri.getHost() == null ? "" : uri.getHost();
+        return "https".equals(scheme) && APP_HOST.equalsIgnoreCase(host);
     }
 
     private boolean handleNavigation(Uri uri) {
         if (uri == null) return false;
+        if (isInternalUri(uri)) return false;
 
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
-        String host = uri.getHost() == null ? "" : uri.getHost();
-
-        if ("https".equals(scheme)
-            && "minjaz-app-prod-production.up.railway.app".equalsIgnoreCase(host)) {
-            return false;
-        }
 
         if ("intent".equals(scheme)) {
             try {
                 Intent intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
                 intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                intent.setComponent(null);
+                intent.setSelector(null);
                 try {
                     startActivity(intent);
                 } catch (ActivityNotFoundException missing) {
@@ -149,6 +284,75 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    private void enqueueDownload(
+        String url,
+        String userAgent,
+        String contentDisposition,
+        String mimeType
+    ) {
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            String fileName = safeDownloadName(
+                URLUtil.guessFileName(url, contentDisposition, mimeType)
+            );
+
+            String cookie = CookieManager.getInstance().getCookie(url);
+            if (cookie != null && !cookie.trim().isEmpty()) {
+                request.addRequestHeader("Cookie", cookie);
+            }
+            if (userAgent != null && !userAgent.trim().isEmpty()) {
+                request.addRequestHeader("User-Agent", userAgent);
+            }
+
+            if (mimeType != null && !mimeType.trim().isEmpty()) {
+                request.setMimeType(mimeType);
+            }
+
+            request.setTitle(fileName);
+            request.setDescription("مِنجاز");
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(false);
+            request.setNotificationVisibility(
+                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+            );
+
+            if (Build.VERSION.SDK_INT >= 29) {
+                request.setDestinationInExternalPublicDir(
+                    Environment.DIRECTORY_DOWNLOADS,
+                    fileName
+                );
+            } else {
+                request.setDestinationInExternalFilesDir(
+                    this,
+                    Environment.DIRECTORY_DOWNLOADS,
+                    fileName
+                );
+            }
+
+            DownloadManager manager =
+                (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            if (manager != null) {
+                manager.enqueue(request);
+            } else {
+                openExternal(Uri.parse(url));
+            }
+        } catch (Exception e) {
+            openExternal(Uri.parse(url));
+        }
+    }
+
+    private String safeDownloadName(String raw) {
+        String name = raw == null ? "minjaz-file" : raw.trim();
+        if (name.isEmpty()) name = "minjaz-file";
+        name = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (name.length() > 120) {
+            int dot = name.lastIndexOf('.');
+            String ext = dot > 0 && name.length() - dot <= 12 ? name.substring(dot) : "";
+            name = name.substring(0, Math.min(100, name.length())) + ext;
+        }
+        return name;
+    }
+
     private void openExternal(Uri uri) {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
@@ -158,11 +362,31 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showError() {
+        if (errorView != null) errorView.setVisibility(View.VISIBLE);
+    }
+
+    private void hideError() {
+        if (errorView != null) errorView.setVisibility(View.GONE);
+    }
+
     private void handleBack() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
         } else {
             finish();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Uri data = intent == null ? null : intent.getData();
+        if (isInternalUri(data)) {
+            webView.loadUrl(data.toString());
+        } else if (data != null) {
+            openExternal(data);
         }
     }
 
@@ -205,9 +429,14 @@ public class MainActivity extends Activity {
             webView.stopLoading();
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
+            webView.removeAllViews();
             webView.destroy();
             webView = null;
         }
         super.onDestroy();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }
