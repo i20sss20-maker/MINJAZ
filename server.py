@@ -1448,6 +1448,47 @@ def create_privacy_request_atomic(user_id,request_type,details,idempotency_key=N
     finally:
         c.close()
 
+def create_safety_report_atomic(reporter_id,reported_user_id,task_id,order_id,category,details,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,reporter_id,idempotency_key,'safety',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from safety_reports where id=%s and reporter_id=%s',(replay['result_id'],int(reporter_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'safety-report:{int(reporter_id)}',))
+            cur.execute("select count(*)::int n from safety_reports where reporter_id=%s and created_at>now()-interval '1 hour'",(int(reporter_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=10:
+                c.rollback();return None,False,'report_rate_limited'
+            cur.execute("""select id from safety_reports
+                           where reporter_id=%s
+                             and coalesce(reported_user_id,0)=coalesce(%s,0)
+                             and coalesce(task_id,0)=coalesce(%s,0)
+                             and coalesce(order_id,0)=coalesce(%s,0)
+                             and status in ('open','in_review')
+                           limit 1""",(int(reporter_id),reported_user_id,task_id,order_id))
+            dup=cur.fetchone()
+            if dup:
+                c.rollback();return {'id':dup['id']},False,'active_report_exists'
+            cur.execute("""insert into safety_reports(reporter_id,reported_user_id,task_id,order_id,category,details)
+                           values(%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(reporter_id),reported_user_id,task_id,order_id,category,details))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(reporter_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_support_ticket(tid,status,admin_reply=None):
     c=db_connect()
     try:
@@ -2753,8 +2794,6 @@ class H(BaseHTTPRequestHandler):
                     if cat not in ('spam','fraud','harassment','unsafe','prohibited_service','impersonation','other'):return self.sendj(400,{'error':'invalid_category'})
                     details=str(b.get('details') or '').strip()[:3000]
                     if len(details)<8:return self.sendj(400,{'error':'details_required'})
-                    recent=q("select count(*)::int n from safety_reports where reporter_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']
-                    if recent>=10:return self.sendj(429,{'error':'report_rate_limited','retry_after_seconds':3600})
                     uid=int(b.get('target_user_id') or 0) or None;tid=int(b.get('task_id') or 0) or None;oid=int(b.get('order_id') or 0) or None
                     if tid:
                         t=q('select id,client_id,title from tasks where id=%s',(tid,),'one')
@@ -2769,11 +2808,17 @@ class H(BaseHTTPRequestHandler):
                         if not tu:return self.sendj(404,{'error':'user_not_found'})
                         if int(uid)==int(u['id']):return self.sendj(400,{'error':'cannot_report_self'})
                     if not any((uid,tid,oid)):return self.sendj(400,{'error':'report_target_required'})
-                    dup=q("select id from safety_reports where reporter_id=%s and coalesce(reported_user_id,0)=coalesce(%s,0) and coalesce(task_id,0)=coalesce(%s,0) and coalesce(order_id,0)=coalesce(%s,0) and status in ('open','in_review') limit 1",(u['id'],uid,tid,oid),'one')
-                    if dup:return self.sendj(409,{'error':'active_report_exists','report_id':dup['id']})
-                    r=q("insert into safety_reports(reporter_id,reported_user_id,task_id,order_id,category,details) values(%s,%s,%s,%s,%s,%s) returning *",(u['id'],uid,tid,oid,cat,details),'one')
-                    notify_admins('بلاغ أمان جديد',details[:220],'safety_report',oid,tid)
-                    return self.sendj(201,r)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    payload={'reported_user_id':uid,'task_id':tid,'order_id':oid,'category':cat,'details':details}
+                    fingerprint=account_request_fingerprint('safety',payload) if idempotency_key else None
+                    report,replayed,err=create_safety_report_atomic(u['id'],uid,tid,oid,cat,details,idempotency_key or None,fingerprint)
+                    if err=='report_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':3600})
+                    if err=='active_report_exists':return self.sendj(409,{'error':err,'report_id':report.get('id') if report else None})
+                    if err:return self.sendj(409,{'error':err})
+                    report['idempotent_replay']=bool(replayed)
+                    if not replayed:notify_admins('بلاغ أمان جديد',details[:220],'safety_report',oid,tid)
+                    return self.sendj(200 if replayed else 201,report)
             if p=='/api/v1/team' and method=='GET':
                 u=self.require('client');
                 if not u:return
