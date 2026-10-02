@@ -349,3 +349,287 @@ jobs:
       - name: Show server logs on failure
         if: failure()
         run: cat /tmp/minjaz-ci.log || true
+
+
+  extended-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minjaz
+          POSTGRES_PASSWORD: minjaz
+          POSTGRES_DB: minjaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U minjaz -d minjaz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
+      AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
+      APP_ENV: beta
+      SMS_MODE: dev
+      DEV_OTP: "1234"
+      PAYMENT_MODE: mock
+      KYC_MODE: manual
+      ADMIN_PHONE: "+966599999995"
+      DB_PERSISTENCE: persistent
+      SOURCE_CONTROL: github
+      STORAGE_MODE: postgres_dev
+      RUN_RUNTIME_SCHEMA_ENSURE: "0"
+      PUBLIC_BASE_URL: http://127.0.0.1:3000
+      CORS_ORIGINS: http://127.0.0.1:3000
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependency
+        run: pip install psycopg2-binary
+
+      - name: Apply database migrations
+        run: python migrate.py
+
+      - name: Start MINJAZ test server
+        run: |
+          set -euo pipefail
+          python -u server.py > /tmp/minjaz-ci.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "MINJAZ_EXTENDED_SECURITY_SERVER_READY"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/minjaz-ci.log
+          exit 1
+
+      - name: Run cookie/session auth E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_cookie_auth.py
+
+      - name: Run money precision E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_money_precision.py
+
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/minjaz-ci.log || true
+
+  extended-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minjaz
+          POSTGRES_PASSWORD: minjaz
+          POSTGRES_DB: minjaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U minjaz -d minjaz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
+      AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
+      APP_ENV: beta
+      SMS_MODE: dev
+      DEV_OTP: "1234"
+      PAYMENT_MODE: mock
+      KYC_MODE: manual
+      ADMIN_PHONE: "+966599999995"
+      DB_PERSISTENCE: persistent
+      SOURCE_CONTROL: github
+      STORAGE_MODE: postgres_dev
+      RUN_RUNTIME_SCHEMA_ENSURE: "0"
+      PUBLIC_BASE_URL: http://127.0.0.1:3000
+      CORS_ORIGINS: http://127.0.0.1:3000
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependency
+        run: pip install psycopg2-binary
+
+      - name: Apply database migrations
+        run: python migrate.py
+
+      - name: Start MINJAZ test server
+        run: |
+          set -euo pipefail
+          python -u server.py > /tmp/minjaz-ci.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "MINJAZ_EXTENDED_INTEGRITY_SERVER_READY"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/minjaz-ci.log
+          exit 1
+
+      - name: Run integrity E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_integrity.py
+
+      - name: Reset OTP test buckets after integrity
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          c=psycopg2.connect(os.environ["DATABASE_URL"])
+          with c, c.cursor() as cur:
+              cur.execute("delete from otp_challenges")
+              cur.execute("delete from security_rate_events where kind='otp_ip'")
+          c.close()
+          PY
+
+      - name: Run admin case concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_case_concurrency.py
+
+      - name: Reset OTP test buckets after case concurrency
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          c=psycopg2.connect(os.environ["DATABASE_URL"])
+          with c, c.cursor() as cur:
+              cur.execute("delete from otp_challenges")
+              cur.execute("delete from security_rate_events where kind='otp_ip'")
+          c.close()
+          PY
+
+      - name: Run payout concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_payout_concurrency.py
+
+      - name: Reset OTP test buckets after payout concurrency
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          c=psycopg2.connect(os.environ["DATABASE_URL"])
+          with c, c.cursor() as cur:
+              cur.execute("delete from otp_challenges")
+              cur.execute("delete from security_rate_events where kind='otp_ip'")
+          c.close()
+          PY
+
+      - name: Run privacy concurrency E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_privacy_concurrency.py
+
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/minjaz-ci.log || true
+
+  adapter-webhooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minjaz
+          POSTGRES_PASSWORD: minjaz
+          POSTGRES_DB: minjaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U minjaz -d minjaz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
+      AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
+      APP_ENV: beta
+      SMS_MODE: dev
+      DEV_OTP: "1234"
+      PAYMENT_MODE: adapter
+      PAYMENT_CREATE_URL: https://example.invalid/pay
+      PAYMENT_ADAPTER_BEARER: ci-payment-adapter-bearer-1234567890
+      PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-secret-at-least-32-characters
+      KYC_MODE: adapter
+      KYC_START_URL: https://example.invalid/kyc
+      KYC_ADAPTER_BEARER: ci-kyc-adapter-bearer-1234567890
+      KYC_WEBHOOK_SECRET: ci-kyc-webhook-secret-at-least-32-characters-long
+      ADMIN_PHONE: "+966599999995"
+      DB_PERSISTENCE: persistent
+      SOURCE_CONTROL: github
+      STORAGE_MODE: postgres_dev
+      RUN_RUNTIME_SCHEMA_ENSURE: "0"
+      PUBLIC_BASE_URL: http://127.0.0.1:3000
+      CORS_ORIGINS: http://127.0.0.1:3000
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependency
+        run: pip install psycopg2-binary
+
+      - name: Apply database migrations
+        run: python migrate.py
+
+      - name: Start MINJAZ adapter test server
+        run: |
+          set -euo pipefail
+          python -u server.py > /tmp/minjaz-ci.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "MINJAZ_ADAPTER_SERVER_READY"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/minjaz-ci.log
+          exit 1
+
+      - name: Run signed payment and KYC webhook E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+          E2E_PAYMENT_WEBHOOK_SECRET: ci-payment-webhook-secret-at-least-32-characters
+          E2E_KYC_WEBHOOK_SECRET: ci-kyc-webhook-secret-at-least-32-characters-long
+          E2E_EXIT_AFTER_RUN: "1"
+        run: python tests/e2e_adapter_webhooks.py
+
+      - name: Show server logs on failure
+        if: failure()
+        run: cat /tmp/minjaz-ci.log || true
