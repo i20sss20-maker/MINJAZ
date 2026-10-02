@@ -1655,7 +1655,14 @@ html[dir="ltr"] .side{border-left:0;border-right:1px solid rgba(255,255,255,.04)
 html[dir="ltr"] .bubble.me{align-self:flex-end}
 html[dir="ltr"] .money{text-align:right}
 html[dir="ltr"] .rowCard:before{inset-inline-start:0}
+.authPrefQuickV15{
+  position:absolute;
+  top:24px;
+  inset-inline-end:24px;
+  z-index:4;
+}
 @media(max-width:600px){
+  .authPrefQuickV15{top:20px;inset-inline-end:20px}
   .preferenceChoices{grid-template-columns:1fr}
   .preferenceChoices.two{grid-template-columns:1fr 1fr}
 }
@@ -3631,7 +3638,8 @@ body{font-size:14px;line-height:1.65}
     'تم تثبيت مِنجاز على جهازك':'MINJAZ was installed on your device.',
     'راجع بيانات المهمة':'Review the task details','تم نشر المهمة':'Task published','تعذر إرسال العرض':'Could not send proposal','تم إرسال عرضك':'Proposal sent',
     'تعذر إرسال الرسالة':'Could not send message','تم التسليم':'Delivered','تم تحديث الطلب':'Request updated','تم فتح التذكرة':'Support ticket opened',
-    'عام':'General','عاجل':'Urgent','عادي':'Normal','مرن':'Flexible','بدون تصنيف':'Uncategorized','ميزانية مفتوحة':'Open budget'
+    'عام':'General','عاجل':'Urgent','عادي':'Normal','مرن':'Flexible','بدون تصنيف':'Uncategorized','ميزانية مفتوحة':'Open budget',
+    'تصميم':'Design','سوشيال ميديا':'Social media','كتابة ومحتوى':'Writing & content','Excel وبيانات':'Excel & data','Word وPDF':'Word & PDF','فيديو وصوت':'Video & audio','ترجمة':'Translation','أعمال':'Business','ذكاء اصطناعي':'Artificial intelligence'
   };
 
   const PLACEHOLDERS={
@@ -3686,6 +3694,7 @@ body{font-size:14px;line-height:1.65}
 
   function translateTextNode(node){
     if(node.nodeType!==Node.TEXT_NODE)return;
+    if(node.parentElement?.closest('script,style,noscript,template'))return;
     if(!originalText.has(node))originalText.set(node,node.nodeValue);
     const original=originalText.get(node);
     const next=lang==='en'?translateString(original):original;
@@ -3693,7 +3702,7 @@ body{font-size:14px;line-height:1.65}
   }
 
   function translateAttrs(el){
-    if(!(el instanceof Element))return;
+    if(!(el instanceof Element)||el.matches('script,style,noscript,template'))return;
     if(!originalAttrs.has(el)){
       originalAttrs.set(el,{
         placeholder:el.getAttribute('placeholder'),
@@ -3837,6 +3846,7 @@ body{font-size:14px;line-height:1.65}
       });
     }
     injectQuickButton();
+    injectAuthPrefButton();
   });
   observer.observe(document.body,{childList:true,subtree:true});
 
@@ -3847,12 +3857,50 @@ body{font-size:14px;line-height:1.65}
     else if(media.addListener)media.addListener(onChange);
   }
 
+
+  const STATUS_AR={open:'مفتوحة',matched:'تم الاختيار',awaiting_payment:'بانتظار الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',completed:'مكتملة',revision_requested:'تعديل مطلوب',cancelled:'ملغاة',disputed:'نزاع',paid:'مدفوع',unpaid:'غير مدفوع'};
+  const STATUS_EN={open:'Open',matched:'Matched',awaiting_payment:'Awaiting payment',in_progress:'In progress',delivered:'Delivered',completed:'Completed',revision_requested:'Revision requested',cancelled:'Cancelled',disputed:'Dispute',paid:'Paid',unpaid:'Unpaid'};
+
+  function applyLocaleHelpers(){
+    try{Object.assign(statusMap,lang==='en'?STATUS_EN:STATUS_AR)}catch(e){}
+    window.money=function(n){
+      const locale=lang==='en'?'en-SA':'ar-SA';
+      return Number(n||0).toLocaleString(locale,{maximumFractionDigits:2})+(lang==='en'?' SAR':' ر.س');
+    };
+    window.date=function(s){
+      if(!s)return'—';
+      return new Date(s).toLocaleDateString(lang==='en'?'en-SA':'ar-SA');
+    };
+    window.roleName=function(r){
+      if(lang==='en')return({client:'Client',freelancer:'Freelancer',admin:'Admin'}[r]||r);
+      return({client:'عميل',freelancer:'مستقل',admin:'إدارة'}[r]||r);
+    };
+    const baseToast=window.__minjazBaseToastV15||(window.__minjazBaseToastV15=window.toast);
+    if(typeof baseToast==='function')window.toast=function(s){return baseToast(lang==='en'?translateString(s):s)};
+  }
+
+  function injectAuthPrefButton(){
+    const panel=document.querySelector('.authPanel');
+    if(!panel||document.getElementById('authPrefQuickV15'))return;
+    const b=document.createElement('button');
+    b.id='authPrefQuickV15';
+    b.className='prefQuick authPrefQuickV15';
+    b.type='button';
+    b.setAttribute('aria-label',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.setAttribute('title',lang==='en'?'Appearance and language':'المظهر واللغة');
+    b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10M9 3v2c0 4-2 7-5 9"/><path d="M6 10c1.5 2 3.4 3.5 5.8 4.5"/><path d="m14 20 4-10 4 10"/><path d="M15.5 17h5"/></svg>';
+    b.onclick=window.minjazPrefsV15;
+    panel.appendChild(b);
+  }
+
   window.minjazLangV15=()=>lang;
   window.minjazThemeModeV15=()=>themeMode;
+  applyLocaleHelpers();
   applyTheme();
   applyLang();
   injectQuickButton();
-  setTimeout(()=>{injectQuickButton();if(currentPage==='account')injectAccountPrefs();localizeTree(document.body)},80);
+  injectAuthPrefButton();
+  setTimeout(()=>{injectQuickButton();injectAuthPrefButton();if(currentPage==='account')injectAccountPrefs();localizeTree(document.body)},80);
 })();
 </script>
 
