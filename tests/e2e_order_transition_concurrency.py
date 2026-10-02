@@ -96,6 +96,38 @@ def run():
     final_o2=call("GET",f"/api/v1/orders/{o2['id']}",token=ct,expected=(200,))
     assert final_o2["status"]=="disputed",final_o2
 
+    # Retrying the same cancellation request with one key returns the same case and notifies once.
+    _,oc=create_paid_order(ct,ft,cat,"اختبار إعادة طلب الإلغاء")
+    cancel_key=f"cancel-race-{seed}"
+    cancel_payload={"reason":"إلغاء ثابت","details":"إعادة المحاولة بنفس المفتاح","idempotency_key":cancel_key}
+    cancel_retry=concurrent([
+        ("first","POST",f"/api/v1/orders/{oc['id']}/cancellation",cancel_payload,ct),
+        ("retry","POST",f"/api/v1/orders/{oc['id']}/cancellation",cancel_payload,ct),
+    ])
+    assert sorted(x[1][0] for x in cancel_retry)==[200,201],cancel_retry
+    cancel_ids={int(payload["id"]) for _,(_,payload) in cancel_retry}
+    assert len(cancel_ids)==1,cancel_retry
+    assert sum(1 for _,(_,payload) in cancel_retry if payload.get("idempotent_replay"))==1,cancel_retry
+    cancel_notes=call("GET","/api/v1/notifications?kind=cancellation&limit=50",token=ft,expected=(200,)).get("items") or []
+    cancel_notes=[x for x in cancel_notes if int(x.get("order_id") or 0)==int(oc["id"])]
+    assert len(cancel_notes)==1,cancel_notes
+
+    # Retrying the same dispute with one key returns the same dispute and notifies once.
+    _,od=create_paid_order(ct,ft,cat,"اختبار إعادة فتح النزاع")
+    dispute_key=f"dispute-race-{seed}"
+    dispute_payload={"reason":"نزاع ثابت","details":"إعادة المحاولة بنفس المفتاح","idempotency_key":dispute_key}
+    dispute_retry=concurrent([
+        ("first","POST",f"/api/v1/orders/{od['id']}/dispute",dispute_payload,ct),
+        ("retry","POST",f"/api/v1/orders/{od['id']}/dispute",dispute_payload,ct),
+    ])
+    assert sorted(x[1][0] for x in dispute_retry)==[200,201],dispute_retry
+    dispute_ids={int(payload["id"]) for _,(_,payload) in dispute_retry}
+    assert len(dispute_ids)==1,dispute_retry
+    assert sum(1 for _,(_,payload) in dispute_retry if payload.get("idempotent_replay"))==1,dispute_retry
+    dispute_notes=call("GET","/api/v1/notifications?kind=dispute&limit=50",token=ft,expected=(200,)).get("items") or []
+    dispute_notes=[x for x in dispute_notes if int(x.get("order_id") or 0)==int(od["id"])]
+    assert len(dispute_notes)==1,dispute_notes
+
     # Completion and cancellation creation racing on a delivered order: one wins, never both.
     _,o3=create_paid_order(ct,ft,cat,"اختبار إكمال مقابل إلغاء")
     call("POST",f"/api/v1/orders/{o3['id']}/deliver",{"note":"تسليم قبل سباق الإكمال والإلغاء."},ft)
@@ -149,6 +181,9 @@ def run():
         "ok":True,"version":health.get("version"),
         "double_cancellation_serialized":True,
         "double_dispute_serialized":True,
+        "cancellation_retry_idempotent":True,
+        "dispute_retry_idempotent":True,
+        "single_case_notifications":True,
         "complete_vs_cancellation_safe":True,
         "deliver_vs_dispute_safe":True,
         "revision_vs_dispute_safe":True,
