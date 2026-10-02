@@ -69,6 +69,9 @@ def run():
     admin=login(ADMIN_PHONE,"admin","MINJAZ Admin")
     ct,ft,at=client["token"],freelancer["token"],admin["token"]
     fid=freelancer["user"]["id"]
+    docs={"documents":["terms","privacy","marketplace_rules"]}
+    assert call("POST","/api/v1/legal/accept",docs,ct,expected=(200,)).get("complete") is True
+    assert call("POST","/api/v1/legal/accept",docs,ft,expected=(200,)).get("complete") is True
 
     sessions=call("GET","/api/v1/account/sessions",token=ct,expected=(200,))
     assert sessions.get("items") and any(x.get("current") for x in sessions["items"]),sessions
