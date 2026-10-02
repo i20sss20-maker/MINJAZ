@@ -1959,11 +1959,13 @@ class H(BaseHTTPRequestHandler):
                 if revisions<0 or revisions>50:return self.sendj(400,{'error':'invalid_revisions','minimum':0,'maximum':50})
                 message=str(b.get('message') or '').strip()
                 if len(message)>1200:return self.sendj(400,{'error':'proposal_message_too_long','maximum':1200})
-                t=q("select id,client_id from tasks where id=%s and status='open'",(int(m.group(1)),),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                if int(t['client_id'])==int(u['id']):return self.sendj(403,{'error':'own_task_forbidden'})
-                if task_hidden(int(m.group(1))) or interaction_restricted(u['id'],t['client_id']):return self.sendj(403,{'error':'interaction_restricted'})
-                r=q("insert into proposals(task_id,freelancer_id,price,delivery_hours,revisions,message) values(%s,%s,%s,%s,%s,%s) on conflict(task_id,freelancer_id) do update set price=excluded.price,delivery_hours=excluded.delivery_hours,revisions=excluded.revisions,message=excluded.message returning *",(int(m.group(1)),u['id'],price,delivery_hours,revisions,message or None),'one');notify(t['client_id'],'عرض جديد على مهمتك',f"السعر {price:.2f} ر.س · التسليم خلال {delivery_hours} ساعة",'proposal',None,int(m.group(1)));return self.sendj(201,r)
+                r,t,err=upsert_proposal_atomic(int(m.group(1)),u['id'],price,delivery_hours,revisions,message)
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='own_task_forbidden':return self.sendj(403,{'error':err})
+                if err=='interaction_restricted':return self.sendj(403,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                notify(t['client_id'],'عرض جديد على مهمتك',f"السعر {price:.2f} ر.س · التسليم خلال {delivery_hours} ساعة",'proposal',None,int(m.group(1)))
+                return self.sendj(201,r)
             if m and method=='DELETE':
                 u=self.require('freelancer');
                 if not u:return
