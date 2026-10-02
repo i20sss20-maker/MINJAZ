@@ -146,9 +146,15 @@
                 if not u:return
                 legal_block=legal_action_precondition(u['id'])
                 if legal_block:return self.sendj(428,legal_block)
-                t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
+                tid=int(m.group(1));b=self.body();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                fingerprint=repeat_task_fingerprint(tid) if idempotency_key else None
+                task,replayed,err=repeat_task_atomic(tid,u['id'],idempotency_key or None,fingerprint)
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                task['idempotent_replay']=bool(replayed)
+                return self.sendj(200 if replayed else 201,task)
             m=re.fullmatch(r'/api/v1/tasks/(\d+)/close',p)
             if m and method=='POST':
                 u=self.require('client');
