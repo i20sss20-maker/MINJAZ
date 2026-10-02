@@ -357,6 +357,73 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def task_request_fingerprint(category_id,service_id,title,description,budget_min,budget_max,urgency,due_at,attachments):
+    refs=[]
+    if isinstance(attachments,list):
+        for x in attachments[:5]:
+            if not isinstance(x,dict):continue
+            try:size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+            except Exception:size=0
+            refs.append({
+                'name':str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف',
+                'storage_key':str(x.get('storage_key') or '').strip().lstrip('/') or None,
+                'url':str(x.get('url') or x.get('file_url') or '').strip() or None,
+                'mime_type':str(x.get('mime_type') or '').strip()[:120] or None,
+                'size_bytes':size,
+            })
+    payload={
+        'category_id':int(category_id) if category_id is not None else None,
+        'service_id':int(service_id) if service_id is not None else None,
+        'title':str(title),
+        'description':str(description),
+        'budget_min':None if budget_min is None else f"{budget_min:.2f}",
+        'budget_max':None if budget_max is None else f"{budget_max:.2f}",
+        'urgency':str(urgency),
+        'due_at':str(due_at or '') or None,
+        'attachments':refs,
+    }
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_task_atomic(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,due_at,attachments,idempotency_key=None,idempotency_fingerprint=None):
+    cleaned=clean_attachments(attachments,uploaded_by=client_id)
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                cur.execute("""insert into task_idempotency_keys(client_id,idempotency_key,request_fingerprint)
+                               values(%s,%s,%s) on conflict(client_id,idempotency_key) do nothing
+                               returning client_id""",(int(client_id),idempotency_key,idempotency_fingerprint))
+                claimed=cur.fetchone()
+                if not claimed:
+                    cur.execute('select request_fingerprint,task_id from task_idempotency_keys where client_id=%s and idempotency_key=%s',(int(client_id),idempotency_key))
+                    record=cur.fetchone()
+                    if not record:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    if str(record.get('request_fingerprint') or '')!=str(idempotency_fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    if not record.get('task_id'):
+                        c.rollback();return None,False,'idempotency_conflict'
+                    cur.execute('select * from tasks where id=%s and client_id=%s',(record['task_id'],int(client_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute("""insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,due_at,status)
+                           values(%s,%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *""",
+                        (int(client_id),category_id,service_id,title,description,budget_min,budget_max,urgency,due_at))
+            task=dict(cur.fetchone())
+            insert_attachments_tx(cur,int(client_id),cleaned,task_id=task['id'])
+            if idempotency_key:
+                cur.execute('update task_idempotency_keys set task_id=%s where client_id=%s and idempotency_key=%s',(task['id'],int(client_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in task.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
     c=db_connect()
     try:
@@ -1876,9 +1943,6 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/tasks' and method=='POST':
                 u=self.require('client');
                 if not u:return
-                legal_block=legal_action_precondition(u['id'])
-                if legal_block:return self.sendj(428,legal_block)
-                if q("select count(*)::int n from tasks where client_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=20:return self.sendj(429,{'error':'task_rate_limited','retry_after_seconds':3600})
                 b=self.body(); title=str(b.get('title','')).strip(); desc=str(b.get('description','')).strip()
                 if not title or not desc:return self.sendj(400,{'error':'missing_fields'})
                 if len(title)<5:return self.sendj(400,{'error':'title_too_short','minimum':5})
@@ -1902,14 +1966,33 @@ class H(BaseHTTPRequestHandler):
                 if (bmin is not None and bmin<Decimal('49')) or (bmax is not None and bmax<Decimal('49')):return self.sendj(400,{'error':'budget_below_minimum','minimum':49})
                 if (bmin is not None and bmin>Decimal('1000000')) or (bmax is not None and bmax>Decimal('1000000')):return self.sendj(400,{'error':'budget_above_maximum','maximum':1000000})
                 if bmin is not None and bmax is not None and bmax<bmin:return self.sendj(400,{'error':'invalid_budget_range'})
-                due_raw=str(b.get('due_at') or '').strip() or None
+                due_raw=str(b.get('due_at') or '').strip() or None; due_dt=None
                 if due_raw:
-                    try:
-                        due_dt=datetime.fromisoformat(due_raw.replace('Z','+00:00'))
-                        now_dt=datetime.now(due_dt.tzinfo) if due_dt.tzinfo else datetime.now()
-                        if due_dt<=now_dt:return self.sendj(400,{'error':'due_at_must_be_future'})
+                    try:due_dt=datetime.fromisoformat(due_raw.replace('Z','+00:00'))
                     except (ValueError,TypeError):return self.sendj(400,{'error':'invalid_due_at'})
-                r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,due_at,status) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],category_id,sid,title,desc,bmin,bmax,urgency,due_raw),'one'); insert_attachments(u['id'],b.get('attachments'),task_id=r['id']); return self.sendj(201,r)
+                idempotency_key=str(b.get('idempotency_key') or '').strip()
+                if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                fingerprint=task_request_fingerprint(category_id,sid,title,desc,bmin,bmax,urgency,due_raw,b.get('attachments')) if idempotency_key else None
+                if idempotency_key:
+                    idem=q('select request_fingerprint,task_id from task_idempotency_keys where client_id=%s and idempotency_key=%s',(u['id'],idempotency_key),'one')
+                    if idem:
+                        if str(idem.get('request_fingerprint') or '')!=fingerprint:return self.sendj(409,{'error':'idempotency_key_reused'})
+                        existing=q('select * from tasks where id=%s and client_id=%s',(idem.get('task_id'),u['id']),'one') if idem.get('task_id') else None
+                        if existing:
+                            existing['idempotent_replay']=True
+                            return self.sendj(200,existing)
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
+                if q("select count(*)::int n from tasks where client_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=20:return self.sendj(429,{'error':'task_rate_limited','retry_after_seconds':3600})
+                if due_dt:
+                    now_dt=datetime.now(due_dt.tzinfo) if due_dt.tzinfo else datetime.now()
+                    if due_dt<=now_dt:return self.sendj(400,{'error':'due_at_must_be_future'})
+                task,replayed,err=create_task_atomic(u['id'],category_id,sid,title,desc,bmin,bmax,urgency,due_raw,b.get('attachments'),idempotency_key or None,fingerprint)
+                if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                task['idempotent_replay']=bool(replayed)
+                return self.sendj(200 if replayed else 201,task)
+
             m=re.fullmatch(r'/api/v1/tasks/(\d+)',p)
             if m and method=='GET':
                 u=self.require();
