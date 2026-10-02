@@ -56,6 +56,8 @@
             if p=='/api/v1/tasks' and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 if q("select count(*)::int n from tasks where client_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=20:return self.sendj(429,{'error':'task_rate_limited','retry_after_seconds':3600})
                 b=self.body(); title=str(b.get('title','')).strip(); desc=str(b.get('description','')).strip()
                 if not title or not desc:return self.sendj(400,{'error':'missing_fields'})
@@ -126,6 +128,8 @@
             if m and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
@@ -145,4 +149,6 @@
             if m and method=='POST':
                 u=self.require('freelancer');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})

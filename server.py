@@ -1086,6 +1086,12 @@ def legal_status(user_id):
     docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
     return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
 
+def legal_action_precondition(user_id):
+    status=legal_status(user_id)
+    if status['complete']:return None
+    missing=[k for k,x in status['documents'].items() if not x['accepted']]
+    return {'error':'legal_acceptance_required','missing_documents':missing,'documents':status['documents']}
+
 def onboarding_status(user_id,role):
     legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
     if role=='freelancer':
@@ -1870,6 +1876,8 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/tasks' and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 if q("select count(*)::int n from tasks where client_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=20:return self.sendj(429,{'error':'task_rate_limited','retry_after_seconds':3600})
                 b=self.body(); title=str(b.get('title','')).strip(); desc=str(b.get('description','')).strip()
                 if not title or not desc:return self.sendj(400,{'error':'missing_fields'})
@@ -1940,6 +1948,8 @@ class H(BaseHTTPRequestHandler):
             if m and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
@@ -1959,6 +1969,8 @@ class H(BaseHTTPRequestHandler):
             if m and method=='POST':
                 u=self.require('freelancer');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 if q("select count(*)::int n from proposals where freelancer_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=40:return self.sendj(429,{'error':'proposal_rate_limited','retry_after_seconds':3600})
                 b=self.body()
                 try: price=money_decimal(b.get('price') or 0)
@@ -2000,6 +2012,8 @@ class H(BaseHTTPRequestHandler):
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
                 if not u:return
+                legal_block=legal_action_precondition(u['id'])
+                if legal_block:return self.sendj(428,legal_block)
                 b=self.body()
                 try: proposal_id=int(b.get('proposal_id'))
                 except Exception:return self.sendj(400,{'error':'proposal_id_required'})

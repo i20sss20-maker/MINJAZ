@@ -26,6 +26,11 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     assert status in expected,(method,path,status,payload)
     return payload
 
+def accept_legal(token):
+    out=call("POST","/api/v1/legal/accept",{"documents":["terms","privacy","marketplace_rules"]},token)
+    assert out.get("complete") is True,out
+    return out
+
 def login(phone,role,name):
     for attempt in range(3):
         status,ch=raw_call("POST","/api/v1/auth/request-otp",{"phone":phone})
@@ -51,6 +56,7 @@ def run():
     f1=login(phones[1],"freelancer","Order Race Freelancer A")
     f2=login(phones[2],"freelancer","Order Race Freelancer B")
     ct,t1,t2=client["token"],f1["token"],f2["token"]
+    accept_legal(ct);accept_legal(t1);accept_legal(t2)
 
     # A client can close an open task; sent proposals are rejected and no new proposal can appear afterward.
     close_task=call("POST","/api/v1/tasks",{

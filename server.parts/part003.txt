@@ -227,6 +227,12 @@ def legal_status(user_id):
     docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
     return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
 
+def legal_action_precondition(user_id):
+    status=legal_status(user_id)
+    if status['complete']:return None
+    missing=[k for k,x in status['documents'].items() if not x['accepted']]
+    return {'error':'legal_acceptance_required','missing_documents':missing,'documents':status['documents']}
+
 def onboarding_status(user_id,role):
     legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
     if role=='freelancer':

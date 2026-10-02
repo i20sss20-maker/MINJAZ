@@ -27,6 +27,11 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     assert status in expected,(method,path,status,payload)
     return payload
 
+def accept_legal(token):
+    out=call("POST","/api/v1/legal/accept",{"documents":["terms","privacy","marketplace_rules"]},token)
+    assert out.get("complete") is True,out
+    return out
+
 def login(phone,role,name):
     for attempt in range(3):
         status,ch=raw_call("POST","/api/v1/auth/request-otp",{"phone":phone})
@@ -72,6 +77,7 @@ def run():
     admin=login(ADMIN_PHONE,"admin","KYC Payout Admin")
     ct,ft,at=client["token"],freelancer["token"],admin["token"]
     fid=freelancer["user"]["id"]
+    accept_legal(ct);accept_legal(ft)
 
     order=create_completed_order(ct,ft,cats[0]["id"])
 
