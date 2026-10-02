@@ -10,12 +10,25 @@ android {
         applicationId "sa.minjaz.preview"
         minSdk 24
         targetSdk 36
-        versionCode 5
-        versionName "0.5-resilience"
+        versionCode 6
+        versionName "0.6-release-prep"
     }
 
     buildFeatures {
         buildConfig true
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            minifyEnabled false
+        }
+
+        release {
+            debuggable false
+            minifyEnabled false
+            shrinkResources false
+        }
     }
 
     compileOptions {
