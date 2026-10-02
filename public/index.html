@@ -1331,6 +1331,24 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .smartSyncDot.syncing{animation:none}
 }
 
+
+/* MINJAZ critical drafts v14 */
+.draftSafetyNote{
+  margin:10px 0 0;
+  padding:9px 10px;
+  border:1px solid #e5e2ff;
+  border-radius:13px;
+  background:#faf9ff;
+  color:#696f83;
+  font-size:9px;
+  line-height:1.7;
+}
+.draftSafetyNote.ok{
+  border-color:#cfeede;
+  background:#f4fbf7;
+  color:#22735a;
+}
+
 </style>
 </head>
 <body>
@@ -3166,6 +3184,84 @@ body{font-size:14px;line-height:1.65}
       return out;
     };
   }
+})();
+</script>
+
+
+<script id="minjazCriticalDraftsV14">
+(function(){
+  const TTL=7*24*60*60*1000;
+  const uid=()=>me?.user?.id||'guest';
+  const key=(kind,id)=>'minjaz:v14:draft:'+uid()+':'+kind+':'+id;
+  const read=(kind,id)=>{
+    try{
+      const d=JSON.parse(localStorage.getItem(key(kind,id))||'null');
+      if(!d||!d.saved_at||Date.now()-d.saved_at>TTL){localStorage.removeItem(key(kind,id));return null}
+      return d;
+    }catch{return null}
+  };
+  const save=(kind,id,body)=>{
+    const text=String(body||'');
+    if(!text.trim()){localStorage.removeItem(key(kind,id));return}
+    localStorage.setItem(key(kind,id),JSON.stringify({saved_at:Date.now(),body:text}));
+  };
+  const clear=(kind,id)=>localStorage.removeItem(key(kind,id));
+
+  function wireTextarea(kind,id,fieldId){
+    const el=document.getElementById(fieldId);
+    if(!el)return;
+    const d=read(kind,id);
+    if(d?.body && !el.value){
+      el.value=d.body;
+      const note=document.createElement('div');
+      note.className='draftSafetyNote ok';
+      note.textContent='استعدنا مسودة محفوظة من هذا الجهاز.';
+      el.insertAdjacentElement('afterend',note);
+    }else{
+      const note=document.createElement('div');
+      note.className='draftSafetyNote';
+      note.textContent='يُحفظ النص تلقائيًا على هذا الجهاز حتى يتم الإرسال بنجاح.';
+      el.insertAdjacentElement('afterend',note);
+    }
+    el.addEventListener('input',()=>save(kind,id,el.value));
+  }
+
+  const baseDelivery=window.deliveryModal;
+  if(typeof baseDelivery==='function'){
+    window.deliveryModal=function(id){
+      baseDelivery(id);
+      wireTextarea('delivery',id,'delNote');
+    };
+  }
+
+  const baseDeliver=window.deliver;
+  if(typeof baseDeliver==='function'){
+    window.deliver=async function(id){
+      await baseDeliver(id);
+      if(!document.getElementById('modalOverlay')?.classList.contains('on')) clear('delivery',id);
+    };
+  }
+
+  const baseRevisionModal=window.revisionModal;
+  if(typeof baseRevisionModal==='function'){
+    window.revisionModal=function(id){
+      baseRevisionModal(id);
+      wireTextarea('revision',id,'revNote');
+    };
+  }
+
+  const baseRevision=window.revision;
+  if(typeof baseRevision==='function'){
+    window.revision=async function(id){
+      await baseRevision(id);
+      if(!document.getElementById('modalOverlay')?.classList.contains('on')) clear('revision',id);
+    };
+  }
+
+  window.addEventListener('storage',e=>{
+    if(!e.key?.startsWith('minjaz:v14:draft:'))return;
+    if(document.visibilityState==='visible') return;
+  });
 })();
 </script>
 
