@@ -1489,6 +1489,74 @@ def create_safety_report_atomic(reporter_id,reported_user_id,task_id,order_id,ca
     finally:
         c.close()
 
+def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from safety_reports where id=%s for update',(int(rid),))
+            sr=cur.fetchone()
+            if not sr:
+                c.rollback();return None,None,None,'report_not_found'
+            note=str(admin_note or '')[:3000] or None
+            st=str(status or sr.get('status') or 'open')
+            ta=str(task_action or '')
+            ua=str(user_action or '')
+            effects={'report_changed':False,'task_changed':False,'user_changed':False}
+            if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
+                cur.execute('select id,role from users where id=%s',(sr['reported_user_id'],))
+                target=cur.fetchone()
+                if target and target.get('role')=='admin':
+                    c.rollback();return None,dict(sr),None,'admin_not_restrictable'
+            if ta in ('hide','restore') and sr.get('task_id'):
+                desired_hidden=(ta=='hide')
+                cur.execute('select hidden,reason from task_moderation where task_id=%s for update',(sr['task_id'],))
+                current_task=cur.fetchone()
+                task_same=bool(current_task) and bool(current_task.get('hidden'))==desired_hidden and (current_task.get('reason') or None)==note
+                if not task_same:
+                    cur.execute("""insert into task_moderation(task_id,hidden,reason,updated_by)
+                                   values(%s,%s,%s,%s)
+                                   on conflict(task_id) do update set hidden=excluded.hidden,reason=excluded.reason,
+                                   updated_by=excluded.updated_by,updated_at=now()""",
+                                (sr['task_id'],desired_hidden,note,int(admin_id)))
+                    cur.execute('insert into moderation_actions(report_id,admin_id,task_id,action,note) values(%s,%s,%s,%s,%s)',
+                                (int(rid),int(admin_id),sr['task_id'],'hide_task' if desired_hidden else 'restore_task',note))
+                    effects['task_changed']=True
+            if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
+                desired_restricted=(ua=='restrict')
+                cur.execute('select interaction_restricted,reason from user_moderation where user_id=%s for update',(sr['reported_user_id'],))
+                current_user=cur.fetchone()
+                user_same=bool(current_user) and bool(current_user.get('interaction_restricted'))==desired_restricted and (current_user.get('reason') or None)==note
+                if not user_same:
+                    cur.execute("""insert into user_moderation(user_id,interaction_restricted,reason,updated_by)
+                                   values(%s,%s,%s,%s)
+                                   on conflict(user_id) do update set interaction_restricted=excluded.interaction_restricted,
+                                   reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()""",
+                                (sr['reported_user_id'],desired_restricted,note,int(admin_id)))
+                    cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',
+                                (int(rid),int(admin_id),sr['reported_user_id'],'restrict_user' if desired_restricted else 'unrestrict_user',note))
+                    effects['user_changed']=True
+            report_same=(str(sr.get('status') or '')==st and (sr.get('admin_note') or None)==note)
+            if not report_same:
+                resolved=st in ('resolved','dismissed')
+                cur.execute("""update safety_reports set status=%s,admin_note=%s,
+                               resolved_by=case when %s then %s else resolved_by end,
+                               resolved_at=case when %s then coalesce(resolved_at,now()) else null end,
+                               updated_at=now() where id=%s returning *""",
+                            (st,note,resolved,int(admin_id),resolved,int(rid)))
+                row=dict(cur.fetchone())
+                cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,task_id,action,note) values(%s,%s,%s,%s,%s,%s)',
+                            (int(rid),int(admin_id),sr.get('reported_user_id'),sr.get('task_id'),'report_'+st,note))
+                effects['report_changed']=True
+            else:
+                row=dict(sr)
+        c.commit()
+        return {k:as_json(v) for k,v in row.items()},dict(sr),effects,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def update_support_ticket(tid,status,admin_reply=None):
     c=db_connect()
     try:
