@@ -1,4 +1,9 @@
-                    r=q('insert into saved_task_searches(freelancer_id,name,filters) values(%s,%s,%s::jsonb) returning id,name,filters,created_at,updated_at',(u['id'],name,json.dumps(clean,ensure_ascii=False)),'one');return self.sendj(201,r)
+                    r,replayed,err=create_saved_search_atomic(u['id'],name,clean,idempotency_key or None,fingerprint)
+                    if err=='saved_search_limit':return self.sendj(409,{'error':err,'limit':20})
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    r['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,r)
             m=re.fullmatch(r'/api/v1/freelancer/saved-searches/(\d+)',p)
             if m and method=='DELETE':
                 u=self.require('freelancer');
