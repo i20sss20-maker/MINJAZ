@@ -82,7 +82,10 @@ def run():
     call("POST",f"/api/v1/orders/{order1['id']}/complete",{},ct)
     earnings=call("GET","/api/v1/freelancer/earnings",token=ft,expected=(200,))
     assert float(earnings.get("available_balance") or 0)>0,earnings
-    call("PATCH",f"/api/admin/freelancers/{fid}/kyc",{"status":"approved"},at,expected=(200,))
+    kyc_update=call("PATCH",f"/api/admin/freelancers/{fid}/kyc",{"status":"approved"},at,expected=(200,))
+    assert kyc_update.get("idempotent_replay") is False,kyc_update
+    kyc_retry=call("PATCH",f"/api/admin/freelancers/{fid}/kyc",{"status":"approved"},at,expected=(200,))
+    assert kyc_retry.get("idempotent_replay") is True,kyc_retry
     payout_amount=round(min(10.0,float(earnings["available_balance"])),2)
     payout=call("POST","/api/v1/freelancer/payouts",{"amount":payout_amount,"note":"اختبار دورة السحب"},ft)
     payout_id=payout["item"]["id"]
@@ -164,8 +167,10 @@ def run():
     audit=ops_after_retries.get("audit") or []
     support_audit=[x for x in audit if x.get("action")=="support_updated" and str(x.get("target_id"))==str(ticket["id"])]
     privacy_audit=[x for x in audit if x.get("action")=="privacy_request_updated" and str(x.get("target_id"))==str(privacy["id"])]
+    kyc_audit=[x for x in audit if x.get("action")=="kyc_status_updated" and str(x.get("target_id"))==str(fid)]
     assert len(support_audit)==1,support_audit
     assert len(privacy_audit)==1,privacy_audit
+    assert len(kyc_audit)==1,kyc_audit
 
     # Safety report review without punitive moderation.
     safety=call("POST","/api/v1/safety/reports",{
