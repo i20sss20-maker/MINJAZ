@@ -120,6 +120,8 @@ jobs:
           assert "account_request_idempotency_keys" in server
           assert "__supportPendingPayload" in ui
           assert "__privacyPendingPayload" in ui
+          assert "__savedSearchPending" in ui
+          assert "saved-search-create:" in server
           review_start=server.index("def upsert_review_atomic")
           proposal_upsert_start=server.index("def upsert_proposal_atomic")
           close_task_start=server.index("def close_task_atomic")
