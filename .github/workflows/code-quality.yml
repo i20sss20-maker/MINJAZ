@@ -142,10 +142,12 @@ jobs:
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")
           cancellation_helper_start=server.index("def admin_transition_cancellation")
+          support_helper_start=server.index("def update_support_ticket")
           privacy_helper_start=server.index("def update_privacy_request")
           payout_block=server[payout_start:dispute_helper_start]
           dispute_helper=server[dispute_helper_start:cancellation_helper_start]
-          cancellation_helper=server[cancellation_helper_start:privacy_helper_start]
+          cancellation_helper=server[cancellation_helper_start:support_helper_start]
+          support_helper=server[support_helper_start:privacy_helper_start]
           privacy_helper=server[privacy_helper_start:server.index("def friendly_device")]
           assert "def update_manual_kyc_status(uid,status):" in server
           kyc_manual_start=server.index("def update_manual_kyc_status")
@@ -164,8 +166,11 @@ jobs:
           assert "dispute_finalized" in dispute_helper
           assert "for update of cr,o" in cancellation_helper
           assert "cancellation_finalized" in cancellation_helper
+          assert "select * from support_tickets where id=%s for update" in support_helper
+          assert "return {k:as_json(v) for k,v in dict(ticket).items()},dict(ticket),False,None" in support_helper
           assert "select * from privacy_requests where id=%s for update" in privacy_helper
           assert "privacy_request_finalized" in privacy_helper
+          assert "return {k:as_json(v) for k,v in dict(pr).items()},dict(pr),False,None" in privacy_helper
           pay_start=server.index("def apply_payment_adapter_event")
           kyc_start=server.index("def apply_kyc_adapter_event")
           pay_block=server[pay_start:kyc_start]
