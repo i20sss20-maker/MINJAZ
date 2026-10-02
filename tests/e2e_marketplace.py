@@ -83,6 +83,33 @@ def run():
     assert client_me["user"]["role"] == "client"
     assert freelancer_me["user"]["role"] == "freelancer"
 
+    def activity_count(token, event_type):
+        items = call("GET", "/api/v1/account/activity", token=token, expected=(200,)).get("items") or []
+        return sum(1 for x in items if x.get("event_type") == event_type)
+
+    # Retried account updates must not duplicate security/account activity.
+    profile_before = activity_count(client_token, "profile_updated")
+    profile_first = call("PATCH", "/api/v1/me/profile", {"name": "E2E Client Updated"}, client_token, expected=(200,))
+    profile_retry = call("PATCH", "/api/v1/me/profile", {"name": "E2E Client Updated"}, client_token, expected=(200,))
+    assert profile_first.get("idempotent_replay") is False, profile_first
+    assert profile_retry.get("idempotent_replay") is True, profile_retry
+    assert activity_count(client_token, "profile_updated") == profile_before + 1
+
+    prefs = call("GET", "/api/v1/account/preferences", token=client_token, expected=(200,))
+    next_marketing = not bool(prefs.get("marketing"))
+    prefs_before = activity_count(client_token, "preferences_updated")
+    prefs_first = call("PATCH", "/api/v1/account/preferences", {"marketing": next_marketing}, client_token, expected=(200,))
+    prefs_retry = call("PATCH", "/api/v1/account/preferences", {"marketing": next_marketing}, client_token, expected=(200,))
+    assert prefs_first.get("idempotent_replay") is False, prefs_first
+    assert prefs_retry.get("idempotent_replay") is True, prefs_retry
+    assert prefs_first.get("updated_at") == prefs_retry.get("updated_at"), (prefs_first, prefs_retry)
+    assert activity_count(client_token, "preferences_updated") == prefs_before + 1
+
+    role_before = activity_count(client_token, "role_switched")
+    same_role = call("PATCH", "/api/v1/me/active-role", {"role": "client"}, client_token, expected=(200,))
+    assert same_role.get("idempotent_replay") is True, same_role
+    assert activity_count(client_token, "role_switched") == role_before
+
     # Onboarding must work for both roles against the real schema.
     client_onboarding = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     freelancer_onboarding = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
@@ -398,6 +425,7 @@ def run():
         "version": health["version"],
         "ready_for_beta": True,
         "auth": True,
+        "account_updates_retry_safe": True,
         "onboarding_client": True,
         "onboarding_freelancer": True,
         "legal_acceptance": True,
