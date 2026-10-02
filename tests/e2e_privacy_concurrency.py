@@ -100,6 +100,9 @@ def run():
 RESULT=run()
 print("MINJAZ_PRIVACY_CONCURRENCY_E2E_OK",json.dumps(RESULT,ensure_ascii=False),flush=True)
 
+if os.getenv("E2E_EXIT_AFTER_RUN","").strip()=="1":
+    raise SystemExit(0)
+
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path not in ("/","/health"):
