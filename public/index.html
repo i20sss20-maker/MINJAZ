@@ -1087,7 +1087,16 @@ html{scroll-behavior:smooth}body{overscroll-behavior-y:none}.btn,.navBtn,.mobile
  const _openModal=window.openModal,_closeModal=window.closeModal;
  window.openModal=function(markup){modalReturnFocus=document.activeElement;_openModal(markup);const m=document.getElementById('modal');if(m){m.setAttribute('aria-label',m.querySelector('h2')?.textContent||'نافذة مِنجاز');setTimeout(()=>m.focus({preventScroll:true}),0)} };
  window.closeModal=function(){_closeModal();if(modalReturnFocus&&document.contains(modalReturnFocus)){try{modalReturnFocus.focus({preventScroll:true})}catch{}}modalReturnFocus=null};
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('modalOverlay')?.classList.contains('on'))closeModal()});
+ const modalFocusable=()=>[...document.querySelectorAll('#modal a[href],#modal button:not([disabled]),#modal input:not([disabled]),#modal textarea:not([disabled]),#modal select:not([disabled]),#modal [tabindex]:not([tabindex="-1"])')].filter(x=>x.offsetParent!==null);
+ document.addEventListener('keydown',e=>{
+   const overlay=document.getElementById('modalOverlay');if(!overlay?.classList.contains('on'))return;
+   if(e.key==='Escape'){e.preventDefault();closeModal();return}
+   if(e.key!=='Tab')return;
+   const items=modalFocusable();if(!items.length){e.preventDefault();document.getElementById('modal')?.focus();return}
+   const first=items[0],last=items[items.length-1],active=document.activeElement;
+   if(e.shiftKey&&(active===first||!document.getElementById('modal')?.contains(active))){e.preventDefault();last.focus()}
+   else if(!e.shiftKey&&active===last){e.preventDefault();first.focus()}
+ });
  function connectionState(online,initial=false){const b=document.getElementById('connectionBanner');if(!b)return;if(online){if(initial)return;b.textContent='رجع الاتصال بالإنترنت';b.className='connectionBanner online';setTimeout(()=>b.classList.add('hidden'),1800)}else{b.textContent='أنت غير متصل الآن — بعض الإجراءات بتتوقف إلى أن يرجع الإنترنت';b.className='connectionBanner'}}
  window.addEventListener('offline',()=>connectionState(false));window.addEventListener('online',()=>connectionState(true));connectionState(navigator.onLine,true);
  function setPageBusy(on,label='نجهز الصفحة…'){const l=document.getElementById('pageLoading'),p=document.getElementById(currentPage);if(!l)return;if(on){pageLoadSeq++;document.getElementById('pageLoadingText').textContent=label;l.classList.remove('hidden');l.setAttribute('aria-hidden','false');p?.classList.add('rcLoading')}else{l.classList.add('hidden');l.setAttribute('aria-hidden','true');document.querySelectorAll('.page').forEach(x=>x.classList.remove('rcLoading'))}}
