@@ -71,6 +71,7 @@ jobs:
           assert "def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):" in server
+          assert "def upsert_task_invitation_atomic(task_id,client_id,freelancer_id,note=None):" in server
           assert "def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):" in server
           assert "def close_task_atomic(task_id,client_id):" in server
           assert "def withdraw_proposal_atomic(task_id,freelancer_id):" in server
@@ -90,6 +91,7 @@ jobs:
           assert "idempotency_key_reused" in server
           assert "task_idempotency_keys" in server
           assert "__taskCreateIdempotencyKey" in ui
+          assert "الدعوة مرسلة مسبقًا" in ui
           assert "def create_message_atomic(" in server
           assert "def message_request_fingerprint(" in server
           assert "message_idempotency_keys" in server
