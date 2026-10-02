@@ -68,7 +68,7 @@ jobs:
           assert "def insert_attachments_tx(cur,uploaded_by,cleaned_attachments" in server
           assert "def deliver_order_atomic(oid,user_id,note,attachments=None,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fingerprint=None):" in server
-          assert "def complete_order_atomic(oid,user_id):" in server
+          assert "def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerprint=None):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
           assert "def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):" in server
