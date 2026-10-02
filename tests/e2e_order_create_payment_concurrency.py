@@ -52,6 +52,77 @@ def run():
     f2=login(phones[2],"freelancer","Order Race Freelancer B")
     ct,t1,t2=client["token"],f1["token"],f2["token"]
 
+    # A client can close an open task; sent proposals are rejected and no new proposal can appear afterward.
+    close_task=call("POST","/api/v1/tasks",{
+        "category_id":cats[0]["id"],"title":"اختبار إغلاق مهمة مفتوحة",
+        "description":"اختبار آلي لإغلاق المهمة قبل اختيار مستقل ومنع عروض جديدة بعدها.",
+        "budget_min":"90","budget_max":"170","urgency":"normal"
+    },ct)
+    close_prop=call("POST",f"/api/v1/tasks/{close_task['id']}/proposals",{
+        "price":"115.00","delivery_hours":20,"revisions":1,"message":"عرض قبل الإغلاق"
+    },t1)
+    closed=call("POST",f"/api/v1/tasks/{close_task['id']}/close",{},ct,expected=(200,))
+    assert closed.get("status")=="cancelled",closed
+    own_tasks=call("GET","/api/v1/tasks",token=ct,expected=(200,)).get("items") or []
+    closed_row=next(x for x in own_tasks if int(x["id"])==int(close_task["id"]))
+    assert closed_row["status"]=="cancelled",closed_row
+    closed_props=call("GET",f"/api/v1/tasks/{close_task['id']}/proposals",token=ct,expected=(200,)).get("items") or []
+    assert any(int(x["id"])==int(close_prop["id"]) and x["status"]=="rejected" for x in closed_props),closed_props
+    late_prop=raw_call("POST",f"/api/v1/tasks/{close_task['id']}/proposals",{
+        "price":"119.00","delivery_hours":18,"revisions":1,"message":"عرض متأخر"
+    },t2)
+    assert late_prop[0]==404 and late_prop[1].get("error")=="task_not_found",late_prop
+
+    # Closing and creating a proposal at the same moment cannot leave a sent proposal on a cancelled task.
+    close_write_task=call("POST","/api/v1/tasks",{
+        "category_id":cats[0]["id"],"title":"اختبار سباق الإغلاق والعرض",
+        "description":"اختبار آلي لتزامن إغلاق المهمة مع إرسال عرض جديد.",
+        "budget_min":"100","budget_max":"190","urgency":"normal"
+    },ct)
+    close_write_barrier=Barrier(2)
+    def close_write():
+        close_write_barrier.wait()
+        return raw_call("POST",f"/api/v1/tasks/{close_write_task['id']}/close",{},ct)
+    def create_during_close():
+        close_write_barrier.wait()
+        return raw_call("POST",f"/api/v1/tasks/{close_write_task['id']}/proposals",{
+            "price":"121.00","delivery_hours":19,"revisions":1,"message":"عرض متزامن مع الإغلاق"
+        },t1)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fc=ex.submit(close_write);fp=ex.submit(create_during_close)
+        close_write_result,proposal_write_result=fc.result(),fp.result()
+    assert close_write_result[0]==200,close_write_result
+    assert proposal_write_result[0] in (201,404),proposal_write_result
+    if proposal_write_result[0]==404:
+        assert proposal_write_result[1].get("error")=="task_not_found",proposal_write_result
+    final_close_props=call("GET",f"/api/v1/tasks/{close_write_task['id']}/proposals",token=ct,expected=(200,)).get("items") or []
+    assert all(x.get("status")!="sent" for x in final_close_props),final_close_props
+
+    # Closing and accepting the same task at once has one winner: either a closed task or a created order.
+    close_accept_task=call("POST","/api/v1/tasks",{
+        "category_id":cats[0]["id"],"title":"اختبار سباق الإغلاق والاختيار",
+        "description":"اختبار آلي لتزامن إغلاق المهمة مع اختيار عرض مستقل.",
+        "budget_min":"100","budget_max":"200","urgency":"normal"
+    },ct)
+    close_accept_prop=call("POST",f"/api/v1/tasks/{close_accept_task['id']}/proposals",{
+        "price":"130.00","delivery_hours":22,"revisions":2,"message":"عرض سباق الإغلاق"
+    },t2)
+    close_accept_barrier=Barrier(2)
+    def close_accept_close():
+        close_accept_barrier.wait()
+        return raw_call("POST",f"/api/v1/tasks/{close_accept_task['id']}/close",{},ct)
+    def close_accept_order():
+        close_accept_barrier.wait()
+        return raw_call("POST","/api/v1/orders",{"proposal_id":close_accept_prop["id"]},ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fc=ex.submit(close_accept_close);fa=ex.submit(close_accept_order)
+        close_accept_result,accept_close_result=fc.result(),fa.result()
+    assert (close_accept_result[0],accept_close_result[0]) in ((200,409),(409,201)),(close_accept_result,accept_close_result)
+    if close_accept_result[0]==409:
+        assert close_accept_result[1].get("error")=="task_has_order",close_accept_result
+    if accept_close_result[0]==409:
+        assert accept_close_result[1].get("error")=="proposal_not_available",accept_close_result
+
     # A freelancer can withdraw an open proposal, and withdrawal is serialized with client acceptance.
     withdraw_task=call("POST","/api/v1/tasks",{
         "category_id":cats[0]["id"],"title":"اختبار سحب العرض",
@@ -194,6 +265,9 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),
+        "task_close_supported":True,
+        "task_close_proposal_write_race_safe":True,
+        "task_close_accept_race_safe":True,
         "proposal_withdrawal_supported":True,
         "proposal_withdraw_accept_race_safe":True,
         "single_order_under_concurrency":True,

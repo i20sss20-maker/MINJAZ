@@ -357,6 +357,65 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(int(task_id),))
+            task=cur.fetchone()
+            if not task or task.get('status')!='open':
+                c.rollback();return None,None,'task_not_found'
+            if int(task['client_id'])==int(freelancer_id):
+                c.rollback();return None,dict(task),'own_task_forbidden'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(int(task_id),))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(freelancer_id,task['client_id'],task['client_id'],freelancer_id,freelancer_id,task['client_id']))
+            if hidden or cur.fetchone():
+                c.rollback();return None,dict(task),'interaction_restricted'
+            cur.execute("""insert into proposals(task_id,freelancer_id,price,delivery_hours,revisions,message)
+                           values(%s,%s,%s,%s,%s,%s)
+                           on conflict(task_id,freelancer_id) do update
+                           set price=excluded.price,delivery_hours=excluded.delivery_hours,revisions=excluded.revisions,message=excluded.message,status='sent'
+                           returning *""",(int(task_id),int(freelancer_id),price,int(delivery_hours),int(revisions),message or None))
+            proposal=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in proposal.items()},dict(task),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def close_task_atomic(task_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(int(task_id),))
+            task=cur.fetchone()
+            if not task:
+                c.rollback();return None,[],'task_not_found'
+            if int(task['client_id'])!=int(client_id):
+                c.rollback();return dict(task),[],'client_only'
+            if task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s limit 1',(int(task_id),))
+                has_order=cur.fetchone()
+                c.rollback();return dict(task),[],'task_has_order' if has_order else 'task_not_open'
+            cur.execute("select freelancer_id,status from proposals where task_id=%s for update",(int(task_id),))
+            proposals=cur.fetchall()
+            freelancer_ids=sorted({int(x['freelancer_id']) for x in proposals if x.get('status')=='sent'})
+            cur.execute("update proposals set status='rejected' where task_id=%s and status='sent'",(int(task_id),))
+            cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(int(task_id),))
+        c.commit()
+        return dict(task),freelancer_ids,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def withdraw_proposal_atomic(task_id,freelancer_id):
     c=db_connect()
     try:
@@ -1884,6 +1943,18 @@ class H(BaseHTTPRequestHandler):
                 t=q('select * from tasks where id=%s and client_id=%s',(int(m.group(1)),u['id']),'one')
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 r=q("insert into tasks(client_id,category_id,service_id,title,description,budget_min,budget_max,urgency,status) values(%s,%s,%s,%s,%s,%s,%s,%s,'open') returning *",(u['id'],t.get('category_id'),t.get('service_id'),t['title'],t['description'],t.get('budget_min'),t.get('budget_max'),t.get('urgency') or 'normal'),'one');return self.sendj(201,r)
+            m=re.fullmatch(r'/api/v1/tasks/(\d+)/close',p)
+            if m and method=='POST':
+                u=self.require('client');
+                if not u:return
+                task,freelancer_ids,err=close_task_atomic(int(m.group(1)),u['id'])
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='client_only':return self.sendj(403,{'error':err})
+                if err in ('task_has_order','task_not_open'):return self.sendj(409,{'error':err,'state':task.get('status') if task else None})
+                if err:return self.sendj(409,{'error':err})
+                for fid in freelancer_ids:
+                    notify(fid,'تم إغلاق المهمة','أغلق العميل المهمة قبل اختيار مستقل','task',None,int(m.group(1)))
+                return self.sendj(200,{'ok':True,'status':'cancelled','task_id':int(m.group(1)),'notified_freelancers':len(freelancer_ids)})
             m=re.fullmatch(r'/api/v1/tasks/(\d+)/proposals',p)
             if m and method=='POST':
                 u=self.require('freelancer');
@@ -1900,11 +1971,13 @@ class H(BaseHTTPRequestHandler):
                 if revisions<0 or revisions>50:return self.sendj(400,{'error':'invalid_revisions','minimum':0,'maximum':50})
                 message=str(b.get('message') or '').strip()
                 if len(message)>1200:return self.sendj(400,{'error':'proposal_message_too_long','maximum':1200})
-                t=q("select id,client_id from tasks where id=%s and status='open'",(int(m.group(1)),),'one')
-                if not t:return self.sendj(404,{'error':'task_not_found'})
-                if int(t['client_id'])==int(u['id']):return self.sendj(403,{'error':'own_task_forbidden'})
-                if task_hidden(int(m.group(1))) or interaction_restricted(u['id'],t['client_id']):return self.sendj(403,{'error':'interaction_restricted'})
-                r=q("insert into proposals(task_id,freelancer_id,price,delivery_hours,revisions,message) values(%s,%s,%s,%s,%s,%s) on conflict(task_id,freelancer_id) do update set price=excluded.price,delivery_hours=excluded.delivery_hours,revisions=excluded.revisions,message=excluded.message returning *",(int(m.group(1)),u['id'],price,delivery_hours,revisions,message or None),'one');notify(t['client_id'],'عرض جديد على مهمتك',f"السعر {price:.2f} ر.س · التسليم خلال {delivery_hours} ساعة",'proposal',None,int(m.group(1)));return self.sendj(201,r)
+                r,t,err=upsert_proposal_atomic(int(m.group(1)),u['id'],price,delivery_hours,revisions,message)
+                if err=='task_not_found':return self.sendj(404,{'error':err})
+                if err=='own_task_forbidden':return self.sendj(403,{'error':err})
+                if err=='interaction_restricted':return self.sendj(403,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                notify(t['client_id'],'عرض جديد على مهمتك',f"السعر {price:.2f} ر.س · التسليم خلال {delivery_hours} ساعة",'proposal',None,int(m.group(1)))
+                return self.sendj(201,r)
             if m and method=='DELETE':
                 u=self.require('freelancer');
                 if not u:return

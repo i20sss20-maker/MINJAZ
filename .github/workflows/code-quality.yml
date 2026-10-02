@@ -71,14 +71,27 @@ jobs:
           assert "def complete_order_atomic(oid,user_id):" in server
           assert "def open_dispute_atomic(oid,user_id,reason,details=None):" in server
           assert "def open_cancellation_atomic(oid,user_id,reason,details=None):" in server
+          assert "def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):" in server
+          assert "def close_task_atomic(task_id,client_id):" in server
           assert "def withdraw_proposal_atomic(task_id,freelancer_id):" in server
           assert "def create_order_atomic(proposal_id,client_id):" in server
           assert "def pay_mock_atomic(oid,user_id):" in server
           assert "def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):" in server
           review_start=server.index("def upsert_review_atomic")
+          proposal_upsert_start=server.index("def upsert_proposal_atomic")
+          close_task_start=server.index("def close_task_atomic")
           withdraw_start=server.index("def withdraw_proposal_atomic")
           create_start=server.index("def create_order_atomic")
+          proposal_upsert_block=server[proposal_upsert_start:close_task_start]
+          close_task_block=server[close_task_start:withdraw_start]
           withdraw_block=server[withdraw_start:create_start]
+          assert "select id,client_id,status from tasks where id=%s for update" in proposal_upsert_block
+          assert "on conflict(task_id,freelancer_id) do update" in proposal_upsert_block
+          assert "status='sent'" in proposal_upsert_block
+          assert "select id,client_id,status from tasks where id=%s for update" in close_task_block
+          assert "select freelancer_id,status from proposals where task_id=%s for update" in close_task_block
+          assert "update proposals set status='rejected'" in close_task_block
+          assert "update tasks set status='cancelled',updated_at=now()" in close_task_block
           assert "select id,status from tasks where id=%s for update" in withdraw_block
           assert "select id,task_id,freelancer_id,status from proposals where task_id=%s and freelancer_id=%s for update" in withdraw_block
           assert withdraw_block.index("select id,status from tasks where id=%s for update") < withdraw_block.index("select id,task_id,freelancer_id,status from proposals where task_id=%s and freelancer_id=%s for update")
@@ -143,6 +156,8 @@ jobs:
           assert "'release_commit':RELEASE_COMMIT_SHORT or None" in server
           assert "'deployment_service':DEPLOYMENT_SERVICE or None" in server
           assert "'deployment_environment':DEPLOYMENT_ENVIRONMENT or None" in server
+          assert "closeTaskByClient" in ui
+          assert "/api/v1/tasks/'+id+'/close" in ui
           assert "credentials:'same-origin'" in ui
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
