@@ -283,9 +283,64 @@ def run():
     message_conflict=raw_call("POST",f"/api/v1/orders/{order['id']}/messages",changed_message,ct)
     assert message_conflict[0]==409 and message_conflict[1].get("error")=="idempotency_key_reused",message_conflict
 
-    # Complete the same order and verify concurrent identical reviews are idempotent.
-    call("POST",f"/api/v1/orders/{order['id']}/deliver",{"note":"تسليم لاختبار ثبات التقييم."},winner_token)
+    # Concurrent delivery retries create one delivery, one attachment and one notification.
+    delivery_key=f"deliver-race-{base}"
+    delivery_payload={
+        "note":"تسليم ثابت لاختبار منع التكرار",
+        "idempotency_key":delivery_key,
+        "attachments":[{"name":"مرفق تسليم.pdf","url":"https://example.com/minjaz-delivery.pdf","mime_type":"application/pdf","size_bytes":3456}],
+    }
+    delivery_barrier=Barrier(2)
+    def deliver_same(_):
+        delivery_barrier.wait()
+        return raw_call("POST",f"/api/v1/orders/{order['id']}/deliver",delivery_payload,winner_token)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        delivery_results=list(ex.map(deliver_same,(1,2)))
+    assert sorted(x[0] for x in delivery_results)==[200,201],delivery_results
+    delivery_ids={int(x[1]["delivery"]["id"]) for x in delivery_results}
+    assert len(delivery_ids)==1,delivery_results
+    assert sum(1 for _,x in delivery_results if x.get("idempotent_replay"))==1,delivery_results
+    deliveries=call("GET",f"/api/v1/orders/{order['id']}/deliveries",token=ct,expected=(200,)).get("items") or []
+    stable_deliveries=[x for x in deliveries if x.get("note")=="تسليم ثابت لاختبار منع التكرار"]
+    assert len(stable_deliveries)==1 and len(stable_deliveries[0].get("attachments") or [])==1,stable_deliveries
+    delivery_notes=call("GET","/api/v1/notifications?kind=delivery&limit=50",token=ct,expected=(200,)).get("items") or []
+    delivery_notes=[x for x in delivery_notes if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(delivery_notes)==1,delivery_notes
+    changed_delivery=dict(delivery_payload);changed_delivery["note"]="تسليم مختلف بنفس المفتاح"
+    delivery_conflict=raw_call("POST",f"/api/v1/orders/{order['id']}/deliver",changed_delivery,winner_token)
+    assert delivery_conflict[0]==409 and delivery_conflict[1].get("error")=="idempotency_key_reused",delivery_conflict
+
+    # Concurrent revision retries create one revision, one implicit chat entry and one notification.
+    revision_key=f"revision-race-{base}"
+    revision_payload={"note":"تعديل ثابت لاختبار منع التكرار","idempotency_key":revision_key}
+    revision_barrier=Barrier(2)
+    def revise_same(_):
+        revision_barrier.wait()
+        return raw_call("POST",f"/api/v1/orders/{order['id']}/revision",revision_payload,ct)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        revision_results=list(ex.map(revise_same,(1,2)))
+    assert [x[0] for x in revision_results]==[200,200],revision_results
+    revision_ids={int(x[1]["revision"]["id"]) for x in revision_results}
+    assert len(revision_ids)==1,revision_results
+    assert sum(1 for _,x in revision_results if x.get("idempotent_replay"))==1,revision_results
+    revisions=call("GET",f"/api/v1/orders/{order['id']}/revisions",token=ct,expected=(200,)).get("items") or []
+    stable_revisions=[x for x in revisions if x.get("note")=="تعديل ثابت لاختبار منع التكرار"]
+    assert len(stable_revisions)==1,stable_revisions
+    revision_chat=call("GET",f"/api/v1/orders/{order['id']}/messages",token=ct,expected=(200,)).get("items") or []
+    implicit=[x for x in revision_chat if "تعديل ثابت لاختبار منع التكرار" in str(x.get("body") or "")]
+    assert len(implicit)==1,implicit
+    revision_notes=call("GET","/api/v1/notifications?kind=revision&limit=50",token=winner_token,expected=(200,)).get("items") or []
+    revision_notes=[x for x in revision_notes if int(x.get("order_id") or 0)==int(order["id"])]
+    assert len(revision_notes)==1,revision_notes
+    changed_revision=dict(revision_payload);changed_revision["note"]="تعديل مختلف بنفس المفتاح"
+    revision_conflict=raw_call("POST",f"/api/v1/orders/{order['id']}/revision",changed_revision,ct)
+    assert revision_conflict[0]==409 and revision_conflict[1].get("error")=="idempotency_key_reused",revision_conflict
+
+    # Re-deliver after the revision so completion and review can continue.
+    call("POST",f"/api/v1/orders/{order['id']}/deliver",{"note":"تسليم بعد تنفيذ التعديل."},winner_token)
     call("POST",f"/api/v1/orders/{order['id']}/complete",{},ct)
+
+    # Complete the same order and verify concurrent identical reviews are idempotent.
     review_payload={"quality":5,"timeliness":4,"communication":5,"comment":"تقييم ثابت لاختبار التزامن"}
     review_barrier=Barrier(2)
     def review(_):
@@ -340,6 +395,10 @@ def run():
         "single_payment_notification":True,
         "message_send_idempotent":True,
         "single_message_notification":True,
+        "delivery_retry_idempotent":True,
+        "single_delivery_notification":True,
+        "revision_retry_idempotent":True,
+        "single_revision_notification":True,
         "concurrent_identical_review_idempotent":True,
         "single_initial_review_notification":True,
         "unchanged_review_no_side_effect":True,
