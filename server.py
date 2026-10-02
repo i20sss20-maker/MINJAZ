@@ -524,6 +524,43 @@ def create_message_atomic(order_id,sender_id,body,cleaned_attachments,idempotenc
     finally:
         c.close()
 
+def upsert_task_invitation_atomic(task_id,client_id,freelancer_id,note=None):
+    normalized_note=str(note or '').strip()[:500] or None
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""insert into task_invitations(task_id,client_id,freelancer_id,note)
+                           values(%s,%s,%s,%s)
+                           on conflict(task_id,freelancer_id) do nothing
+                           returning *""",(int(task_id),int(client_id),int(freelancer_id),normalized_note))
+            created=cur.fetchone()
+            if created:
+                c.commit()
+                return {k:as_json(v) for k,v in dict(created).items()},'created',None
+            cur.execute("""select * from task_invitations
+                           where task_id=%s and freelancer_id=%s for update""",
+                        (int(task_id),int(freelancer_id)))
+            existing=cur.fetchone()
+            if not existing:
+                c.rollback();return None,None,'invitation_conflict'
+            if int(existing['client_id'])!=int(client_id):
+                c.rollback();return None,None,'client_mismatch'
+            if (existing.get('note') or None)==normalized_note and existing.get('status') in ('sent','viewed'):
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(existing).items()},'unchanged',None
+            cur.execute("""update task_invitations
+                           set note=%s,status='sent',updated_at=now()
+                           where id=%s returning *""",
+                        (normalized_note,existing['id']))
+            updated=cur.fetchone()
+        c.commit()
+        return {k:as_json(v) for k,v in dict(updated).items()},'updated',None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
     c=db_connect()
     try:
