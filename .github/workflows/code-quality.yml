@@ -36,9 +36,13 @@ jobs:
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
           ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
-          cat server.parts/part*.txt > /tmp/minjaz-server-from-parts.py
-          cmp -s server.py /tmp/minjaz-server-from-parts.py
-          echo "SERVER_PARTS_EXACT_MATCH_OK"
+          python3 - <<'PY'
+          from pathlib import Path
+          server = Path("server.py").read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n")
+          parts = "".join(p.read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n") for p in sorted(Path("server.parts").glob("part*.txt")))
+          assert server == parts, "server_parts_content_mismatch"
+          print("SERVER_PARTS_CONTENT_MATCH_OK")
+          PY
 
       - name: Verify auth and demo safety invariants
         run: |
