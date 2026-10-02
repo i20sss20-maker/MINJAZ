@@ -4,6 +4,8 @@ import random
 import time
 import urllib.error
 import urllib.request
+import hashlib
+import psycopg2
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -109,6 +111,42 @@ def run():
     same_role = call("PATCH", "/api/v1/me/active-role", {"role": "client"}, client_token, expected=(200,))
     assert same_role.get("idempotent_replay") is True, same_role
     assert activity_count(client_token, "role_switched") == role_before
+
+    def seed_session(user_id, tag):
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    raw = f"{suffix}-{tag}-{random.random()}".encode("utf-8")
+                    token_hash = hashlib.sha256(raw).hexdigest()
+                    cur.execute(
+                        "insert into sessions(user_id,token_hash,expires_at,device_label,last_seen_at) values(%s,%s,now()+interval '1 day',%s,now()) returning id",
+                        (user_id, token_hash, f"E2E {tag}"),
+                    )
+                    return int(cur.fetchone()[0])
+        finally:
+            conn.close()
+
+    # Revoking an already revoked session is a successful replay, not a false 404.
+    target_id = seed_session(client_me["user"]["id"], "extra-device")
+    revoked_before = activity_count(client_token, "session_revoked")
+    first_revoke = call("DELETE", f"/api/v1/account/sessions/{target_id}", token=client_token, expected=(200,))
+    retry_revoke = call("DELETE", f"/api/v1/account/sessions/{target_id}", token=client_token, expected=(200,))
+    assert first_revoke.get("idempotent_replay") is False, first_revoke
+    assert retry_revoke.get("idempotent_replay") is True, retry_revoke
+    assert activity_count(client_token, "session_revoked") == revoked_before + 1
+
+    # Revoke-others records activity only when at least one active session actually changed.
+    seed_session(client_me["user"]["id"], "other-device-a")
+    seed_session(client_me["user"]["id"], "other-device-b")
+    others_before = activity_count(client_token, "sessions_revoked")
+    revoke_others = call("POST", "/api/v1/account/sessions/revoke-others", {}, client_token, expected=(200,))
+    revoke_others_retry = call("POST", "/api/v1/account/sessions/revoke-others", {}, client_token, expected=(200,))
+    assert int(revoke_others.get("revoked_count") or 0) >= 2, revoke_others
+    assert revoke_others.get("idempotent_replay") is False, revoke_others
+    assert int(revoke_others_retry.get("revoked_count") or 0) == 0, revoke_others_retry
+    assert revoke_others_retry.get("idempotent_replay") is True, revoke_others_retry
+    assert activity_count(client_token, "sessions_revoked") == others_before + 1
 
     # Onboarding must work for both roles against the real schema.
     client_onboarding = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
@@ -426,6 +464,7 @@ def run():
         "ready_for_beta": True,
         "auth": True,
         "account_updates_retry_safe": True,
+        "session_revocation_retry_safe": True,
         "onboarding_client": True,
         "onboarding_freelancer": True,
         "legal_acceptance": True,
