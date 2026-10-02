@@ -424,6 +424,60 @@ def create_task_atomic(client_id,category_id,service_id,title,description,budget
     finally:
         c.close()
 
+def message_request_fingerprint(order_id,body,attachments):
+    refs=[]
+    if isinstance(attachments,list):
+        for x in attachments[:5]:
+            if not isinstance(x,dict):continue
+            try:size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+            except Exception:size=0
+            refs.append({
+                'name':str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف',
+                'storage_key':str(x.get('storage_key') or '').strip().lstrip('/') or None,
+                'url':str(x.get('url') or x.get('file_url') or '').strip() or None,
+                'mime_type':str(x.get('mime_type') or '').strip()[:120] or None,
+                'size_bytes':size,
+            })
+    payload={'order_id':int(order_id),'body':str(body or ''),'attachments':refs}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def create_message_atomic(order_id,sender_id,body,cleaned_attachments,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                cur.execute("""insert into message_idempotency_keys(sender_id,idempotency_key,request_fingerprint)
+                               values(%s,%s,%s) on conflict(sender_id,idempotency_key) do nothing
+                               returning sender_id""",(int(sender_id),idempotency_key,idempotency_fingerprint))
+                claimed=cur.fetchone()
+                if not claimed:
+                    cur.execute('select request_fingerprint,message_id from message_idempotency_keys where sender_id=%s and idempotency_key=%s',(int(sender_id),idempotency_key))
+                    record=cur.fetchone()
+                    if not record:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    if str(record.get('request_fingerprint') or '')!=str(idempotency_fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    if not record.get('message_id'):
+                        c.rollback();return None,False,'idempotency_conflict'
+                    cur.execute('select * from messages where id=%s and sender_id=%s',(record['message_id'],int(sender_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('insert into messages(order_id,sender_id,body) values(%s,%s,%s) returning *',(int(order_id),int(sender_id),body or 'مرفق'))
+            msg=dict(cur.fetchone())
+            insert_attachments_tx(cur,int(sender_id),cleaned_attachments,order_id=int(order_id),message_id=msg['id'])
+            if idempotency_key:
+                cur.execute('update message_idempotency_keys set message_id=%s where sender_id=%s and idempotency_key=%s',(msg['id'],int(sender_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in msg.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
     c=db_connect()
     try:
@@ -2276,12 +2330,32 @@ class H(BaseHTTPRequestHandler):
                     for msg in msgs: msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
                     return self.sendj(200,{'items':msgs})
                 if method=='POST':
-                    if q("select count(*)::int n from messages where sender_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=180:return self.sendj(429,{'error':'message_rate_limited','retry_after_seconds':3600})
-                    b=self.body(); txt=str(b.get('body') or '').strip(); atts=clean_attachments(b.get('attachments'),uploaded_by=u['id'])
-                    if not txt and not atts:return self.sendj(400,{'error':'message_required'})
+                    b=self.body(); txt=str(b.get('body') or '').strip()
                     if len(txt)>4000:return self.sendj(400,{'error':'message_too_long','maximum':4000})
-                    msg=q('insert into messages(order_id,sender_id,body) values(%s,%s,%s) returning *',(oid,u['id'],txt or 'مرفق'),'one')
-                    insert_attachments(u['id'],atts,order_id=oid,message_id=msg['id']); msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],))); rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid); return self.sendj(201,msg)
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=message_request_fingerprint(oid,txt,b.get('attachments')) if idempotency_key else None
+                    if idempotency_key:
+                        idem=q('select request_fingerprint,message_id from message_idempotency_keys where sender_id=%s and idempotency_key=%s',(u['id'],idempotency_key),'one')
+                        if idem:
+                            if str(idem.get('request_fingerprint') or '')!=fingerprint:return self.sendj(409,{'error':'idempotency_key_reused'})
+                            existing=q('select * from messages where id=%s and sender_id=%s',(idem.get('message_id'),u['id']),'one') if idem.get('message_id') else None
+                            if existing:
+                                existing['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(existing['id'],)))
+                                existing['idempotent_replay']=True
+                                return self.sendj(200,existing)
+                    atts=clean_attachments(b.get('attachments'),uploaded_by=u['id'])
+                    if not txt and not atts:return self.sendj(400,{'error':'message_required'})
+                    if q("select count(*)::int n from messages where sender_id=%s and created_at>now()-interval '1 hour'",(u['id'],),'one')['n']>=180:return self.sendj(429,{'error':'message_rate_limited','retry_after_seconds':3600})
+                    msg,replayed,err=create_message_atomic(oid,u['id'],txt,atts,idempotency_key or None,fingerprint)
+                    if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
+                    if err:return self.sendj(409,{'error':err})
+                    msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
+                    msg['idempotent_replay']=bool(replayed)
+                    if not replayed:
+                        rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
+                    return self.sendj(200 if replayed else 201,msg)
+
             if p=='/api/v1/notifications' and method=='GET':
                 u=self.require();
                 if not u:return
