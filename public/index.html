@@ -1217,6 +1217,86 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .pwaActionButtons .btn:first-child{width:100%}
 }
 
+
+/* MINJAZ runtime UX v12 */
+.pageErrorState{
+  min-height:310px;
+  display:grid;
+  place-items:center;
+  padding:24px;
+}
+.pageErrorCard{
+  width:min(560px,100%);
+  text-align:center;
+  padding:28px 22px;
+  border:1px solid #e2e4ee;
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 90% 0,rgba(101,88,245,.07),transparent 14rem),
+    linear-gradient(180deg,#fff,#fbfbfe);
+  box-shadow:0 18px 50px rgba(17,21,42,.075);
+}
+.pageErrorIcon{
+  width:54px;height:54px;
+  margin:0 auto 13px;
+  display:grid;place-items:center;
+  border-radius:18px;
+  color:#5b4ee8;
+  background:linear-gradient(145deg,#f1efff,#e9f9f6);
+}
+.pageErrorIcon svg{
+  width:26px;height:26px;
+  fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.pageErrorCard h2{
+  margin:0;
+  font:700 15px Alexandria;
+  color:#292c40;
+}
+.pageErrorCard p{
+  margin:7px auto 16px;
+  max-width:430px;
+  color:#73788d;
+  font-size:9px;
+  line-height:1.9;
+}
+.pageErrorActions{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.content[aria-busy="true"]{
+  cursor:progress;
+}
+.notifBtn{
+  color:#4e5267;
+  transition:.16s ease;
+}
+.notifBtn:hover{
+  color:#594dea;
+  border-color:#d9d5ff;
+  background:#faf9ff;
+  transform:translateY(-1px);
+}
+.notifBtn>svg{
+  width:19px;height:19px;
+  fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.notifBtn.hasUnread{
+  color:#594dea;
+  border-color:#d9d5ff;
+  background:#f8f7ff;
+}
+@media(max-width:600px){
+  .pageErrorState{min-height:250px;padding:14px}
+  .pageErrorCard{padding:22px 16px;border-radius:20px}
+  .pageErrorActions{display:grid;grid-template-columns:1fr}
+  .pageErrorActions .btn{width:100%}
+}
+
 </style>
 </head>
 <body>
@@ -2798,6 +2878,113 @@ body{font-size:14px;line-height:1.65}
       syncAriaRoute(currentPage);
     },250);
   });
+})();
+</script>
+
+
+<script id="minjazRuntimeV12">
+(function(){
+  const errorIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3.5 19h17z"/><path d="M12 9v4"/><path d="M12 16h.01"/></svg>';
+  const bellIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>';
+  let lastRuntimeToast=0;
+
+  function syncNavStateV12(id){
+    document.querySelectorAll('[data-nav]').forEach(el=>{
+      const on=el.dataset.nav===id;
+      el.classList.toggle('on',on);
+      if(on)el.setAttribute('aria-current','page');
+      else el.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.page').forEach(page=>{
+      const on=page.id===id;
+      page.classList.toggle('on',on);
+      page.setAttribute('aria-hidden',on?'false':'true');
+    });
+  }
+
+  function renderPageErrorV12(id){
+    const page=document.getElementById(id);
+    if(!page)return;
+    currentPage=id;
+    syncNavStateV12(id);
+    page.innerHTML='<div class="pageErrorState"><div class="pageErrorCard"><div class="pageErrorIcon">'+errorIcon+'</div><h2>تعذر تحميل الصفحة</h2><p>ما فقدنا بياناتك. جرّب إعادة تحميل الصفحة، وإذا كان الاتصال ضعيف تأكد من الإنترنت ثم حاول مرة ثانية.</p><div class="pageErrorActions"><button class="btn primary" onclick="retryPageV12()">إعادة المحاولة</button><button class="btn ghost" onclick="go(\'home\')">الرجوع للرئيسية</button></div></div></div>';
+  }
+
+  window.retryPageV12=function(){
+    return window.go(currentPage||'home');
+  };
+
+  const baseGoV12=window.go;
+  if(typeof baseGoV12==='function'){
+    window.go=async function(id){
+      const content=document.querySelector('.content');
+      if(content)content.setAttribute('aria-busy','true');
+      try{
+        const result=await baseGoV12(id);
+        const title=document.getElementById('pageTitle')?.textContent?.trim();
+        if(title)document.title=title+' | مِنجاز';
+        return result;
+      }catch(err){
+        console.error('MINJAZ page render failed',err);
+        renderPageErrorV12(id);
+        const now=Date.now();
+        if(now-lastRuntimeToast>4000){
+          lastRuntimeToast=now;
+          toast('تعذر تحميل الصفحة — تقدر تعيد المحاولة');
+        }
+        return false;
+      }finally{
+        if(content)content.removeAttribute('aria-busy');
+      }
+    };
+  }
+
+  function upgradeNotifButtonV12(){
+    const b=document.getElementById('notifBtn');
+    if(!b)return;
+    const count=Number(b.querySelector('.notifCount')?.textContent||0);
+    b.classList.toggle('hasUnread',count>0);
+    b.setAttribute('aria-label',count>0?'الإشعارات — '+count+' غير مقروء':'الإشعارات');
+    b.setAttribute('title','الإشعارات');
+    b.innerHTML=bellIcon+(count?'<span class="notifCount">'+Math.min(count,99)+'</span>':'');
+  }
+
+  const baseRefreshNotifV12=window.refreshNotifBadge;
+  if(typeof baseRefreshNotifV12==='function'){
+    window.refreshNotifBadge=async function(){
+      const result=await baseRefreshNotifV12();
+      upgradeNotifButtonV12();
+      return result;
+    };
+  }
+
+  const baseBootV12=window.boot;
+  if(typeof baseBootV12==='function'){
+    window.boot=async function(){
+      const result=await baseBootV12();
+      setTimeout(upgradeNotifButtonV12,20);
+      return result;
+    };
+  }
+
+  const observer=new MutationObserver(()=>{
+    const b=document.getElementById('notifBtn');
+    if(b && !b.querySelector('svg'))upgradeNotifButtonV12();
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
+
+  window.addEventListener('unhandledrejection',event=>{
+    const message=String(event.reason?.message||event.reason||'');
+    if(message.includes('AbortError')||message.includes('backend_unavailable'))return;
+    console.error('MINJAZ unhandled promise rejection',event.reason);
+    const now=Date.now();
+    if(me?.user && now-lastRuntimeToast>5000){
+      lastRuntimeToast=now;
+      toast('صار خطأ غير متوقع — جرّب الإجراء مرة ثانية');
+    }
+  });
+
+  upgradeNotifButtonV12();
 })();
 </script>
 
