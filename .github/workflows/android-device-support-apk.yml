@@ -8,6 +8,7 @@ on:
       - android-compat-only-v3
       - android-stability-v04
       - android-resilience-v05
+      - android-edge-to-edge-v06
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-device-support-apk.yml'
@@ -49,6 +50,10 @@ jobs:
       - name: Build debug APK
         working-directory: android-preview
         run: gradle --no-daemon clean :app:assembleDebug
+
+      - name: Run Android lint
+        working-directory: android-preview
+        run: gradle --no-daemon :app:lintDebug
 
       - name: Verify manifest and package
         shell: bash
