@@ -1,13 +1,12 @@
 {
-  "name": "مِنجاز — MINJAZ",
-  "short_name": "مِنجاز",
-  "description": "منصة مهام رقمية قصيرة: اكتب مهمتك، استقبل عروضًا خاصة، وتابع التنفيذ من مكان واحد.",
-  "lang": "ar",
-  "dir": "rtl",
+  "name": "MINJAZ — مِنجاز",
+  "short_name": "MINJAZ",
+  "description": "MINJAZ — منصة مهام رقمية قصيرة / Digital task marketplace.",
+  "dir": "auto",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f8fc",
+  "background_color": "#11152a",
   "theme_color": "#11152a",
   "icons": [
     {
@@ -25,8 +24,8 @@
   ],
   "shortcuts": [
     {
-      "name": "مهامي",
-      "short_name": "المهام",
+      "name": "Tasks — المهام",
+      "short_name": "Tasks",
       "url": "/#tasks",
       "icons": [
         {
@@ -37,8 +36,8 @@
       ]
     },
     {
-      "name": "الطلبات",
-      "short_name": "الطلبات",
+      "name": "Orders — الطلبات",
+      "short_name": "Orders",
       "url": "/#orders",
       "icons": [
         {
@@ -49,8 +48,8 @@
       ]
     },
     {
-      "name": "حسابي",
-      "short_name": "الحساب",
+      "name": "Account — الحساب",
+      "short_name": "Account",
       "url": "/#account",
       "icons": [
         {
