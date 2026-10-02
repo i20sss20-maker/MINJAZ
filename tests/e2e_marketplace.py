@@ -79,6 +79,41 @@ def run():
     assert client_me["user"]["role"] == "client"
     assert freelancer_me["user"]["role"] == "freelancer"
 
+    # Onboarding must work for both roles against the real schema.
+    client_onboarding = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
+    freelancer_onboarding = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
+    assert client_onboarding["role"] == "client" and isinstance(client_onboarding.get("steps"), list), client_onboarding
+    assert freelancer_onboarding["role"] == "freelancer" and isinstance(freelancer_onboarding.get("steps"), list), freelancer_onboarding
+    assert any(x.get("key") == "portfolio" for x in freelancer_onboarding["steps"]), freelancer_onboarding
+
+    for tok in (client_token, freelancer_token):
+        accepted = call(
+            "POST",
+            "/api/v1/legal/accept",
+            {"documents": ["terms", "privacy", "marketplace_rules"]},
+            tok,
+            expected=(200,),
+        )
+        assert accepted.get("complete") is True, accepted
+
+    freelancer_profile = call(
+        "PATCH",
+        "/api/v1/freelancer/profile",
+        {
+            "bio": "مستقل اختبار متكامل متخصص في تنفيذ المهام الرقمية باحتراف ووضوح.",
+            "skills": ["تصميم", "PowerPoint", "Canva"],
+            "is_available": True,
+        },
+        freelancer_token,
+        expected=(200,),
+    )
+    assert len(freelancer_profile.get("skills") or []) >= 3, freelancer_profile
+
+    client_ready = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
+    freelancer_ready = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
+    assert client_ready.get("complete") is True, client_ready
+    assert freelancer_ready.get("complete") is True, freelancer_ready
+
     task = call(
         "POST",
         "/api/v1/tasks",
@@ -93,6 +128,10 @@ def run():
         client_token,
     )
     task_id = task["id"]
+
+    client_after_task = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
+    first_task_step = next(x for x in client_after_task["steps"] if x.get("key") == "first_task")
+    assert first_task_step.get("done") is True, client_after_task
 
     opportunities = call("GET", "/api/v1/tasks", token=freelancer_token, expected=(200,)).get("items") or []
     assert any(int(item["id"]) == int(task_id) for item in opportunities), "task_not_visible"
@@ -245,6 +284,10 @@ def run():
         "version": health["version"],
         "ready_for_beta": True,
         "auth": True,
+        "onboarding_client": True,
+        "onboarding_freelancer": True,
+        "legal_acceptance": True,
+        "freelancer_profile_readiness": True,
         "tasks": True,
         "proposals": True,
         "orders": True,
