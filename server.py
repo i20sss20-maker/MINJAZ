@@ -2276,31 +2276,18 @@ class H(BaseHTTPRequestHandler):
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
-                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
-                ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
-                if not ch:return self.sendj(404,{'error':'challenge_not_found'})
-                if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
-                if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
-                if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
-                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
-                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
-                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
-                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
-                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
-                if not u:
-                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
-                else:
-                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
-                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                u=q('select * from users where id=%s',(u['id'],),'one')
-                roles=enabled_roles(u['id'])
-                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
-                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
+                b=self.body();cid=str(b.get('challenge_id',''));code=str(b.get('code',''));role=b.get('role') if b.get('role') in ('client','freelancer') else 'client';name=str(b.get('name') or 'مستخدم').strip()[:120]
+                result,err=verify_otp_once(cid,code,role,name,self.headers.get('User-Agent'),self.client_ip())
+                if err=='challenge_not_found':return self.sendj(404,{'error':err})
+                if err=='already_verified':return self.sendj(409,{'error':err})
+                if err=='otp_expired':return self.sendj(410,{'error':err})
+                if err=='too_many_attempts':return self.sendj(429,{'error':err})
+                if err=='invalid_code':return self.sendj(401,{'error':err})
+                if err:return self.sendj(409,{'error':err})
+                raw=result['raw'];u=result['user'];roles=enabled_roles(u['id'])
                 self.set_session_cookie(raw)
-                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
+                log_account_activity(u['id'],'login','تسجيل دخول ناجح',result.get('session_id'),{'device':friendly_device(str(self.headers.get('User-Agent') or '')[:500])})
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')};user['roles']=roles
                 return self.sendj(200,{'token':raw,'user':user,'roles':roles})
             if method=='POST' and p=='/api/v1/auth/session-cookie':
                 u=self.require();
