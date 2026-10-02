@@ -83,6 +83,9 @@ jobs:
           assert server.count("if legal_block:return self.sendj(428,legal_block)") >= 4
           assert "'legal_acceptance_required'" in server
           assert "def create_task_atomic(" in server
+          assert "def repeat_task_atomic(" in server
+          assert "def repeat_task_fingerprint(" in server
+          assert "__repeatTaskPendingKeys" in ui
           assert "def task_request_fingerprint(" in server
           assert "idempotency_key_reused" in server
           assert "task_idempotency_keys" in server
