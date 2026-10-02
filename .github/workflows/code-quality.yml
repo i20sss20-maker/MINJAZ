@@ -102,6 +102,11 @@ jobs:
           assert "__deliveryPendingPayloads" in ui
           assert "__revisionPendingPayloads" in ui
           assert "__completePendingKeys" in ui
+          safety_admin_start=server.index("m=re.fullmatch(r'/api/admin/safety/reports/(\\d+)',p)")
+          safety_admin_end=server.index("if p=='/api/admin/orders' and method=='GET':",safety_admin_start)
+          safety_admin_block=server[safety_admin_start:safety_admin_end]
+          assert "update_safety_report_admin" in safety_admin_block
+          assert "insert into moderation_actions" not in safety_admin_block
           assert "def create_portfolio_item_atomic(" in server
           assert "__portfolioPendingPayload" in ui
           assert "portfolioModalById" in ui
@@ -154,6 +159,7 @@ jobs:
               block=server[start:end if end!=-1 else len(server)]
               assert "for update of o,t" in block
           assert "def update_manual_kyc_status(uid,status):" in server
+          assert "def update_safety_report_admin(" in server
           assert "def update_payout_status(pid,status,admin_note=None):" in server
           payout_start=server.index("def update_payout_status")
           dispute_helper_start=server.index("def admin_transition_dispute")

@@ -179,20 +179,30 @@ def run():
     },ft)
     slist=call("GET","/api/admin/safety/reports",token=at,expected=(200,)).get("items") or []
     assert any(int(x["id"])==int(safety["id"]) for x in slist)
-    sres=call("PATCH",f"/api/admin/safety/reports/{safety['id']}",{
-        "status":"dismissed","admin_note":"بلاغ اختبار فقط ولا يتطلب إجراء."
-    },at,expected=(200,))
-    assert sres["status"]=="dismissed",sres
+    safety_patch={"status":"dismissed","admin_note":"بلاغ اختبار فقط ولا يتطلب إجراء."}
+    sres=call("PATCH",f"/api/admin/safety/reports/{safety['id']}",safety_patch,at,expected=(200,))
+    assert sres["status"]=="dismissed" and sres.get("idempotent_replay") is False,sres
+    sres_retry=call("PATCH",f"/api/admin/safety/reports/{safety['id']}",safety_patch,at,expected=(200,))
+    assert sres_retry.get("idempotent_replay") is True,sres_retry
+    safety_actions=call("GET","/api/admin/safety/actions",token=at,expected=(200,)).get("items") or []
+    report_actions=[x for x in safety_actions if int(x.get("report_id") or 0)==int(safety["id"]) and x.get("action")=="report_dismissed"]
+    assert len(report_actions)==1,report_actions
+    safety_notes=call("GET","/api/v1/notifications?kind=safety&limit=50",token=ft,expected=(200,)).get("items") or []
+    resolved_notes=[x for x in safety_notes if int(x.get("order_id") or 0)==int(order3["id"]) and x.get("title")=="تم تحديث بلاغ الأمان"]
+    assert len(resolved_notes)==1,resolved_notes
 
     summary=call("GET","/api/admin/summary",token=at,expected=(200,))
     operations=call("GET","/api/admin/operations",token=at,expected=(200,))
     assert "users" in summary and "metrics" in operations and "operational" in operations
+    safety_audit=[x for x in (operations.get("audit") or []) if x.get("action")=="safety_report_updated" and str(x.get("target_id"))==str(safety["id"])]
+    assert len(safety_audit)==1,safety_audit
 
     return {
         "ok":True,"version":health.get("version"),
         "admin_auth":True,"sessions":True,"payout_lifecycle":True,
         "cancellation_refund":True,"dispute_resume":True,
         "support_admin":True,"privacy_admin":True,"safety_admin":True,
+        "safety_admin_retry_safe":True,
         "support_admin_retry_safe":True,"privacy_admin_retry_safe":True,
         "support_create_retry_idempotent":True,"privacy_create_retry_idempotent":True,
         "admin_summary":True,"admin_operations":True,
