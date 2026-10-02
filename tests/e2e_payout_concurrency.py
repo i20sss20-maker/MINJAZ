@@ -52,6 +52,9 @@ def run():
     freelancer=login("+9667"+seed,"freelancer","Payout Race Freelancer")
     admin=login(ADMIN_PHONE,"admin","Payout Race Admin")
     ct,ft,at=client["token"],freelancer["token"],admin["token"]
+    legal={"documents":["terms","privacy","marketplace_rules"]}
+    call("POST","/api/v1/legal/accept",legal,ct,expected=(200,))
+    call("POST","/api/v1/legal/accept",legal,ft,expected=(200,))
     fid=freelancer["user"]["id"]
 
     task=call("POST","/api/v1/tasks",{
