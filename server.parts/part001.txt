@@ -146,6 +146,65 @@ def q(sql,params=(),fetch='all'):
             if fetch=='one': return one(cur)
             return None
 
+def upsert_proposal_atomic(task_id,freelancer_id,price,delivery_hours,revisions,message):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(int(task_id),))
+            task=cur.fetchone()
+            if not task or task.get('status')!='open':
+                c.rollback();return None,None,'task_not_found'
+            if int(task['client_id'])==int(freelancer_id):
+                c.rollback();return None,dict(task),'own_task_forbidden'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(int(task_id),))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(freelancer_id,task['client_id'],task['client_id'],freelancer_id,freelancer_id,task['client_id']))
+            if hidden or cur.fetchone():
+                c.rollback();return None,dict(task),'interaction_restricted'
+            cur.execute("""insert into proposals(task_id,freelancer_id,price,delivery_hours,revisions,message)
+                           values(%s,%s,%s,%s,%s,%s)
+                           on conflict(task_id,freelancer_id) do update
+                           set price=excluded.price,delivery_hours=excluded.delivery_hours,revisions=excluded.revisions,message=excluded.message,status='sent'
+                           returning *""",(int(task_id),int(freelancer_id),price,int(delivery_hours),int(revisions),message or None))
+            proposal=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in proposal.items()},dict(task),None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def close_task_atomic(task_id,client_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id,client_id,status from tasks where id=%s for update',(int(task_id),))
+            task=cur.fetchone()
+            if not task:
+                c.rollback();return None,[],'task_not_found'
+            if int(task['client_id'])!=int(client_id):
+                c.rollback();return dict(task),[],'client_only'
+            if task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s limit 1',(int(task_id),))
+                has_order=cur.fetchone()
+                c.rollback();return dict(task),[],'task_has_order' if has_order else 'task_not_open'
+            cur.execute("select freelancer_id,status from proposals where task_id=%s for update",(int(task_id),))
+            proposals=cur.fetchall()
+            freelancer_ids=sorted({int(x['freelancer_id']) for x in proposals if x.get('status')=='sent'})
+            cur.execute("update proposals set status='rejected' where task_id=%s and status='sent'",(int(task_id),))
+            cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(int(task_id),))
+        c.commit()
+        return dict(task),freelancer_ids,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
 def withdraw_proposal_atomic(task_id,freelancer_id):
     c=db_connect()
     try:
