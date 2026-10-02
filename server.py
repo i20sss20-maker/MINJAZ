@@ -1193,15 +1193,18 @@ def update_manual_kyc_status(uid,status):
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute('select id from users where id=%s for update',(int(uid),))
             if not cur.fetchone():
-                c.rollback();return None,None,'freelancer_not_found'
+                c.rollback();return None,None,False,'freelancer_not_found'
             cur.execute('select * from freelancer_profiles where user_id=%s for update',(int(uid),))
             fp=cur.fetchone()
             if not fp:
-                c.rollback();return None,None,'freelancer_not_found'
+                c.rollback();return None,None,False,'freelancer_not_found'
             previous=str(fp.get('kyc_status') or '')
+            if previous==str(status):
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(fp).items()},previous,False,None
             cur.execute('update freelancer_profiles set kyc_status=%s where user_id=%s returning *',(status,int(uid)))
             row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},previous,None
+            return {k:as_json(v) for k,v in row.items()},previous,True,None
     except Exception:
         c.rollback();raise
     finally:
@@ -3026,9 +3029,10 @@ class H(BaseHTTPRequestHandler):
                     if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
                     b=self.body();st=str(b.get('status') or '')
                     if st not in ('pending','approved','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    uid=int(m.group(1));r,previous,err=update_manual_kyc_status(uid,st)
+                    uid=int(m.group(1));r,previous,changed,err=update_manual_kyc_status(uid,st)
                     if err:return self.sendj(404,{'error':err})
-                    admin_audit(u['id'],'kyc_status_updated','user',uid,{'status':st,'previous_status':previous});return self.sendj(200,r)
+                    if changed:admin_audit(u['id'],'kyc_status_updated','user',uid,{'status':st,'previous_status':previous})
+                    return self.sendj(200,{**r,'idempotent_replay':not changed})
                 if p=='/api/admin/payouts' and method=='GET':
                     items=q("""select pr.*,us.name freelancer_name,us.phone,fp.kyc_status
                                from payout_requests pr join users us on us.id=pr.freelancer_id
