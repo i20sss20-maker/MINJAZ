@@ -176,17 +176,33 @@ def run():
     )
     assert client_profile.get("company_name") == "MINJAZ E2E Client", client_profile
 
-    portfolio = call(
-        "POST",
-        "/api/v1/freelancer/portfolio",
+    portfolio_payload = {
+        "title": "نموذج عمل E2E",
+        "description": "نموذج تجريبي للتأكد من اكتمال خطوة معرض الأعمال.",
+        "external_url": "https://example.com/minjaz-e2e-work",
+        "idempotency_key": f"portfolio-{suffix}",
+    }
+    portfolio = call("POST", "/api/v1/freelancer/portfolio", portfolio_payload, freelancer_token)
+    assert portfolio.get("id"), portfolio
+    portfolio_retry = call("POST", "/api/v1/freelancer/portfolio", portfolio_payload, freelancer_token)
+    assert int(portfolio_retry.get("id") or 0) == int(portfolio["id"]), portfolio_retry
+    assert portfolio_retry.get("idempotent_replay") is True, portfolio_retry
+
+    portfolio_updated = call(
+        "PATCH",
+        f"/api/v1/freelancer/portfolio/{portfolio['id']}",
         {
-            "title": "نموذج عمل E2E",
-            "description": "نموذج تجريبي للتأكد من اكتمال خطوة معرض الأعمال.",
-            "external_url": "https://example.com/minjaz-e2e-work",
+            "title": "نموذج عمل E2E محدث",
+            "description": "تم تحديث الوصف للتأكد أن المستقل يقدر يعدل معرض أعماله بدون حذف السجل.",
+            "external_url": "https://example.com/minjaz-e2e-work-updated",
         },
         freelancer_token,
+        expected=(200,),
     )
-    assert portfolio.get("id"), portfolio
+    assert portfolio_updated.get("title") == "نموذج عمل E2E محدث", portfolio_updated
+    portfolio_items = call("GET", "/api/v1/freelancer/portfolio", token=freelancer_token, expected=(200,)).get("items") or []
+    assert len([x for x in portfolio_items if int(x.get("id") or 0) == int(portfolio["id"])]) == 1, portfolio_items
+    assert next(x for x in portfolio_items if int(x.get("id") or 0) == int(portfolio["id"]))["external_url"].endswith("-updated"), portfolio_items
 
     client_ready = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     freelancer_ready = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
