@@ -126,6 +126,11 @@ def run():
     review2=call("PATCH",f"/api/admin/disputes/{did}",review_body,at)
     assert review1.get("status")=="in_review" and not review1.get("idempotent_replay"),review1
     assert review2.get("idempotent_replay") is True,review2
+    resolve_body={"status":"resolved","action":"resume","resolution_note":"stable dispute resolution"}
+    resolve1=call("PATCH",f"/api/admin/disputes/{did}",resolve_body,at)
+    resolve2=call("PATCH",f"/api/admin/disputes/{did}",resolve_body,at)
+    assert resolve1.get("status")=="resolved" and not resolve1.get("idempotent_replay"),resolve1
+    assert resolve2.get("idempotent_replay") is True,resolve2
 
     # Retrying the same cancellation request with one key returns the same case and notifies once.
     _,oc=create_paid_order(ct,ft,cat,"اختبار إعادة طلب الإلغاء")
