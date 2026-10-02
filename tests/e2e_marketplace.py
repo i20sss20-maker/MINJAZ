@@ -190,7 +190,8 @@ def run():
     freelancer_ready = call("GET", "/api/v1/onboarding", token=freelancer_token, expected=(200,))
     assert client_ready.get("complete") is True, client_ready
     assert next(x for x in client_ready["steps"] if x.get("key") == "profile").get("done") is True, client_ready
-    assert int(client_ready.get("completion_percent") or 0) < 100, client_ready
+    assert next(x for x in client_ready["steps"] if x.get("key") == "first_task").get("done") is True, client_ready
+    assert int(client_ready.get("completion_percent") or 0) == 100, client_ready
     assert freelancer_ready.get("complete") is True, freelancer_ready
     assert next(x for x in freelancer_ready["steps"] if x.get("key") == "portfolio").get("done") is True, freelancer_ready
     assert int(freelancer_ready.get("completion_percent") or 0) == 100, freelancer_ready
