@@ -15,6 +15,16 @@ jobs:
           BASE: https://minjaz-stage-source-production.up.railway.app
         run: |
           set -euo pipefail
+          expected="${GITHUB_SHA:0:12}"
+          for i in $(seq 1 40); do
+            curl -fsS --max-time 12 "$BASE/health" -o health.json || true
+            current=$(jq -r '.release_commit // ""' health.json 2>/dev/null || true)
+            if [ "$current" = "$expected" ]; then
+              break
+            fi
+            sleep 3
+          done
+          test "$(jq -r '.release_commit // ""' health.json)" = "$expected"
           curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$BASE/health" -o health.json
           python3 - <<'PY'
           import json
