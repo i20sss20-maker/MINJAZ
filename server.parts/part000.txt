@@ -1,4 +1,4 @@
-import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
+import os, json, hashlib, secrets, uuid, re, hmac, ipaddress, threading
 import urllib.request, urllib.error
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
@@ -49,6 +49,9 @@ PAYMENT_WEBHOOK_SECRET=os.getenv('PAYMENT_WEBHOOK_SECRET','').strip()
 KYC_START_URL=os.getenv('KYC_START_URL','').strip()
 KYC_ADAPTER_BEARER=os.getenv('KYC_ADAPTER_BEARER','').strip()
 KYC_WEBHOOK_SECRET=os.getenv('KYC_WEBHOOK_SECRET','').strip()
+PUSH_MODE=os.getenv('PUSH_MODE','off').strip().lower()
+PUSH_ADAPTER_URL=os.getenv('PUSH_ADAPTER_URL','').strip().rstrip('/')
+PUSH_ADAPTER_BEARER=os.getenv('PUSH_ADAPTER_BEARER','').strip()
 _cors_raw=os.getenv('CORS_ORIGINS',os.getenv('CORS_ORIGIN','https://minjaz-unified-production.up.railway.app'))
 CORS_ORIGINS={x.strip().rstrip('/') for x in _cors_raw.split(',') if x.strip()}
 
@@ -209,3 +212,105 @@ def apply_payment_adapter_event(b):
 
 def apply_kyc_adapter_event(b):
     event_id=str(b.get('event_id') or '').strip()[:180]; provider_ref=str(b.get('provider_reference') or '').strip()[:180]; status=str(b.get('status') or '').strip()
+    try: uid=int(b.get('user_id') or 0)
+    except Exception: uid=0
+    if not event_id or not uid or not provider_ref or status not in ('pending','approved','rejected'): raise AdapterEventError(400,'invalid_kyc_event')
+    c=db_connect(); c.autocommit=False
+    try:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',('kyc:'+event_id,))
+            cur.execute('select * from kyc_adapter_events where provider_event_id=%s for update',(event_id,)); ev=cur.fetchone()
+            if ev and (int(ev['user_id'])!=uid or ev['status']!=status or ev['provider_reference']!=provider_ref): raise AdapterEventError(409,'kyc_event_conflict')
+            if ev and ev.get('processed_at'):
+                c.commit(); return {'duplicate':True,'status':status,'user_id':uid,'changed':False}
+            cur.execute('select user_id,kyc_status,kyc_provider_reference from freelancer_profiles where user_id=%s for update',(uid,)); fp=cur.fetchone()
+            if not fp: raise AdapterEventError(404,'freelancer_not_found')
+            if fp.get('kyc_provider_reference') and fp.get('kyc_provider_reference')!=provider_ref: raise AdapterEventError(409,'kyc_provider_reference_mismatch')
+            if not ev:
+                cur.execute('insert into kyc_adapter_events(provider_event_id,user_id,status,provider_reference,payload) values(%s,%s,%s,%s,%s::jsonb)',(event_id,uid,status,provider_ref,json.dumps(b,ensure_ascii=False)))
+            if fp.get('kyc_status') in ('approved','rejected') and status!=fp.get('kyc_status'):
+                raise AdapterEventError(409,'kyc_status_finalized')
+            changed=fp.get('kyc_status')!=status
+            cur.execute('update freelancer_profiles set kyc_status=%s,kyc_provider_reference=coalesce(kyc_provider_reference,%s),kyc_started_at=null where user_id=%s',(status,provider_ref,uid))
+            cur.execute('update kyc_adapter_events set processed_at=now() where provider_event_id=%s',(event_id,))
+        c.commit(); return {'duplicate':False,'status':status,'user_id':uid,'changed':changed,'event_id':event_id}
+    except Exception:
+        c.rollback(); raise
+    finally:
+        c.close()
+
+def _match_text(v):
+    # Lightweight deterministic normalization for opportunity relevance.
+    s=str(v or '').strip().lower()
+    s=re.sub(r'[^0-9a-zA-Z\u0600-\u06FF+#. ]+',' ',s)
+    return re.sub(r'\s+',' ',s).strip()
+
+def opportunity_relevance(task, skills):
+    """Return a transparent relevance score + matched skills (not an AI prediction)."""
+    skills=[str(x).strip() for x in (skills or []) if str(x).strip()]
+    if not skills:
+        return 0, []
+    title=_match_text(task.get('title'))
+    desc=_match_text(task.get('description'))
+    category=_match_text(task.get('category_name'))
+    service=_match_text(task.get('service_name'))
+    hay=' '.join(x for x in (title,desc,category,service) if x)
+    matched=[]
+    category_hit=False
+    service_hit=False
+    for raw in skills:
+        sk=_match_text(raw)
+        if not sk:
+            continue
+        if sk in hay:
+            matched.append(raw)
+        if category and (sk in category or category in sk):
+            category_hit=True
+        if service and (sk in service or service in sk):
+            service_hit=True
+    score=25
+    if category_hit: score+=25
+    if service_hit: score+=10
+    score+=min(40,len(matched)*20)
+    return min(score,95), matched[:3]
+
+def valid_attachment_url(v):
+    try:
+        u=urlparse(str(v or '').strip())
+        return u.scheme=='https' and bool(u.netloc) and len(str(v))<=2048
+    except Exception:
+        return False
+
+
+def clean_attachments(items,limit=5,uploaded_by=None):
+    out=[]
+    if not isinstance(items,list): return out
+    for x in items[:limit]:
+        if not isinstance(x,dict): continue
+        name=str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف'
+        storage_key=str(x.get('storage_key') or '').strip().lstrip('/')
+        if storage_key:
+            if uploaded_by is None or not BUCKET_READY or not BUCKET_STORAGE.safe_key_for_user(storage_key,uploaded_by):
+                continue
+            intent=q("select file_name,mime_type,size_bytes from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null and expires_at>now()-interval '24 hours'",(uploaded_by,storage_key),'one')
+            if not intent: continue
+            out.append({'name':intent['file_name'],'url':'railway-bucket://'+storage_key,'storage_key':storage_key,'storage_mode':'railway_bucket','mime_type':intent['mime_type'],'size_bytes':int(intent['size_bytes'])})
+            continue
+        url=str(x.get('url') or x.get('file_url') or '').strip()
+        if not valid_attachment_url(url): continue
+        mime=str(x.get('mime_type') or 'application/octet-stream').strip()[:120]
+        try: size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+        except Exception: size=0
+        out.append({'name':name,'url':url,'storage_key':None,'storage_mode':'external_link','mime_type':mime,'size_bytes':size})
+    return out
+
+
+def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
+    inserted=0
+    for a in cleaned_attachments or []:
+        if a.get('storage_mode')=='railway_bucket':
+            cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
+            if not cur.fetchone():
+                continue
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
+            cur.execute

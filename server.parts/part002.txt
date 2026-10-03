@@ -1,3 +1,271 @@
+xecute('select id,client_id,status from tasks where id=%s for update',(seed['task_id'],))
+            task=cur.fetchone()
+            if not task or int(task['client_id'])!=int(client_id):
+                c.rollback();return None,None,'proposal_not_found'
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+            x=cur.fetchone()
+            if not x:
+                c.rollback();return None,None,'proposal_not_found'
+            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
+            if x.get('status')!='sent' or task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s',(task['id'],))
+                exists=cur.fetchone()
+                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            restricted=cur.fetchone()
+            if hidden or restricted:
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+            if cur.fetchone():
+                c.rollback();return None,dict(x),'order_exists'
+            fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
+            cur.execute("""insert into orders(task_id,proposal_id,client_id,freelancer_id,amount,platform_fee,status,payment_status)
+                           values(%s,%s,%s,%s,%s,%s,'awaiting_payment','unpaid') returning *""",
+                        (x['task_id'],x['id'],int(client_id),x['freelancer_id'],x['price'],fee))
+            order=dict(cur.fetchone())
+            cur.execute("update proposals set status=case when id=%s then 'accepted' else 'rejected' end where task_id=%s",(x['id'],x['task_id']))
+            cur.execute("update tasks set status='matched',updated_at=now() where id=%s",(x['task_id'],))
+        c.commit()
+        return {k:as_json(v) for k,v in order.items()},dict(x),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback();return None,None,'order_exists'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def pay_mock_atomic(oid,user_id):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,False,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),False,'client_only'
+            if o.get('payment_status')=='paid':
+                c.rollback();return dict(o),False,None
+            if o.get('payment_status')!='unpaid' or o.get('status')!='awaiting_payment':
+                c.rollback();return dict(o),False,'invalid_order_state'
+            cur.execute("update orders set payment_status='paid',status='in_progress' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+        c.commit();return dict(o),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def upsert_review_atomic(oid,user_id,quality,timeliness,communication,comment=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select o.id,o.client_id,o.freelancer_id,o.status
+                           from orders o where o.id=%s for update""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),'client_only'
+            if o.get('status')!='completed':
+                c.rollback();return None,dict(o),'invalid_order_state'
+            normalized_comment=str(comment or '')[:2000] or None
+            cur.execute('select * from reviews where order_id=%s for update',(int(oid),))
+            existing=cur.fetchone()
+            if existing:
+                same=(int(existing['quality'])==int(quality)
+                      and int(existing['timeliness'])==int(timeliness)
+                      and int(existing['communication'])==int(communication)
+                      and (existing.get('comment') or None)==normalized_comment)
+                if same:
+                    c.rollback()
+                    return {'id':existing['id'],'state':'unchanged','created':False,'updated':False},dict(o),None
+                cur.execute("""update reviews
+                               set quality=%s,timeliness=%s,communication=%s,comment=%s
+                               where order_id=%s returning *""",
+                            (int(quality),int(timeliness),int(communication),normalized_comment,int(oid)))
+                row=dict(cur.fetchone());c.commit()
+                return {'id':row['id'],'state':'updated','created':False,'updated':True},dict(o),None
+            cur.execute("""insert into reviews(order_id,reviewer_id,reviewee_id,quality,timeliness,communication,comment)
+                           values(%s,%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(oid),int(user_id),o['freelancer_id'],int(quality),int(timeliness),int(communication),normalized_comment))
+            row=dict(cur.fetchone());c.commit()
+            return {'id':row['id'],'state':'created','created':True,'updated':False},dict(o),None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        return None,None,'review_conflict_retry'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def order_action_request_fingerprint(oid,action,note,attachments=None):
+    refs=[]
+    if isinstance(attachments,list):
+        for x in attachments[:5]:
+            if not isinstance(x,dict):continue
+            try:size=max(0,min(int(x.get('size_bytes') or 0),10_000_000_000))
+            except Exception:size=0
+            refs.append({
+                'name':str(x.get('name') or x.get('file_name') or 'ملف').strip()[:180] or 'ملف',
+                'storage_key':str(x.get('storage_key') or '').strip().lstrip('/') or None,
+                'url':str(x.get('url') or x.get('file_url') or '').strip() or None,
+                'mime_type':str(x.get('mime_type') or '').strip()[:120] or None,
+                'size_bytes':size,
+            })
+    payload={'order_id':int(oid),'action':str(action),'note':str(note or ''),'attachments':refs}
+    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def claim_order_action_idempotency(cur,actor_id,idempotency_key,action_type,order_id,request_fingerprint):
+    cur.execute("""insert into order_action_idempotency_keys(actor_id,idempotency_key,action_type,order_id,request_fingerprint)
+                   values(%s,%s,%s,%s,%s) on conflict(actor_id,idempotency_key) do nothing
+                   returning actor_id""",(int(actor_id),idempotency_key,action_type,int(order_id),request_fingerprint))
+    if cur.fetchone():
+        return None,None
+    cur.execute('select action_type,order_id,request_fingerprint,result_id from order_action_idempotency_keys where actor_id=%s and idempotency_key=%s',(int(actor_id),idempotency_key))
+    record=cur.fetchone()
+    if not record:return None,'idempotency_conflict'
+    if (str(record.get('action_type') or '')!=str(action_type)
+        or int(record.get('order_id') or 0)!=int(order_id)
+        or str(record.get('request_fingerprint') or '')!=str(request_fingerprint or '')):
+        return None,'idempotency_key_reused'
+    if not record.get('result_id'):return None,'idempotency_conflict'
+    return dict(record),None
+
+def deliver_order_atomic(oid,user_id,note,attachments=None,idempotency_key=None,idempotency_fingerprint=None):
+    cleaned=clean_attachments(attachments,uploaded_by=user_id)
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'deliver',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from deliveries where id=%s and order_id=%s and freelancer_id=%s',(replay['result_id'],int(oid),int(user_id)))
+                    d=cur.fetchone()
+                    cur.execute('select * from orders where id=%s',(int(oid),))
+                    o=cur.fetchone()
+                    if not d or not o:
+                        c.rollback();return None,None,False,'idempotency_conflict'
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(d).items()},dict(o),True,None
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,False,'order_not_found'
+            if int(o['freelancer_id'])!=int(user_id):
+                c.rollback();return None,dict(o),False,'freelancer_only'
+            if o.get('payment_status')!='paid' or o.get('status') not in ('in_progress','revision_requested'):
+                c.rollback();return None,dict(o),False,'invalid_order_state'
+            cur.execute("insert into deliveries(order_id,freelancer_id,note) values(%s,%s,%s) returning *",(int(oid),int(user_id),str(note or '')[:5000]))
+            d=dict(cur.fetchone())
+            insert_attachments_tx(cur,user_id,cleaned,order_id=oid,delivery_id=d['id'])
+            cur.execute("update order_revision_requests set status='satisfied',satisfied_at=now() where id=(select id from order_revision_requests where order_id=%s and status='open' order by sequence_no desc limit 1)",(int(oid),))
+            cur.execute("update orders set status='delivered' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='delivered',updated_at=now() where id=%s",(o['task_id'],))
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in d.items()},dict(o),False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def request_revision_atomic(oid,user_id,note,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'revision',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from order_revision_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
+                    rr=cur.fetchone()
+                    cur.execute("""select o.*,coalesce(p.revisions,0)::int revisions_allowed
+                                   from orders o left join proposals p on p.id=o.proposal_id where o.id=%s""",(int(oid),))
+                    o=cur.fetchone()
+                    if not rr or not o:
+                        c.rollback();return None,None,None,False,'idempotency_conflict'
+                    cur.execute('select count(*)::int used from order_revision_requests where order_id=%s',(int(oid),))
+                    used=int(cur.fetchone()['used'] or 0);allowed=int(o.get('revisions_allowed') or 0)
+                    c.rollback()
+                    return {k:as_json(v) for k,v in dict(rr).items()},dict(o),{'allowed':allowed,'used':used},True,None
+            cur.execute("""select o.*,t.status task_status,coalesce(p.revisions,0)::int revisions_allowed
+                           from orders o join tasks t on t.id=o.task_id
+                           left join proposals p on p.id=o.proposal_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,None,None,False,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return None,dict(o),None,False,'client_only'
+            if o.get('status')!='delivered':
+                c.rollback();return None,dict(o),None,False,'invalid_order_state'
+            allowed=int(o.get('revisions_allowed') or 0)
+            cur.execute("select count(*)::int used from order_revision_requests where order_id=%s",(int(oid),))
+            used=int(cur.fetchone()['used'] or 0)
+            if used>=allowed:
+                c.rollback();return None,dict(o),{'allowed':allowed,'used':used},False,'revision_limit_reached'
+            cur.execute("insert into order_revision_requests(order_id,requested_by,sequence_no,note) values(%s,%s,%s,%s) returning *",(int(oid),int(user_id),used+1,str(note or '')[:3000]))
+            rr=dict(cur.fetchone())
+            cur.execute("insert into messages(order_id,sender_id,body) values(%s,%s,%s)",(int(oid),int(user_id),('طلب تعديل '+str(used+1)+'/'+str(allowed)+': '+str(note or ''))[:4000]))
+            cur.execute("update orders set status='revision_requested' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='in_progress',updated_at=now() where id=%s",(o['task_id'],))
+            if idempotency_key:
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(rr['id'],int(user_id),idempotency_key))
+        c.commit()
+        return {k:as_json(v) for k,v in rr.items()},dict(o),{'allowed':allowed,'used':used+1},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def complete_order_atomic(oid,user_id,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'complete',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from orders where id=%s and client_id=%s',(int(oid),int(user_id)))
+                    existing=cur.fetchone()
+                    if not existing:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return dict(existing),True,None
+            cur.execute("""select o.*,t.status task_status from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o:
+                c.rollback();return None,False,'order_not_found'
+            if int(o['client_id'])!=int(user_id):
+                c.rollback();return dict(o),False,'client_only'
+            if o.get('payment_status')!='paid' or o.get('status')!='delivered':
+                c.rollback();return dict(o),False,'invalid_order_state'
+            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') limit 1",(int(oid),))
+            active_cancel=cur.fetchone()
+            if active_cancel:
+                c.rollback();x=dict(o);x['active_cancellation_id']=active_cancel['id'];return x,False,'active_cancellation_exists'
+            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') limit 1",(int(oid),))
+            active_dispute=cur.fetchone()
+            if active_dispute:
+                c.rollback();x=dict(o);x['active_dispute_id']=active_dispute['id'];return x,False,'active_dispute_exists'
             cur.execute("update orders set status='completed',completed_at=now() where id=%s",(int(oid),))
             cur.execute("update tasks set status='completed',updated_at=now() where id=%s",(o['task_id'],))
             if idempotency_key:
@@ -39,352 +307,4 @@ def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,ide
             cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active_cancel=cur.fetchone()
             if active_cancel:
-                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,False,'active_cancellation_exists'
-            cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
-            d=dict(cur.fetchone())
-            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
-            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
-            if idempotency_key:
-                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
-        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),False,None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if idempotency_key:
-                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'cancellation',oid,idempotency_fingerprint)
-                if idem_err:
-                    c.rollback();return None,None,False,idem_err
-                if replay:
-                    cur.execute('select * from order_cancellation_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
-                    cr=cur.fetchone()
-                    cur.execute("""select o.*,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s""",(int(oid),))
-                    o=cur.fetchone()
-                    if not cr or not o:
-                        c.rollback();return None,None,False,'idempotency_conflict'
-                    c.rollback();return {k:as_json(v) for k,v in dict(cr).items()},dict(o),True,None
-            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
-                           where o.id=%s for update of o,t""",(int(oid),))
-            o=cur.fetchone()
-            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
-                c.rollback();return None,None,False,'order_not_found'
-            if o.get('status') in ('completed','cancelled','disputed'):
-                c.rollback();return None,dict(o),False,'invalid_order_state'
-            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
-            active=cur.fetchone()
-            if active:
-                c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,False,'active_cancellation_exists'
-            cur.execute("select id from order_disputes where order_id=%s and status in ('open','in_review') order by created_at desc limit 1",(int(oid),))
-            active_dispute=cur.fetchone()
-            if active_dispute:
-                c.rollback();x=dict(o);x['active_id']=active_dispute['id'];return None,x,False,'active_dispute_exists'
-            refund='pending' if o.get('payment_status')=='paid' else 'not_needed'
-            cur.execute("insert into order_cancellation_requests(order_id,requested_by,reason,details,previous_order_status,previous_task_status,payment_status_at_request,refund_status) values(%s,%s,%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status'),o.get('payment_status'),refund))
-            cr=dict(cur.fetchone())
-            if idempotency_key:
-                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(cr['id'],int(user_id),idempotency_key))
-        c.commit();return {k:as_json(v) for k,v in cr.items()},dict(o),False,None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def operational_event(level,area,code,message=None,request_id=None,user_id=None,entity_type=None,entity_id=None,meta=None):
-    """Best-effort operational telemetry. Never let observability break the product path."""
-    try:
-        q("insert into operational_events(request_id,level,area,code,message,user_id,entity_type,entity_id,meta) values(%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
-          (str(request_id or '')[:80] or None,str(level or 'error')[:16],str(area or 'app')[:80],str(code or 'unknown')[:120],str(message or '')[:500] or None,user_id,str(entity_type or '')[:80] or None,str(entity_id or '')[:120] or None,json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as exc:
-        print('OP_EVENT_ERR',repr(exc),flush=True)
-
-def operational_snapshot():
-    try:
-        counts=q("""select
-          count(*) filter(where created_at>now()-interval '15 minutes')::int events_15m,
-          count(*) filter(where level in ('error','critical') and created_at>now()-interval '15 minutes')::int errors_15m,
-          count(*) filter(where level in ('error','critical') and created_at>now()-interval '24 hours')::int errors_24h,
-          max(created_at) last_event_at
-          from operational_events""",(), 'one') or {}
-        recent=q("select id,request_id,level,area,code,message,entity_type,entity_id,meta,created_at from operational_events order by created_at desc limit 80")
-        return {'counts':counts,'recent':recent}
-    except Exception as exc:
-        return {'counts':{'events_15m':0,'errors_15m':0,'errors_24h':0,'last_event_at':None},'recent':[],'telemetry_error':str(exc)[:120]}
-
-def ensure_schema():
-    q("""create table if not exists order_disputes(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        opened_by bigint not null references users(id),
-        reason text not null,
-        details text,
-        status text not null default 'open',
-        previous_order_status text,
-        previous_task_status text,
-        resolution_action text,
-        resolution_note text,
-        resolved_by bigint references users(id),
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now(),
-        resolved_at timestamptz
-    );
-    create index if not exists idx_order_disputes_order on order_disputes(order_id,created_at desc);
-    create index if not exists idx_order_disputes_status on order_disputes(status,created_at desc);
-    create table if not exists attachments(
-        id bigserial primary key,
-        uploaded_by bigint not null references users(id),
-        task_id bigint references tasks(id) on delete cascade,
-        order_id bigint references orders(id) on delete cascade,
-        message_id bigint references messages(id) on delete cascade,
-        delivery_id bigint references deliveries(id) on delete cascade,
-        file_name text not null,
-        file_url text not null,
-        mime_type text not null default 'application/octet-stream',
-        size_bytes bigint not null default 0,
-        storage_mode text not null default 'external_link',
-        created_at timestamptz not null default now(),
-        check(task_id is not null or order_id is not null or message_id is not null or delivery_id is not null)
-    );
-    create index if not exists idx_attachments_task on attachments(task_id,created_at);
-    create index if not exists idx_attachments_order on attachments(order_id,created_at);
-    create index if not exists idx_attachments_message on attachments(message_id,created_at);
-    create index if not exists idx_attachments_delivery on attachments(delivery_id,created_at);
-    create table if not exists order_revision_requests(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        requested_by bigint not null references users(id),
-        sequence_no int not null,
-        note text not null,
-        status text not null default 'open',
-        created_at timestamptz not null default now(),
-        satisfied_at timestamptz,
-        unique(order_id,sequence_no)
-    );
-    create index if not exists idx_revision_requests_order on order_revision_requests(order_id,created_at);""",(),None)
-
-
-def ensure_payout_schema():
-    q("""create table if not exists payout_requests(
-        id bigserial primary key,
-        freelancer_id bigint not null references users(id) on delete cascade,
-        amount numeric(10,2) not null check(amount>0),
-        status text not null default 'pending' check(status in ('pending','processing','paid','rejected','cancelled')),
-        note text,
-        admin_note text,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now(),
-        resolved_at timestamptz
-    );
-    create index if not exists idx_payout_requests_freelancer on payout_requests(freelancer_id,created_at desc);
-    create index if not exists idx_payout_requests_status on payout_requests(status,created_at desc);""",(),None)
-
-def freelancer_earnings(fid):
-    totals=q("""select
-        coalesce(sum(case when status='completed' then amount else 0 end),0) gross_earned,
-        coalesce(sum(case when status='completed' then coalesce(platform_fee,0) else 0 end),0) platform_fees,
-        coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned,
-        count(*) filter(where status='completed')::int completed_orders
-        from orders where freelancer_id=%s""",(fid,), 'one') or {}
-    p=q("""select
-        coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,
-        coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts
-        from payout_requests where freelancer_id=%s""",(fid,), 'one') or {}
-    net=Decimal(str(totals.get('net_earned') or 0))
-    paid=Decimal(str(p.get('paid_out') or 0))
-    pending=Decimal(str(p.get('pending_payouts') or 0))
-    available=max(Decimal('0'),net-paid-pending)
-    return {'gross_earned':float(Decimal(str(totals.get('gross_earned') or 0))),'platform_fees':float(Decimal(str(totals.get('platform_fees') or 0))),'net_earned':float(net),'paid_out':float(paid),'pending_payouts':float(pending),'available_balance':float(available),'completed_orders':int(totals.get('completed_orders') or 0)}
-
-def payout_request_fingerprint(amount,note=None):
-    normalized_note=str(note or '').strip()[:500]
-    payload={'amount':format(money_decimal(amount),'.2f'),'note':normalized_note}
-    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
-
-def create_payout_request(fid,raw_amount,note=None,idempotency_key=None):
-    try:
-        amount=money_decimal(raw_amount)
-    except Exception:
-        return None,'invalid_amount',None,False
-    if amount<=0:
-        return None,'invalid_amount',None,False
-    normalized_note=str(note or '').strip()[:500] or None
-    fingerprint=payout_request_fingerprint(amount,normalized_note) if idempotency_key else None
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select id from users where id=%s for update',(fid,))
-            if not cur.fetchone():
-                c.rollback();return None,'user_not_found',None,False
-            if idempotency_key:
-                cur.execute('select * from payout_requests where freelancer_id=%s and idempotency_key=%s',(fid,idempotency_key))
-                existing=cur.fetchone()
-                if existing:
-                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
-                        c.rollback();return None,'idempotency_key_reused',None,False
-                    cur.execute("""select
-                        coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned
-                        from orders where freelancer_id=%s""",(fid,))
-                    net=Decimal(str(cur.fetchone()['net_earned'] or 0))
-                    cur.execute("""select
-                        coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,
-                        coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts
-                        from payout_requests where freelancer_id=%s""",(fid,))
-                    pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0))
-                    available=max(Decimal('0'),net-paid-pending)
-                    c.rollback()
-                    return {k:as_json(v) for k,v in dict(existing).items()},None,available,True
-            cur.execute('select kyc_status from freelancer_profiles where user_id=%s for update',(fid,))
-            fp=cur.fetchone()
-            if not fp or fp.get('kyc_status')!='approved':
-                c.rollback();return None,'kyc_required',None,False
-            cur.execute("""select coalesce(sum(case when status='completed' then amount-coalesce(platform_fee,0) else 0 end),0) net_earned from orders where freelancer_id=%s""",(fid,))
-            net=Decimal(str(cur.fetchone()['net_earned'] or 0))
-            cur.execute("""select coalesce(sum(case when status='paid' then amount else 0 end),0) paid_out,coalesce(sum(case when status in ('pending','processing') then amount else 0 end),0) pending_payouts from payout_requests where freelancer_id=%s""",(fid,))
-            pr=cur.fetchone();paid=Decimal(str(pr['paid_out'] or 0));pending=Decimal(str(pr['pending_payouts'] or 0));available=max(Decimal('0'),net-paid-pending)
-            if amount>available:
-                c.rollback();return None,'insufficient_balance',available,False
-            cur.execute("""insert into payout_requests(freelancer_id,amount,note,status,idempotency_key,request_fingerprint)
-                           values(%s,%s,%s,'pending',%s,%s) returning *""",
-                        (fid,amount,normalized_note,idempotency_key,fingerprint))
-            row=dict(cur.fetchone());c.commit()
-            return {k:as_json(v) for k,v in row.items()},None,max(Decimal('0'),available-amount),False
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def portfolio_item_fingerprint(title,description=None,external_url=None):
-    payload={'title':str(title or '').strip()[:160],'description':str(description or '').strip()[:1500],'external_url':str(external_url or '').strip()[:1000]}
-    return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
-
-def create_portfolio_item_atomic(fid,title,description=None,external_url=None,idempotency_key=None):
-    title=str(title or '').strip()[:160]
-    description=str(description or '').strip()[:1500] or None
-    external_url=str(external_url or '').strip()[:1000] or None
-    fingerprint=portfolio_item_fingerprint(title,description,external_url) if idempotency_key else None
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select id from users where id=%s for update',(int(fid),))
-            if not cur.fetchone():
-                c.rollback();return None,False,'freelancer_not_found'
-            if idempotency_key:
-                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
-                existing=cur.fetchone()
-                if existing:
-                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
-                        c.rollback();return None,False,'idempotency_key_reused'
-                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
-            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
-            if int(cur.fetchone()['n'] or 0)>=12:
-                c.rollback();return None,False,'portfolio_limit'
-            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
-                           values(%s,%s,%s,%s,%s,%s)
-                           returning id,title,description,external_url,created_at""",
-                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
-            row=dict(cur.fetchone())
-        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
-    except psycopg2.errors.UniqueViolation:
-        c.rollback()
-        if not idempotency_key:raise
-        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
-        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
-            return existing,True,None
-        return None,False,'idempotency_key_reused'
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
-    note=str(admin_note or '')[:3000] or None
-    st=str(status or '')
-    ta=str(task_action or '')
-    ua=str(user_action or '')
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from safety_reports where id=%s for update',(int(rid),))
-            sr=cur.fetchone()
-            if not sr:
-                c.rollback();return None,None,None,'report_not_found'
-            task_changed=False;user_changed=False
-            if ta in ('hide','restore') and sr.get('task_id'):
-                desired=ta=='hide'
-                cur.execute('select * from task_moderation where task_id=%s for update',(sr['task_id'],))
-                tm=cur.fetchone()
-                current=bool(tm.get('hidden')) if tm else False
-                current_reason=(tm.get('reason') or None) if tm else None
-                if current!=desired or current_reason!=note:
-                    cur.execute("""insert into task_moderation(task_id,hidden,reason,updated_by)
-                                   values(%s,%s,%s,%s)
-                                   on conflict(task_id) do update
-                                   set hidden=excluded.hidden,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()""",
-                                (sr['task_id'],desired,note,int(admin_id)))
-                    cur.execute('insert into moderation_actions(report_id,admin_id,task_id,action,note) values(%s,%s,%s,%s,%s)',
-                                (int(rid),int(admin_id),sr['task_id'],'hide_task' if desired else 'restore_task',note))
-                    task_changed=True
-            if ua in ('restrict','unrestrict') and sr.get('reported_user_id'):
-                cur.execute('select id,role from users where id=%s for update',(sr['reported_user_id'],))
-                target=cur.fetchone()
-                if target and target.get('role')=='admin':
-                    c.rollback();return None,dict(sr),None,'admin_not_restrictable'
-                desired=ua=='restrict'
-                cur.execute('select * from user_moderation where user_id=%s for update',(sr['reported_user_id'],))
-                um=cur.fetchone()
-                current=bool(um.get('interaction_restricted')) if um else False
-                current_reason=(um.get('reason') or None) if um else None
-                if current!=desired or current_reason!=note:
-                    cur.execute("""insert into user_moderation(user_id,interaction_restricted,reason,updated_by)
-                                   values(%s,%s,%s,%s)
-                                   on conflict(user_id) do update
-                                   set interaction_restricted=excluded.interaction_restricted,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()""",
-                                (sr['reported_user_id'],desired,note,int(admin_id)))
-                    cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,action,note) values(%s,%s,%s,%s,%s)',
-                                (int(rid),int(admin_id),sr['reported_user_id'],'restrict_user' if desired else 'unrestrict_user',note))
-                    user_changed=True
-            report_changed=(str(sr.get('status') or '')!=st or (sr.get('admin_note') or None)!=note)
-            resolved=st in ('resolved','dismissed')
-            if report_changed:
-                cur.execute("""update safety_reports
-                               set status=%s,admin_note=%s,
-                                   resolved_by=case when %s then %s else resolved_by end,
-                                   resolved_at=case when %s then now() else null end,
-                                   updated_at=now()
-                               where id=%s returning *""",
-                            (st,note,resolved,int(admin_id),resolved,int(rid)))
-                row=dict(cur.fetchone())
-                cur.execute('insert into moderation_actions(report_id,admin_id,target_user_id,task_id,action,note) values(%s,%s,%s,%s,%s,%s)',
-                            (int(rid),int(admin_id),sr.get('reported_user_id'),sr.get('task_id'),'report_'+st,note))
-            elif task_changed or user_changed:
-                cur.execute('update safety_reports set updated_at=now() where id=%s returning *',(int(rid),))
-                row=dict(cur.fetchone())
-            else:
-                c.rollback()
-                out={k:as_json(v) for k,v in dict(sr).items()}
-                return out,dict(sr),{'changed':False,'task_changed':False,'user_changed':False,'report_changed':False},None
-        c.commit()
-        out={k:as_json(v) for k,v in row.items()}
-        return out,dict(sr),{'changed':True,'task_changed':task_changed,'user_changed':user_changed,'report_changed':report_changed},None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_manual_kyc_status(uid,status):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select id from users where id=%s for update',(int(uid),))
-            if not cur.fetchone():
-                c.rollback();return None,None,False,'freelancer_not_found'
-            cur.execute(
+                c.rol

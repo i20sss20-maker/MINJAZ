@@ -1,3 +1,49 @@
+_paid':True})
+                        log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(locked['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
+                    if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
+                    if o.get('payment_checkout_url') and o.get('provider_payment_id'):
+                        return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':o['payment_checkout_url'],'provider_payment_id':o['provider_payment_id'],'reused':True})
+                    claim=q("update orders set payment_checkout_started_at=now() where id=%s and payment_status='unpaid' and status='awaiting_payment' and (payment_checkout_started_at is null or payment_checkout_started_at<now()-interval '2 minutes') returning id",(oid,),'one')
+                    if not claim:
+                        latest=q('select payment_checkout_url,provider_payment_id from orders where id=%s',(oid,),'one') or {}
+                        if latest.get('payment_checkout_url') and latest.get('provider_payment_id'):return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':latest['payment_checkout_url'],'provider_payment_id':latest['provider_payment_id'],'reused':True})
+                        return self.sendj(409,{'error':'payment_initialization_in_progress','retry_after_seconds':120})
+                    customer=q('select phone,name from users where id=%s',(u['id'],),'one') or {}
+                    payload={'order_id':oid,'amount':float(o['amount']),'currency':'SAR','customer':{'phone':customer.get('phone'),'name':customer.get('name')},'return_url':(PUBLIC_BASE_URL+'/#orders') if PUBLIC_BASE_URL else None,'webhook_contract':'minjaz-normalized-v1','webhook_url':(PUBLIC_BASE_URL+'/api/v1/integrations/payments/webhook') if PUBLIC_BASE_URL else None}
+                    try:resp=adapter_post_json(PAYMENT_CREATE_URL,payload,PAYMENT_ADAPTER_BEARER)
+                    except Exception as exc:
+                        q("update orders set payment_checkout_started_at=null where id=%s and payment_status='unpaid' and provider_payment_id is null",(oid,),None);operational_event('error','payment','provider_unavailable',repr(exc),self.request_id(),u.get('id'),'order',oid);print('PAYMENT_ADAPTER_ERR',self.request_id(),repr(exc),flush=True);return self.sendj(502,{'error':'payment_provider_unavailable'})
+                    checkout=str(resp.get('checkout_url') or '').strip(); provider_id=str(resp.get('provider_payment_id') or '').strip()[:180]
+                    if not _https_url(checkout) or not provider_id:
+                        q("update orders set payment_checkout_started_at=null where id=%s and payment_status='unpaid' and provider_payment_id is null",(oid,),None);return self.sendj(502,{'error':'invalid_payment_provider_response'})
+                    q("update orders set provider_payment_id=%s,payment_checkout_url=%s,payment_checkout_started_at=null where id=%s and payment_status='unpaid'",(provider_id,checkout,oid),None);log_order_event(oid,'payment_checkout','تم إنشاء رابط الدفع',u['id'],meta={'mode':'adapter'});return self.sendj(200,{'ok':True,'mode':'adapter','checkout_url':checkout,'provider_payment_id':provider_id})
+                if action=='deliver':
+                    if u['role']!='freelancer':return self.sendj(403,{'error':'freelancer_only'})
+                    b=self.body();note=str(b.get('note') or '').strip()
+                    if not note:return self.sendj(400,{'error':'note_required'})
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'deliver',note,b.get('attachments')) if idempotency_key else None
+                    d,locked,replayed,err=deliver_order_atomic(oid,u['id'],note,b.get('attachments'),idempotency_key or None,fingerprint)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='freelancer_only':return self.sendj(403,{'error':err})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    if not replayed:notify(locked['client_id'],'وصل تسليم جديد',note[:220],'delivery',oid)
+                    return self.sendj(200 if replayed else 201,{'ok':True,'delivery':d,'idempotent_replay':bool(replayed)})
+                if action=='revision':
+                    if u['role']!='client':return self.sendj(403,{'error':'client_only'})
+                    b=self.body();note=str(b.get('note') or '').strip()
+                    if not note:return self.sendj(400,{'error':'note_required'})
+                    idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+                    fingerprint=order_action_request_fingerprint(oid,'revision',note) if idempotency_key else None
+                    rr,locked,meta,replayed,err=request_revision_atomic(oid,u['id'],note,idempotency_key or None,fingerprint)
+                    if err=='order_not_found':return self.sendj(404,{'error':err})
+                    if err=='client_only':return self.sendj(403,{'error':err})
+                    if err=='revision_limit_reached':return self.sendj(409,{'error':err,'allowed':meta['allowed'],'used':meta['used']})
+                    if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                    if not replayed:notify(locked['freelancer_id'],'طلب تعديل جديد',note[:220],'revision',oid)
+                    return self.sendj(200,{'ok':True,'revision':rr,'remaining':max(meta['allowed']-meta['used'],0),'idempotent_replay':bool(replayed)})
                 if action=='complete':
                     if u['role']!='client':return self.sendj(403,{'error':'client_only'})
                     b=self.body();idempotency_key=str(b.get('idempotency_key') or '').strip()
@@ -141,128 +187,4 @@
                 if not u:return
                 uid=int(u['id'])
                 items=q("""select a.id,a.uploaded_by,a.task_id,a.order_id,a.message_id,a.delivery_id,
-                                  a.file_name,a.file_url,a.storage_key,a.mime_type,a.size_bytes,a.storage_mode,a.created_at,
-                                  us.name uploaded_by_name,
-                                  ao.order_id resolved_order_id,
-                                  coalesce(ao.task_id,a.task_id) resolved_task_id,
-                                  coalesce(ao.task_title,own_task.title) task_title,
-                                  case when a.delivery_id is not null then 'delivery'
-                                       when a.message_id is not null then 'message'
-                                       when a.order_id is not null then 'order'
-                                       else 'task' end source_type
-                           from attachments a
-                           join users us on us.id=a.uploaded_by
-                           left join messages m on m.id=a.message_id
-                           left join deliveries d on d.id=a.delivery_id
-                           left join tasks own_task on own_task.id=a.task_id
-                           left join lateral (
-                               select o.id order_id,o.task_id,t.title task_title
-                               from orders o join tasks t on t.id=o.task_id
-                               where (o.client_id=%s or o.freelancer_id=%s)
-                                 and (
-                                   o.id=coalesce(a.order_id,m.order_id,d.order_id)
-                                   or (a.task_id is not null and o.task_id=a.task_id)
-                                 )
-                               order by o.created_at desc,o.id desc
-                               limit 1
-                           ) ao on true
-                           where ao.order_id is not null
-                              or (a.task_id is not null and own_task.client_id=%s)
-                           order by a.created_at desc,a.id desc
-                           limit 500""",(uid,uid,uid))
-                for item in items:
-                    item['order_id']=item.pop('resolved_order_id',None)
-                    item['task_id']=item.pop('resolved_task_id',None)
-                return self.sendj(200,{'items':public_attachments(items)})
-
-            if p=='/api/v1/conversations' and method=='GET':
-                u=self.require();
-                if not u:return
-                uid=int(u['id'])
-                items=q("""select o.id order_id,o.task_id,o.status,o.payment_status,o.created_at,t.title,
-                                  case when o.client_id=%s then f.id else c.id end counterpart_user_id,
-                                  case when o.client_id=%s then f.name else c.name end counterpart_name,
-                                  lm.id last_message_id,lm.body last_message,lm.created_at last_message_at,
-                                  lm.sender_id,lm.sender_name,lm.attachment_count,
-                                  coalesce((select count(*)::int from user_notifications_v2 n
-                                            where n.user_id=%s and n.order_id=o.id
-                                              and n.kind='message' and n.read_at is null),0) unread_messages
-                           from orders o
-                           join tasks t on t.id=o.task_id
-                           join users c on c.id=o.client_id
-                           join users f on f.id=o.freelancer_id
-                           join lateral (
-                               select m.id,m.body,m.created_at,m.sender_id,us.name sender_name,
-                                      (select count(*)::int from attachments a where a.message_id=m.id) attachment_count
-                               from messages m join users us on us.id=m.sender_id
-                               where m.order_id=o.id
-                               order by m.created_at desc,m.id desc
-                               limit 1
-                           ) lm on true
-                           where o.client_id=%s or o.freelancer_id=%s
-                           order by lm.created_at desc
-                           limit 200""",(uid,uid,uid,uid,uid))
-                return self.sendj(200,{'items':items})
-
-            m=re.fullmatch(r'/api/v1/conversations/(\d+)/read',p)
-            if m and method=='POST':
-                u=self.require();
-                if not u:return
-                oid=int(m.group(1));uid=int(u['id'])
-                o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,uid,uid),'one')
-                if not o:return self.sendj(404,{'error':'order_not_found'})
-                rows=q("update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and order_id=%s and kind='message' and read_at is null returning id",(uid,oid))
-                return self.sendj(200,{'ok':True,'order_id':oid,'updated':len(rows or [])})
-
-            if p=='/api/v1/notifications' and method=='GET':
-                u=self.require();
-                if not u:return
-                where=['user_id=%s'];params=[u['id']];kind=(query.get('kind') or [''])[0].strip();unread_only=(query.get('unread') or [''])[0] in ('1','true','yes')
-                if kind:where.append('kind=%s');params.append(kind)
-                if unread_only:where.append('read_at is null')
-                try:limit=max(1,min(int((query.get('limit') or ['100'])[0]),200))
-                except Exception:limit=100
-                items=q('select id,order_id,task_id,kind,title,body,read_at,created_at from user_notifications_v2 where '+' and '.join(where)+' order by created_at desc limit '+str(limit),tuple(params));
-                unread=q('select count(*)::int n from user_notifications_v2 where user_id=%s and read_at is null',(u['id'],),'one')['n'];counts={x['kind']:x['n'] for x in q('select kind,count(*)::int n from user_notifications_v2 where user_id=%s group by kind',(u['id'],))};return self.sendj(200,{'items':items,'unread':unread,'counts':counts})
-            if p=='/api/v1/notifications/read-group' and method=='POST':
-                u=self.require();
-                if not u:return
-                b=self.body();oid=int(b.get('order_id') or 0);tid=int(b.get('task_id') or 0)
-                if bool(oid)==bool(tid):return self.sendj(400,{'error':'single_notification_group_required'})
-                if oid:
-                    rows=q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and order_id=%s returning id',(u['id'],oid))
-                    return self.sendj(200,{'ok':True,'scope':'order','order_id':oid,'updated':len(rows or [])})
-                rows=q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and task_id=%s returning id',(u['id'],tid))
-                return self.sendj(200,{'ok':True,'scope':'task','task_id':tid,'updated':len(rows or [])})
-            if p=='/api/v1/notifications/read-all' and method=='POST':
-                u=self.require();
-                if not u:return
-                q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s',(u['id'],),None);return self.sendj(200,{'ok':True})
-            m=re.fullmatch(r'/api/v1/notifications/(\d+)/read',p)
-            if m and method=='POST':
-                u=self.require();
-                if not u:return
-                q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where id=%s and user_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
-            if p=='/api/v1/blocks' and method=='GET':
-                u=self.require();
-                if not u:return
-                return self.sendj(200,{'items':q("select ub.blocked_id user_id,us.name,us.role,ub.reason,ub.created_at from user_blocks ub join users us on us.id=ub.blocked_id where ub.blocker_id=%s order by ub.created_at desc",(u['id'],))})
-            m=re.fullmatch(r'/api/v1/blocks/(\d+)',p)
-            if m and method in ('POST','DELETE'):
-                u=self.require();
-                if not u:return
-                target=int(m.group(1))
-                if target==int(u['id']):return self.sendj(400,{'error':'cannot_block_self'})
-                tu=q('select id,name,role from users where id=%s',(target,),'one')
-                if not tu:return self.sendj(404,{'error':'user_not_found'})
-                if tu.get('role')=='admin':return self.sendj(403,{'error':'target_not_blockable'})
-                if method=='DELETE':
-                    q('delete from user_blocks where blocker_id=%s and blocked_id=%s',(u['id'],target),None);return self.sendj(200,{'ok':True,'user_id':target})
-                b=self.body();reason=str(b.get('reason') or '').strip()[:500] or None
-                q('insert into user_blocks(blocker_id,blocked_id,reason) values(%s,%s,%s) on conflict(blocker_id,blocked_id) do update set reason=excluded.reason,created_at=now()',(u['id'],target,reason),None)
-                return self.sendj(201,{'ok':True,'user_id':target,'name':tu['name']})
-            if p=='/api/v1/safety/reports':
-                u=self.require();
-                if not u:return
-                if method=='GET':
-                    return self.sendj(200,{'items':q("select sr.*,ru.name reported_user_name,t.title task_title from safety_reports sr left join users ru on ru.id=sr.reported_user_id left join tasks t on t.id=sr.task_id where sr.reporter_id=%s order by sr.created_at desc limit 100",(u['id'],))})
+                                  a.file_name,a.file_url,a.storage_key,a

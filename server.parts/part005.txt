@@ -1,180 +1,325 @@
-        primary key(user_id,role)
-    );
-    create index if not exists idx_user_roles_role on user_roles(role,user_id);
-    insert into user_roles(user_id,role,enabled)
-      select id,role,true from users
-      on conflict(user_id,role) do update set enabled=true;
-    insert into user_roles(user_id,role,enabled)
-      select user_id,'freelancer',true from freelancer_profiles
-      on conflict(user_id,role) do update set enabled=true;""",(),None)
+st_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
+        return None,'idempotency_key_reused'
+    if not row.get('result_id'):return None,'idempotency_conflict'
+    return dict(row),None
 
-def enabled_roles(user_id):
-    return [x['role'] for x in q("select role from user_roles where user_id=%s and enabled=true order by case role when 'admin' then 0 when 'client' then 1 else 2 end,role",(user_id,))]
-
-def ensure_notifications_schema():
-    q("""create table if not exists user_notifications_v2(
-        id bigserial primary key,
-        user_id bigint not null references users(id) on delete cascade,
-        order_id bigint references orders(id) on delete cascade,
-        kind text not null default 'general',
-        title text not null,
-        body text,
-        read_at timestamptz,
-        created_at timestamptz not null default now()
-    );
-    create index if not exists idx_user_notifications_v2_user on user_notifications_v2(user_id,created_at desc);
-    create index if not exists idx_user_notifications_v2_unread on user_notifications_v2(user_id,read_at,created_at desc);""",(),None)
-
-def ensure_engagement_schema():
-    q("""create table if not exists client_profiles(
-        user_id bigint primary key references users(id) on delete cascade,
-        company_name text,bio text,city text,sector text,updated_at timestamptz not null default now()
-    );
-    create table if not exists favorite_tasks(
-        freelancer_id bigint not null references users(id) on delete cascade,
-        task_id bigint not null references tasks(id) on delete cascade,
-        created_at timestamptz not null default now(),
-        primary key(freelancer_id,task_id)
-    );
-    create index if not exists idx_favorite_tasks_freelancer on favorite_tasks(freelancer_id,created_at desc);
-    create table if not exists saved_task_searches(
-        id bigserial primary key,freelancer_id bigint not null references users(id) on delete cascade,
-        name text not null,filters jsonb not null default '{}'::jsonb,created_at timestamptz not null default now(),updated_at timestamptz not null default now()
-    );
-    create index if not exists idx_saved_task_searches_freelancer on saved_task_searches(freelancer_id,created_at desc);
-    alter table user_notifications_v2 add column if not exists task_id bigint references tasks(id) on delete cascade;
-    create index if not exists idx_user_notifications_v2_task on user_notifications_v2(user_id,task_id,created_at desc) where task_id is not null;""",(),None)
-
-def notify(user_id,title,body=None,kind='general',order_id=None,task_id=None):
+def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
     try:
-        q("insert into user_notifications_v2(user_id,order_id,task_id,kind,title,body) values(%s,%s,%s,%s,%s,%s)",(user_id,order_id,task_id,kind,title[:180],(body or '')[:1200] or None),None)
-    except Exception as e:
-        print('NOTIFY_ERR',repr(e),flush=True)
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'saved_search',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select id,name,filters,created_at,updated_at from saved_task_searches where id=%s and freelancer_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'saved-search-create:{int(user_id)}',))
+            cur.execute('select count(*)::int n from saved_task_searches where freelancer_id=%s',(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=20:
+                c.rollback();return None,False,'saved_search_limit'
+            cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
+                           values(%s,%s,%s::jsonb)
+                           returning id,name,filters,created_at,updated_at""",
+                        (int(user_id),name,json.dumps(filters or {},ensure_ascii=False)))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
 
-def notify_admins(title,body=None,kind='admin',order_id=None,task_id=None):
+def create_support_ticket_atomic(user_id,category,subject,message,priority,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
     try:
-        for a in q("select id from users where role='admin' order by id"):
-            notify(a['id'],title,body,kind,order_id,task_id)
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'support',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from support_tickets where id=%s and user_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'support-create:{int(user_id)}',))
+            cur.execute("select count(*)::int n from support_tickets where user_id=%s and created_at>now()-interval '1 day'",(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=10:
+                c.rollback();return None,False,'support_rate_limited'
+            cur.execute("""insert into support_tickets(user_id,category,subject,message,priority,status)
+                           values(%s,%s,%s,%s,%s,'open') returning *""",
+                        (int(user_id),category,subject,message,priority))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def create_privacy_request_atomic(user_id,request_type,details,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'privacy',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from privacy_requests where id=%s and user_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'privacy-create:{int(user_id)}',))
+            cur.execute("select id from privacy_requests where user_id=%s and request_type=%s and status in ('pending','in_progress')",(int(user_id),request_type))
+            if cur.fetchone():
+                c.rollback();return None,False,'active_request_exists'
+            cur.execute("select count(*)::int n from privacy_requests where user_id=%s and created_at>now()-interval '1 day'",(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=5:
+                c.rollback();return None,False,'privacy_rate_limited'
+            cur.execute('insert into privacy_requests(user_id,request_type,details) values(%s,%s,%s) returning *',(int(user_id),request_type,details))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def create_safety_report_atomic(reporter_id,reported_user_id,task_id,order_id,category,details,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,reporter_id,idempotency_key,'safety',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select * from safety_reports where id=%s and reporter_id=%s',(replay['result_id'],int(reporter_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'safety-report:{int(reporter_id)}',))
+            cur.execute("select count(*)::int n from safety_reports where reporter_id=%s and created_at>now()-interval '1 hour'",(int(reporter_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=10:
+                c.rollback();return None,False,'report_rate_limited'
+            cur.execute("""select id from safety_reports
+                           where reporter_id=%s
+                             and coalesce(reported_user_id,0)=coalesce(%s,0)
+                             and coalesce(task_id,0)=coalesce(%s,0)
+                             and coalesce(order_id,0)=coalesce(%s,0)
+                             and status in ('open','in_review')
+                           limit 1""",(int(reporter_id),reported_user_id,task_id,order_id))
+            dup=cur.fetchone()
+            if dup:
+                c.rollback();return {'id':dup['id']},False,'active_report_exists'
+            cur.execute("""insert into safety_reports(reporter_id,reported_user_id,task_id,order_id,category,details)
+                           values(%s,%s,%s,%s,%s,%s) returning *""",
+                        (int(reporter_id),reported_user_id,task_id,order_id,category,details))
+            row=dict(cur.fetchone())
+            if idempotency_key:
+                cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(reporter_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def update_support_ticket(tid,status,admin_reply=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from support_tickets where id=%s for update',(int(tid),))
+            ticket=cur.fetchone()
+            if not ticket:
+                c.rollback();return None,None,False,'support_ticket_not_found'
+            reply=str(admin_reply or '')[:3000] or None
+            if str(ticket.get('status') or '')==str(status) and (ticket.get('admin_reply') or None)==reply:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(ticket).items()},dict(ticket),False,None
+            cur.execute("""update support_tickets
+                           set status=%s,admin_reply=%s,updated_at=now()
+                           where id=%s returning *""",(status,reply,int(tid)))
+            row=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in row.items()},dict(ticket),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def update_privacy_request(pid,status,admin_note=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from privacy_requests where id=%s for update',(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,False,'privacy_request_not_found'
+            current=str(pr.get('status') or '')
+            note=str(admin_note or '')[:3000] or None
+            if current in ('completed','rejected') and status!=current:
+                c.rollback();return None,dict(pr),False,'privacy_request_finalized'
+            if current==str(status) and (pr.get('admin_note') or None)==note:
+                c.rollback()
+                return {k:as_json(v) for k,v in dict(pr).items()},dict(pr),False,None
+            cur.execute("""update privacy_requests
+                           set status=%s,admin_note=%s,
+                               resolved_at=case when %s in ('completed','rejected') then coalesce(resolved_at,now()) else null end
+                           where id=%s returning *""",
+                        (status,note,status,int(pid)))
+            row=dict(cur.fetchone())
+        c.commit()
+        return {k:as_json(v) for k,v in row.items()},dict(pr),True,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def friendly_device(user_agent):
+    ua=str(user_agent or '')[:500]; low=ua.lower()
+    if 'ipad' in low:return 'iPad'
+    if 'iphone' in low:return 'iPhone'
+    if 'android' in low and ('tv' in low or 'aft' in low):return 'Android TV'
+    if 'android' in low:return 'Android'
+    if 'windows' in low:return 'Windows'
+    if 'macintosh' in low or 'mac os' in low:return 'Mac'
+    if 'linux' in low:return 'Linux'
+    return 'متصفح'
+
+
+def log_account_activity(user_id,event_type,label,session_id=None,meta=None):
+    try:q("insert into account_activity(user_id,session_id,event_type,label,meta) values(%s,%s,%s,%s,%s::jsonb)",(user_id,session_id,event_type,str(label or '')[:180],json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as e:print('ACCOUNT_ACTIVITY_ERR',repr(e),flush=True)
+
+def admin_audit(admin_id,action,target_type=None,target_id=None,details=None):
+    try:q("insert into admin_audit_logs(admin_id,action,target_type,target_id,details) values(%s,%s,%s,%s,%s::jsonb)",(admin_id,str(action)[:120],str(target_type or '')[:80] or None,str(target_id or '')[:120] or None,json.dumps(details or {},ensure_ascii=False)),None)
+    except Exception as e:print('ADMIN_AUDIT_ERR',repr(e),flush=True)
+
+def legal_versions(): return {'terms':LEGAL_TERMS_VERSION,'privacy':LEGAL_PRIVACY_VERSION,'marketplace_rules':LEGAL_MARKETPLACE_VERSION}
+
+def legal_status(user_id):
+    accepted={(x['document'],x['version']) for x in q('select document,version from legal_acceptances where user_id=%s',(user_id,))}
+    docs={k:{'version':v,'accepted':(k,v) in accepted} for k,v in legal_versions().items()}
+    return {'complete':all(x['accepted'] for x in docs.values()),'documents':docs}
+
+def accept_legal_versions_atomic(user_id,documents,session_id=None):
+    valid=legal_versions();seen=set();requested=[]
+    for doc in documents or []:
+        doc=str(doc)
+        if doc in valid and doc not in seen:
+            seen.add(doc);requested.append(doc)
+    c=db_connect();changed=[]
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            for doc in requested:
+                cur.execute("""insert into legal_acceptances(user_id,document,version)
+                               values(%s,%s,%s) on conflict do nothing
+                               returning document""",(int(user_id),doc,valid[doc]))
+                row=cur.fetchone()
+                if row:changed.append(str(row['document']))
+            if changed:
+                cur.execute("""insert into account_activity(user_id,session_id,event_type,label,meta)
+                               values(%s,%s,'legal_acceptance',%s,%s::jsonb)""",
+                            (int(user_id),session_id,'تمت الموافقة على المستندات القانونية الحالية',json.dumps({'documents':changed},ensure_ascii=False)))
+        c.commit()
+        return changed,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def legal_action_precondition(user_id):
+    status=legal_status(user_id)
+    if status['complete']:return None
+    missing=[k for k,x in status['documents'].items() if not x['accepted']]
+    return {'error':'legal_acceptance_required','missing_documents':missing,'documents':status['documents']}
+
+def onboarding_status(user_id,role):
+    legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
+    if role=='freelancer':
+        fp=q('select bio,skills,is_available from freelancer_profiles where user_id=%s',(user_id,),'one') or {}; portfolio=q('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(user_id,),'one') or {'n':0}
+        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إضافة نبذة مهنية','done':bool(str(fp.get('bio') or '').strip()),'required':True},{'key':'skills','label':'إضافة 3 مهارات على الأقل','done':len(fp.get('skills') or [])>=3,'required':True},{'key':'availability','label':'تحديد حالة التوفر','done':bool(fp.get('is_available')),'required':False},{'key':'portfolio','label':'إضافة نموذج عمل','done':int(portfolio.get('n') or 0)>0,'required':False}]
+    else:
+        cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
+        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
+    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
+
+def session_token_from_headers(headers):
+    h=str(headers.get('Authorization') or '').strip()
+    if h.startswith('Bearer '):
+        raw=h[7:].strip()
+        if raw:return raw,'bearer'
+    cookie=str(headers.get('Cookie') or '')
+    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    return (m.group(1),'cookie') if m else ('','')
+
+def auth(headers):
+    raw,transport=session_token_from_headers(headers)
+    if not raw:return None
+    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
+                    s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
+                    s.last_seen_at session_last_seen_at,s.device_label session_device_label
+             from sessions s join users u on u.id=s.user_id
+             where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() limit 1""",
+          (sha(raw+SECRET),), 'one')
+    if row:
+        row['_auth_transport']=transport
+        try:
+            q("update sessions set last_seen_at=now() where id=%s and (last_seen_at is null or last_seen_at<now()-interval '10 minutes')",(row['session_id'],),None)
+        except Exception:
+            pass
+    return row
+
+def refresh_freelancer(fid):
+    try:
+        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
     except Exception:
         pass
 
-def interaction_restricted(a,b):
+
+def ensure_timeline_schema():
+    q("""create table if not exists order_events(
+        id bigserial primary key,
+        order_id bigint not null references orders(id) on delete cascade,
+        actor_id bigint references users(id),
+        event_type text not null,
+        title text not null,
+        details text,
+        meta jsonb not null default '{}'::jsonb,
+        created_at timestamptz not null default now()
+    );
+    create index if not exists idx_order_events_order on order_events(order_id,created_at);""",(),None)
+
+def log_order_event(order_id,event_type,title,actor_id=None,details=None,meta=None):
     try:
-        a=int(a);b=int(b)
-    except Exception:
-        return True
-    if a==b:return False
-    return bool(q("""select 1 where
-        exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
-        or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
-        limit 1""",(a,b,b,a,a,b),'one'))
+        q("insert into order_events(order_id,actor_id,event_type,title,details,meta) values(%s,%s,%s,%s,%s,%s::jsonb)",(order_id,actor_id,event_type,title,(details or None),json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as e:
+        print('EVENT_ERR',repr(e),flush=True)
 
-def task_hidden(task_id):
-    try:return bool(q('select 1 from task_moderation where task_id=%s and hidden=true',(int(task_id),),'one'))
-    except Exception:return False
-
-class H(BaseHTTPRequestHandler):
-    server_version=f'MINJAZ/{VERSION}'
-    def request_id(self):
-        if not hasattr(self,'_request_id'):
-            incoming=str(self.headers.get('X-Request-ID') or '').strip()[:80]
-            self._request_id=incoming if re.fullmatch(r'[A-Za-z0-9._:-]{8,80}',incoming or '') else uuid.uuid4().hex
-        return self._request_id
-    def client_ip(self):
-        candidates=[]
-        if ON_RAILWAY:candidates.append(str(self.headers.get('X-Real-IP') or '').strip())
-        candidates.append(str(self.client_address[0] if self.client_address else '').strip())
-        for value in candidates:
-            if not value:continue
-            try:return str(ipaddress.ip_address(value))
-            except ValueError:continue
-        return ''
-    def client_key(self):
-        ip=self.client_ip()
-        return sha(ip+':'+SECRET)[:32] if ip else 'unknown'
-    def log_message(self, fmt,*args): print('REQ',self.request_id(),fmt%args, flush=True)
-    def _queue_cookie(self,value):
-        if not hasattr(self,'_set_cookie_headers'):self._set_cookie_headers=[]
-        self._set_cookie_headers.append(value)
-    def set_session_cookie(self,raw):
-        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
-        self._queue_cookie(f"{SESSION_COOKIE_NAME}={raw}; Path=/; Max-Age={SESSION_COOKIE_MAX_AGE}; HttpOnly; SameSite=Strict{secure}")
-    def clear_session_cookie(self):
-        secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
-        self._queue_cookie(f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{secure}")
-    def _headers(self,status=200,ctype='application/json; charset=utf-8'):
-        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
-        self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
-        csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        if IS_PROD: csp+='; upgrade-insecure-requests'
-        self.send_header('Content-Security-Policy',csp)
-        if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
-        origin=(self.headers.get('Origin') or '').rstrip('/')
-        if origin and origin in CORS_ORIGINS:
-            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
-        for cookie in getattr(self,'_set_cookie_headers',[]):self.send_header('Set-Cookie',cookie)
-        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
-    def sendj(self,status,obj):
-        if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
-        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
-    def raw_body(self):
-        if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
-        n=int(self.headers.get('Content-Length','0') or 0)
-        if n>2_000_000: raise ValueError('too_large')
-        self._raw_body_cache=self.rfile.read(n) if n else b''
-        return self._raw_body_cache
-    def body(self):
-        raw=self.raw_body()
-        try:
-            return json.loads(raw or b'{}')
-        except json.JSONDecodeError as exc:
-            raise ValueError('invalid_json') from exc
-    def require(self,role=None):
-        u=auth(self.headers)
-        if not u: self.sendj(401,{'error':'unauthorized'}); return None
-        if role and u.get('role')!=role: self.sendj(403,{'error':role+'_only'}); return None
-        return u
-    def do_OPTIONS(self): self._headers(204)
-    def do_GET(self): self.route('GET')
-    def do_POST(self): self.route('POST')
-    def do_PATCH(self): self.route('PATCH')
-    def do_DELETE(self): self.route('DELETE')
-    def route(self,method):
-        try:
-            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
-            if p=='/health':
-                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
-            if method=='GET' and p=='/readiness':
-                checks=[
-                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
-                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
-                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
-                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
-                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
-                    {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
-                    {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
-                    {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
-                    {'key':'legal_review','ok':LEGAL_REVIEW_STATUS=='approved','value':LEGAL_REVIEW_STATUS,'required':True},
-                    {'key':'public_base_url','ok':_https_url(PUBLIC_BASE_URL),'value':PUBLIC_BASE_URL or 'missing','required':True},
-                    {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
-                    {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
-                    {'key':'operational_telemetry','ok':True,'value':'operational_events enabled','required':False},
-                    {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
-                ]
-                commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
-                status=503 if IS_PROD and not commercial else 200
-                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
-            if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
-                if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
-                raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
-                expected=hmac.new(KYC_WEBHOOK_SECRET.encode('utf-8'),raw,hashlib.sha256).hexdigest()
-                if not supplied or not hmac.compare_digest(supplied,expected):return self.sendj(401,{'error':'invalid_signature'})
-                try:b=json.loads(raw or b'{}')
-                except json.JSONDecodeError:return self.sendj(400,{'error':'invalid_json'})
-                try:result=apply_kyc_adapter_event(b)
-                except AdapterEventError as exc:return self.sendj(exc.status,{'error':exc.code})
-                if result.get('duplicate'):return self.sendj(200,{'ok':True,'duplicate':True})
-                if result.get('changed'):notify(result['user_id'],'تحديث توثيق الهوية',{'approved':'تم اعتماد التوثيق','rejected':'تعذر اعتماد التوثيق','pending':'التوثيق قيد المراجعة'}[result['status']],'kyc')
-                return self.sendj(200,{'ok':True})
-            if method=='POST' and p=='/api/v1/integrations/payments/webhook':
-                if PAYMENT_MODE!='adapter' or len(PAYMENT_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'payment_webhook_not_configured'})
+def order_timeline(order_id):
+    o=q("select o.*,t.title task_title from orders o join tasks t on t.id=o.task_id where o.id=%s",(order_id,),'one')
+    if not o:return []
+    ev=[]
+    def add(ts,kind,title,details=None,actor=None,meta=None):
+        if not ts:return
+        ev.append({'created_at':ts,'type':kind,'title':title,'details':details,'actor_name':actor,'meta':meta or {}})
+    add(o.get('created_at'),'order_created','تم اختيار العرض وإنشاء الطلب',o.get('task_title'))
+    fo

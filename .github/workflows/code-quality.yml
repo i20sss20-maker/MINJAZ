@@ -31,6 +31,8 @@ jobs:
           grep -q "ThreadingHTTPServer" server.py
           grep -q "/health" server.py
           grep -q "/readiness" server.py
+          grep -q "/api/v1/push/config" server.py
+          grep -q "PUSH_ADAPTER_URL" server.py
           grep -q "dispute_finalized" server.py
           grep -q "privacy_request_finalized" server.py
           grep -q "kyc_managed_by_provider" server.py
@@ -220,6 +222,9 @@ jobs:
           assert "تقييم العميل" in ui
           assert "reviewAvg.toFixed(1)" in ui
           assert "credentials:'same-origin'" in ui
+          assert '/minjaz-push-v312.js' in ui
+          assert "p=='/api/v1/push/config'" in server
+          assert "p=='/api/v1/telemetry/client'" in server
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
           print("MINJAZ_AUTH_UI_INVARIANTS_OK")
           PY
@@ -238,6 +243,14 @@ jobs:
           print("INLINE_SCRIPTS", len(scripts))
           PY
           node --check /tmp/minjaz-inline.js
+
+      - name: Check modular JavaScript
+        run: |
+          set -euo pipefail
+          node --check public/minjaz-push-v312.js
+          node --check services/push/server.js
+          grep -q "self.addEventListener('push'" public/sw.js
+          grep -q "web-v31.2" public/sw.js
 
       - name: Compile E2E test suites
         run: |

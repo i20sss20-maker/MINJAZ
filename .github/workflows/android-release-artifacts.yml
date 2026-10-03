@@ -77,3 +77,55 @@ jobs:
             /tmp/MINJAZ-release.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Detect production signing material
+        id: signing
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.MINJAZ_ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.MINJAZ_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MINJAZ_ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.MINJAZ_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Production signing secrets are not configured; unsigned artifacts remain available."
+          fi
+
+      - name: Sign production APK and AAB
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.MINJAZ_ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.MINJAZ_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MINJAZ_ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.MINJAZ_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE=/tmp/minjaz-release.jks
+          SIGNED_APK=/tmp/MINJAZ-0.10-production-signed.apk
+          SIGNED_AAB=/tmp/MINJAZ-0.10-production-signed.aab
+          printf '%s' "$KS_B64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          cp android-preview/app/build/outputs/bundle/release/app-release.aab "$SIGNED_AAB"
+          apksigner sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$SIGNED_APK" android-preview/app/build/outputs/apk/release/app-release-unsigned.apk
+          jarsigner -keystore "$KEYSTORE" -storepass "$KS_PASS" -keypass "$KEY_PASS" "$SIGNED_AAB" "$KEY_ALIAS"
+          apksigner verify --verbose "$SIGNED_APK"
+          jarsigner -verify "$SIGNED_AAB"
+          sha256sum "$SIGNED_APK" "$SIGNED_AAB" | tee /tmp/MINJAZ-production-signed.sha256
+          rm -f "$KEYSTORE"
+
+      - name: Upload production signed artifacts
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-0.10-production-signed
+          path: |
+            /tmp/MINJAZ-0.10-production-signed.apk
+            /tmp/MINJAZ-0.10-production-signed.aab
+            /tmp/MINJAZ-production-signed.sha256
+          if-no-files-found: error
+          retention-days: 30

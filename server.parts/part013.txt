@@ -1,3 +1,58 @@
+ctive_request_exists':return self.sendj(409,{'error':err})
+                    if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
+                    if err:return self.sendj(409,{'error':err})
+                    req['idempotent_replay']=bool(replayed)
+                    return self.sendj(200 if replayed else 201,req)
+            if p.startswith('/api/admin'):
+                u=self.require('admin');
+                if not u:return
+                if p=='/api/admin/summary' and method=='GET':
+                    return self.sendj(200,{'users':q('select count(*)::int n from users',(), 'one')['n'],'tasks':q('select count(*)::int n from tasks',(), 'one')['n'],'orders':q('select count(*)::int n from orders',(), 'one')['n'],'open_support':q("select count(*)::int n from support_tickets where status='open'",(), 'one')['n'],'pending_privacy':q("select count(*)::int n from privacy_requests where status='pending'",(), 'one')['n'],'open_disputes':q("select count(*)::int n from order_disputes where status in ('open','in_review')",(), 'one')['n']})
+                if p=='/api/admin/operations' and method=='GET':
+                    metrics={'new_users_24h':q("select count(*)::int n from users where created_at>now()-interval '24 hours'",(), 'one')['n'],'open_tasks':q("select count(*)::int n from tasks where status='open'",(), 'one')['n'],'awaiting_payment':q("select count(*)::int n from orders where status='awaiting_payment'",(), 'one')['n'],'active_orders':q("select count(*)::int n from orders where status in ('in_progress','revision_requested')",(), 'one')['n'],'delivered_waiting':q("select count(*)::int n from orders where status='delivered'",(), 'one')['n'],'open_disputes':q("select count(*)::int n from order_disputes where status in ('open','in_review')",(), 'one')['n'],'pending_cancellations':q("select count(*)::int n from order_cancellation_requests where status in ('pending','in_review')",(), 'one')['n'],'pending_payouts':q("select count(*)::int n from payout_requests where status in ('pending','processing')",(), 'one')['n'],'open_safety_reports':q("select count(*)::int n from safety_reports where status in ('open','in_review')",(), 'one')['n'],'open_support':q("select count(*)::int n from support_tickets where status in ('open','in_progress')",(), 'one')['n'],'pending_privacy':q("select count(*)::int n from privacy_requests where status in ('pending','in_progress')",(), 'one')['n']}
+                    funnel={'tasks_7d':q("select count(*)::int n from tasks where created_at>now()-interval '7 days'",(), 'one')['n'],'proposals_7d':q("select count(*)::int n from proposals where created_at>now()-interval '7 days'",(), 'one')['n'],'orders_7d':q("select count(*)::int n from orders where created_at>now()-interval '7 days'",(), 'one')['n'],'completed_7d':q("select count(*)::int n from orders where completed_at>now()-interval '7 days'",(), 'one')['n']}
+                    obs=operational_snapshot()
+                    return self.sendj(200,{'metrics':metrics,'funnel':funnel,'audit':q("select aal.*,u.name admin_name from admin_audit_logs aal join users u on u.id=aal.admin_id order by aal.created_at desc limit 40"),'operational':obs})
+                if p=='/api/admin/disputes' and method=='GET':
+                    return self.sendj(200,{'items':q("select d.*,t.title,cu.name client_name,fu.name freelancer_name,ou.name opened_by_name from order_disputes d join orders o on o.id=d.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ou on ou.id=d.opened_by order by case when d.status in ('open','in_review') then 0 else 1 end,d.created_at desc limit 300")})
+                m=re.fullmatch(r'/api/admin/disputes/(\d+)',p)
+                if m and method=='PATCH':
+                    b=self.body();did=int(m.group(1));st=str(b.get('status') or '')
+                    res,d,refund,err=admin_transition_dispute(did,u['id'],st,b.get('action'),b.get('resolution_note'))
+                    if err=='dispute_not_found':return self.sendj(404,{'error':err})
+                    if err in ('dispute_finalized','invalid_dispute_state','task_not_found'):
+                        return self.sendj(409,{'error':err,**({'state':d.get('status')} if err=='invalid_dispute_state' and d else {})})
+                    if err:return self.sendj(400,{'error':err})
+                    replayed=bool((res or {}).get('idempotent_replay'))
+                    if st=='in_review':
+                        if not replayed:admin_audit(u['id'],'dispute_in_review','dispute',did)
+                        return self.sendj(200,res)
+                    action=str(b.get('action') or '')
+                    if not replayed and refund=='manual_required':
+                        operational_event('warning','payment','dispute_cancel_refund_required','Cancelled dispute has a paid order that requires provider refund',self.request_id(),u['id'],'order',d['order_id'],{'dispute_id':did})
+                        notify_admins('استرداد مطلوب بعد إلغاء نزاع',f"الطلب #{d['order_id']} مدفوع وتم إلغاؤه بقرار نزاع؛ يلزم تنفيذ الاسترداد لدى مزود الدفع",'payment',d['order_id'])
+                    if not replayed:
+                        ttl='تم استئناف الطلب بعد النزاع' if action=='resume' else 'تم إلغاء الطلب بعد النزاع'
+                        msg=str(b.get('resolution_note') or '')[:180]
+                        if refund=='manual_required':msg=(msg+' · جارٍ معالجة استرداد المبلغ').strip(' ·')
+                        notify(d['client_id'],ttl,msg or None,'dispute',d['order_id']);notify(d['freelancer_id'],ttl,msg or None,'dispute',d['order_id'])
+                        admin_audit(u['id'],'dispute_resolved','dispute',did,{'action':action,'refund_status':refund})
+                    return self.sendj(200,{**res,'refund_status':refund,'refund_action_required':refund=='manual_required'})
+                if p=='/api/admin/cancellations' and method=='GET':
+                    return self.sendj(200,{'items':q("select cr.*,t.title,o.payment_status,o.amount,cu.name client_name,fu.name freelancer_name,ru.name requested_by_name from order_cancellation_requests cr join orders o on o.id=cr.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ru on ru.id=cr.requested_by order by case when cr.status in ('pending','in_review') then 0 else 1 end,cr.created_at desc limit 300")})
+                m=re.fullmatch(r'/api/admin/cancellations/(\d+)',p)
+                if m and method=='PATCH':
+                    cid=int(m.group(1));b=self.body()
+                    mark_refunded=b.get('refund_status')=='refunded'
+                    st=str(b.get('status') or '')
+                    r,cr,refund,err=admin_transition_cancellation(cid,u['id'],st,b.get('admin_note'),mark_refunded)
+                    if err=='cancellation_not_found':return self.sendj(404,{'error':err})
+                    if err in ('cancellation_finalized','refund_not_markable','task_not_found'):return self.sendj(409,{'error':err})
+                    if err:return self.sendj(400,{'error':err})
+                    replayed=bool((r or {}).get('idempotent_replay'))
+                    if mark_refunded:
+                        if not replayed:
+                            notify(cr['client_id'],'تم تحديث حالة الاسترداد','تم تسجيل المبلغ كمسترد بعد المعالجة لدى مزود الدفع','cancellation',cr['order_id'])
                             admin_audit(u['id'],'cancellation_refund_marked','cancellation',cid,{'refund_status':'refunded'})
                         return self.sendj(200,r)
                     note=str(b.get('admin_note') or '')[:3000] or None

@@ -1,4 +1,4 @@
-import os, json, hashlib, secrets, uuid, re, hmac, ipaddress
+import os, json, hashlib, secrets, uuid, re, hmac, ipaddress, threading
 import urllib.request, urllib.error
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
@@ -49,6 +49,9 @@ PAYMENT_WEBHOOK_SECRET=os.getenv('PAYMENT_WEBHOOK_SECRET','').strip()
 KYC_START_URL=os.getenv('KYC_START_URL','').strip()
 KYC_ADAPTER_BEARER=os.getenv('KYC_ADAPTER_BEARER','').strip()
 KYC_WEBHOOK_SECRET=os.getenv('KYC_WEBHOOK_SECRET','').strip()
+PUSH_MODE=os.getenv('PUSH_MODE','off').strip().lower()
+PUSH_ADAPTER_URL=os.getenv('PUSH_ADAPTER_URL','').strip().rstrip('/')
+PUSH_ADAPTER_BEARER=os.getenv('PUSH_ADAPTER_BEARER','').strip()
 _cors_raw=os.getenv('CORS_ORIGINS',os.getenv('CORS_ORIGIN','https://minjaz-unified-production.up.railway.app'))
 CORS_ORIGINS={x.strip().rstrip('/') for x in _cors_raw.split(',') if x.strip()}
 
@@ -1043,6 +1046,48 @@ def operational_snapshot():
     except Exception as exc:
         return {'counts':{'events_15m':0,'errors_15m':0,'errors_24h':0,'last_event_at':None},'recent':[],'telemetry_error':str(exc)[:120]}
 
+def push_adapter_request(path,payload=None,method='POST'):
+    if PUSH_MODE!='adapter' or not _https_url(PUSH_ADAPTER_URL) or len(PUSH_ADAPTER_BEARER)<24:
+        return None,'push_not_configured'
+    clean_path='/' + str(path or '').lstrip('/')
+    url=PUSH_ADAPTER_URL+clean_path
+    data=None if payload is None else json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+    headers={'Accept':'application/json','Authorization':'Bearer '+PUSH_ADAPTER_BEARER}
+    if data is not None:headers['Content-Type']='application/json'
+    req=urllib.request.Request(url,data=data,headers=headers,method=method)
+    try:
+        with urllib.request.urlopen(req,timeout=3.5) as response:
+            raw=response.read(512000)
+            return (json.loads(raw or b'{}') if raw else {}),None
+    except urllib.error.HTTPError as exc:
+        try:body=exc.read(2000).decode('utf-8','replace')
+        except Exception:body=''
+        operational_event('warning','push','adapter_http_error',body or str(exc),None,None,'push_adapter',str(getattr(exc,'code','')),{'path':clean_path})
+        return None,'push_adapter_error'
+    except Exception as exc:
+        operational_event('warning','push','adapter_unavailable',repr(exc),None,None,'push_adapter',None,{'path':clean_path})
+        return None,'push_adapter_unavailable'
+
+def push_destination(order_id=None,task_id=None):
+    if order_id:return '/#orders'
+    if task_id:return '/#tasks'
+    return '/#notifications'
+
+def dispatch_push_async(user_id,title,body=None,kind='general',order_id=None,task_id=None):
+    if PUSH_MODE!='adapter' or not _https_url(PUSH_ADAPTER_URL) or len(PUSH_ADAPTER_BEARER)<24:return
+    payload={
+        'user_id':int(user_id),
+        'title':str(title or '')[:180],
+        'body':str(body or '')[:1200] or None,
+        'kind':str(kind or 'general')[:80],
+        'order_id':int(order_id) if order_id else None,
+        'task_id':int(task_id) if task_id else None,
+        'url':push_destination(order_id,task_id)
+    }
+    def _send():
+        push_adapter_request('/v1/send',payload,'POST')
+    threading.Thread(target=_send,name='minjaz-push',daemon=True).start()
+
 def ensure_schema():
     q("""create table if not exists order_disputes(
         id bigserial primary key,
@@ -2014,6 +2059,7 @@ def ensure_engagement_schema():
 def notify(user_id,title,body=None,kind='general',order_id=None,task_id=None):
     try:
         q("insert into user_notifications_v2(user_id,order_id,task_id,kind,title,body) values(%s,%s,%s,%s,%s,%s)",(user_id,order_id,task_id,kind,title[:180],(body or '')[:1200] or None),None)
+        dispatch_push_async(user_id,title,body,kind,order_id,task_id)
     except Exception as e:
         print('NOTIFY_ERR',repr(e),flush=True)
 
@@ -2109,7 +2155,7 @@ class H(BaseHTTPRequestHandler):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
             if p=='/health':
-                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
+                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
                 checks=[
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
@@ -2125,6 +2171,7 @@ class H(BaseHTTPRequestHandler):
                     {'key':'cors_origins','ok':bool(CORS_ORIGINS) and '*' not in CORS_ORIGINS and all(_https_url(x) for x in CORS_ORIGINS),'value':','.join(sorted(CORS_ORIGINS)),'required':True},
                     {'key':'runtime_schema_ensure','ok':not RUN_RUNTIME_SCHEMA_ENSURE,'value':'off' if not RUN_RUNTIME_SCHEMA_ENSURE else 'on','required':True},
                     {'key':'operational_telemetry','ok':True,'value':'operational_events enabled','required':False},
+                    {'key':'push_provider','ok':PUSH_MODE=='adapter' and _https_url(PUSH_ADAPTER_URL) and len(PUSH_ADAPTER_BEARER)>=24,'value':PUSH_MODE,'required':False},
                     {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
                 ]
                 commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
@@ -2170,9 +2217,9 @@ class H(BaseHTTPRequestHandler):
                 ]})
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8'}[p]
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':
@@ -3173,6 +3220,48 @@ class H(BaseHTTPRequestHandler):
                 if not o:return self.sendj(404,{'error':'order_not_found'})
                 rows=q("update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and order_id=%s and kind='message' and read_at is null returning id",(uid,oid))
                 return self.sendj(200,{'ok':True,'order_id':oid,'updated':len(rows or [])})
+
+            if p=='/api/v1/push/config' and method=='GET':
+                u=self.require();
+                if not u:return
+                if PUSH_MODE!='adapter' or not _https_url(PUSH_ADAPTER_URL) or len(PUSH_ADAPTER_BEARER)<24:
+                    return self.sendj(200,{'enabled':False,'mode':PUSH_MODE})
+                out,err=push_adapter_request('/v1/config',None,'GET')
+                if err or not isinstance(out,dict) or not out.get('public_key'):
+                    return self.sendj(200,{'enabled':False,'mode':PUSH_MODE,'status':'unavailable'})
+                return self.sendj(200,{'enabled':True,'mode':'adapter','public_key':str(out.get('public_key'))[:512]})
+            if p=='/api/v1/push/subscriptions' and method in ('POST','DELETE'):
+                u=self.require();
+                if not u:return
+                if PUSH_MODE!='adapter' or not _https_url(PUSH_ADAPTER_URL) or len(PUSH_ADAPTER_BEARER)<24:
+                    return self.sendj(503,{'error':'push_not_configured'})
+                b=self.body();sub=b.get('subscription') if isinstance(b,dict) else None
+                if method=='DELETE' and not sub:
+                    sub={'endpoint':b.get('endpoint') if isinstance(b,dict) else None}
+                if not isinstance(sub,dict):return self.sendj(400,{'error':'invalid_push_subscription'})
+                endpoint=str(sub.get('endpoint') or '').strip()
+                if not _https_url(endpoint) or len(endpoint)>2048:return self.sendj(400,{'error':'invalid_push_endpoint'})
+                if method=='POST':
+                    keys=sub.get('keys') or {}
+                    p256dh=str(keys.get('p256dh') or '').strip();auth_key=str(keys.get('auth') or '').strip()
+                    if not p256dh or not auth_key or len(p256dh)>512 or len(auth_key)>512:return self.sendj(400,{'error':'invalid_push_keys'})
+                    payload={'user_id':int(u['id']),'subscription':{'endpoint':endpoint,'expirationTime':sub.get('expirationTime'),'keys':{'p256dh':p256dh,'auth':auth_key}},'user_agent':str(self.headers.get('User-Agent') or '')[:500]}
+                    out,err=push_adapter_request('/v1/subscriptions',payload,'POST')
+                    if err:return self.sendj(503,{'error':'push_unavailable'})
+                    return self.sendj(201,{'ok':True,'registered':True})
+                out,err=push_adapter_request('/v1/subscriptions',{'user_id':int(u['id']),'endpoint':endpoint},'DELETE')
+                if err:return self.sendj(503,{'error':'push_unavailable'})
+                return self.sendj(200,{'ok':True,'registered':False})
+            if p=='/api/v1/telemetry/client' and method=='POST':
+                u=self.require();
+                if not u:return
+                b=self.body();area=re.sub(r'[^a-zA-Z0-9_.-]','_',str(b.get('area') or 'web'))[:60];code=re.sub(r'[^a-zA-Z0-9_.-]','_',str(b.get('code') or 'client_event'))[:100]
+                level=str(b.get('level') or 'warning').lower()
+                if level not in ('info','warning','error'):level='warning'
+                meta=b.get('meta') if isinstance(b.get('meta'),dict) else {}
+                safe_meta={str(k)[:80]:str(v)[:300] for k,v in list(meta.items())[:12]}
+                operational_event(level,'client.'+area,code,str(b.get('message') or '')[:500] or None,self.request_id(),u['id'],'client',str(u['id']),safe_meta)
+                return self.sendj(202,{'ok':True})
 
             if p=='/api/v1/notifications' and method=='GET':
                 u=self.require();
