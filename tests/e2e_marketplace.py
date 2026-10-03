@@ -315,6 +315,18 @@ def run():
     )
     proposal_id = proposal["id"]
 
+    proposal_history_sent = call(
+        "GET",
+        "/api/v1/freelancer/proposals",
+        token=freelancer_token,
+        expected=(200,),
+    ).get("items") or []
+    history_sent = next((x for x in proposal_history_sent if int(x.get("id") or 0) == int(proposal_id)), None)
+    assert history_sent, proposal_history_sent
+    assert history_sent.get("proposal_status") == "sent", history_sent
+    assert int(history_sent.get("task_id") or 0) == int(task_id), history_sent
+    assert history_sent.get("order_id") is None, history_sent
+
     # Concurrent retries of the same invite must resolve to one logical invitation and one notification.
     invite_payload = {"task_id": task_id, "note": "دعوة اختبار للمستقل قبل اعتماد العرض."}
     invite_barrier = Barrier(2)
@@ -355,6 +367,19 @@ def run():
     order = call("POST", "/api/v1/orders", {"proposal_id": proposal_id}, client_token)
     order_id = order["id"]
     assert order["status"] == "awaiting_payment", order
+
+    proposal_history_selected = call(
+        "GET",
+        "/api/v1/freelancer/proposals",
+        token=freelancer_token,
+        expected=(200,),
+    ).get("items") or []
+    history_selected = next((x for x in proposal_history_selected if int(x.get("id") or 0) == int(proposal_id)), None)
+    assert history_selected, proposal_history_selected
+    assert history_selected.get("proposal_status") == "accepted", history_selected
+    assert int(history_selected.get("order_id") or 0) == int(order_id), history_selected
+    assert history_selected.get("order_status") == "awaiting_payment", history_selected
+    assert history_selected.get("payment_status") == "unpaid", history_selected
 
     paid = call("POST", f"/api/v1/orders/{order_id}/pay", {}, client_token)
     assert paid.get("ok") is True and paid.get("mode") == "mock", paid
@@ -434,6 +459,17 @@ def run():
     assert final_order["payment_status"] == "paid", final_order
     assert final_order.get("review_id"), final_order
 
+    proposal_history_completed = call(
+        "GET",
+        "/api/v1/freelancer/proposals",
+        token=freelancer_token,
+        expected=(200,),
+    ).get("items") or []
+    history_completed = next((x for x in proposal_history_completed if int(x.get("id") or 0) == int(proposal_id)), None)
+    assert history_completed and history_completed.get("proposal_status") == "accepted", history_completed
+    assert history_completed.get("order_status") == "completed", history_completed
+    assert history_completed.get("payment_status") == "paid", history_completed
+
     earnings = call(
         "GET",
         "/api/v1/freelancer/earnings",
@@ -475,6 +511,7 @@ def run():
         "onboarding_completion_100": True,
         "tasks": True,
         "proposals": True,
+        "freelancer_proposal_history": True,
         "orders": True,
         "payment_mock": True,
         "messages": True,
