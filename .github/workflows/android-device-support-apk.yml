@@ -59,6 +59,8 @@ jobs:
           test -s "$APK"
           aapt dump badging "$APK" | tee /tmp/minjaz-badging.txt
           grep -q "package: name='sa.minjaz.preview'" /tmp/minjaz-badging.txt
+          grep -q "versionCode='10'" /tmp/minjaz-badging.txt
+          grep -q "versionName='0.10-android-stability'" /tmp/minjaz-badging.txt
           grep -q "targetSdkVersion:'36'" /tmp/minjaz-badging.txt
           grep -q "sdkVersion:'24'" /tmp/minjaz-badging.txt
           sha256sum "$APK" | tee /tmp/MINJAZ-device-support.apk.sha256
