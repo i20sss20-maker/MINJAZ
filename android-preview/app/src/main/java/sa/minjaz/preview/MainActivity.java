@@ -475,10 +475,29 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        applySystemChrome();
         if (webView != null) {
             webView.onResume();
-            if (webView.getUrl() == null && webView.copyBackForwardList().getSize() == 0) {
+            String current = webView.getUrl();
+            if (current == null && webView.copyBackForwardList().getSize() == 0) {
                 loadLaunchDestination(getIntent());
+            } else if (current != null) {
+                try {
+                    Uri currentUri = Uri.parse(current);
+                    if (isInternalUri(currentUri)) {
+                        String currentLang = currentUri.getQueryParameter("app_lang");
+                        if (!localeCode().equalsIgnoreCase(currentLang)) {
+                            webView.loadUrl(
+                                currentUri.buildUpon()
+                                    .clearQuery()
+                                    .appendQueryParameter("app_lang", localeCode())
+                                    .build()
+                                    .toString()
+                            );
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
             }
         }
     }
