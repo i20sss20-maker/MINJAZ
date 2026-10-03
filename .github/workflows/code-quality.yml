@@ -32,6 +32,8 @@ jobs:
           grep -q "/health" server.py
           grep -q "/readiness" server.py
           grep -q "/api/v1/push/config" server.py
+          grep -q "def execute_account_deletion" server.py
+          grep -q "account_deletion_executed" server.py
           grep -q "PUSH_ADAPTER_URL" server.py
           grep -q "dispute_finalized" server.py
           grep -q "privacy_request_finalized" server.py
@@ -447,6 +449,23 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:3000
           E2E_EXIT_AFTER_RUN: "1"
         run: python tests/e2e_money_precision.py
+
+      - name: Reset OTP buckets before account deletion E2E
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          c=psycopg2.connect(os.environ["DATABASE_URL"])
+          with c, c.cursor() as cur:
+              cur.execute("delete from otp_challenges")
+              cur.execute("delete from security_rate_events where kind='otp_ip'")
+          c.close()
+          PY
+
+      - name: Run account deletion E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_ADMIN_PHONE: "+966599999995"
+        run: python tests/e2e_account_deletion.py
 
       - name: Show server logs on failure
         if: failure()
