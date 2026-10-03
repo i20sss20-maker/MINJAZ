@@ -4,6 +4,7 @@ import random
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 import hashlib
 import psycopg2
 from concurrent.futures import ThreadPoolExecutor
