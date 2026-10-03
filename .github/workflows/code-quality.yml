@@ -249,6 +249,8 @@ jobs:
           set -euo pipefail
           node --check public/minjaz-push-v312.js
           node --check services/push/server.js
+          node --check services/payments/server.js
+          grep -q "moyasar_invoice_links" database/migrations/023_moyasar_invoice_links.sql
           grep -q "self.addEventListener('push'" public/sw.js
           grep -q "web-v31.2" public/sw.js
 
