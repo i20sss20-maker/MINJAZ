@@ -2383,6 +2383,18 @@ async function demoApi(path,opt={}){
   const items=d.proposals.filter(p=>p.freelancer_id===u.id).map(p=>{const t=d.tasks.find(x=>x.id===p.task_id)||{},o=d.orders.find(x=>x.proposal_id===p.id)||null;return {...p,proposal_status:p.status,proposal_created_at:p.created_at,title:t.title||'',description:t.description||'',task_status:t.status||'',urgency:t.urgency||'normal',budget_min:t.budget_min||null,budget_max:t.budget_max||null,due_at:t.due_at||null,task_created_at:t.created_at||null,category_name:demoCategory(d,t.category_id)?.name_ar||'',client_name:demoUser(d,t.client_id)?.name||'',order_id:o?.id||null,order_status:o?.status||null,payment_status:o?.payment_status||null,order_amount:o?.amount||null,order_created_at:o?.created_at||null}}).sort((a,z)=>String(z.proposal_created_at||'').localeCompare(String(a.proposal_created_at||'')));
   return demoResp(200,{items})
  }
+ if(path==='/api/v1/search'&&method==='GET'){
+  const raw=String(query.get('q')||'').trim(),needle=matchNorm(raw),limit=Math.max(1,Math.min(Number(query.get('limit')||6)||6,12));
+  if(raw.length<2)return demoResp(200,{query:raw,items:{tasks:[],orders:[],freelancers:[],messages:[]}});
+  const hit=(...vals)=>needle&&matchNorm(vals.flat().join(' ')).includes(needle);
+  let taskRows=u.role==='client'?d.tasks.filter(x=>x.client_id===u.id):u.role==='freelancer'?d.tasks.filter(x=>x.status==='open'&&x.client_id!==u.id):d.tasks.slice();
+  const tasks=taskRows.filter(x=>hit(x.title,x.description,demoCategory(d,x.category_id)?.name_ar||'')).slice(0,limit).map(x=>({id:x.id,title:x.title,subtitle:demoCategory(d,x.category_id)?.name_ar||'عام',status:x.status,urgency:x.urgency,created_at:x.created_at}));
+  const ownOrders=d.orders.filter(o=>o.client_id===u.id||o.freelancer_id===u.id);
+  const orders=ownOrders.filter(o=>{const t=d.tasks.find(x=>x.id===o.task_id)||{},other=demoUser(d,o.client_id===u.id?o.freelancer_id:o.client_id);return hit(t.title,t.description,other?.name,o.status,o.payment_status)}).slice(0,limit).map(o=>{const t=d.tasks.find(x=>x.id===o.task_id)||{},other=demoUser(d,o.client_id===u.id?o.freelancer_id:o.client_id);return{id:o.id,task_id:o.task_id,title:t.title||'طلب',subtitle:other?.name||'',status:o.status,payment_status:o.payment_status,created_at:o.created_at}});
+  const freelancers=Object.values(d.profiles).map(p=>({...p,name:demoUser(d,p.user_id)?.name||''})).filter(x=>hit(x.name,x.bio,(x.skills||[]).join(' '))).slice(0,limit).map(x=>({user_id:x.user_id,name:x.name,bio:x.bio,skills:x.skills||[],rating:x.rating||0,completed_tasks:x.completed_tasks||0,is_available:!!x.is_available,kyc_status:x.kyc_status||'pending'}));
+  const messages=d.messages.filter(m=>ownOrders.some(o=>o.id===m.order_id)).filter(m=>{const o=d.orders.find(x=>x.id===m.order_id)||{},t=d.tasks.find(x=>x.id===o.task_id)||{},sender=demoUser(d,m.sender_id);return hit(m.body,sender?.name,t.title)}).slice().sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0,limit).map(m=>{const o=d.orders.find(x=>x.id===m.order_id)||{},t=d.tasks.find(x=>x.id===o.task_id)||{},sender=demoUser(d,m.sender_id);return{id:m.id,order_id:m.order_id,title:t.title||'محادثة طلب',sender_name:sender?.name||'',body:String(m.body||'').slice(0,240),created_at:m.created_at}});
+  return demoResp(200,{query:raw,items:{tasks,orders,freelancers,messages}})
+ }
  if(path==='/api/v1/tasks'&&method==='GET'){
     let a=[];
     if(u.role==='client')a=d.tasks.filter(x=>x.client_id===u.id).map(x=>({...x,category_name:demoCategory(d,x.category_id)?.name_ar,proposal_count:d.proposals.filter(p=>p.task_id===x.id).length}));
@@ -5008,7 +5020,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v28</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v28.1</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -6583,7 +6595,7 @@ body{font-size:14px;line-height:1.65}
   function tV28(ar,en){return langV28()==='en'?en:ar}
   function localeV28(){return langV28()==='en'?'en-US':'ar-SA'}
 
-  var baseApiV28=api,cacheV28=new Map(),pendingV28=new Map();
+  var baseApiV28=api,cacheV28=new Map(),pendingV28=new Map(),cacheEpochV28=0;
   function methodV28(opt){return String((opt&&opt.method)||'GET').toUpperCase()}
   function ttlV28(path){
     if(/^\/api\/v1\/search\?/.test(path))return 15000;
@@ -6593,7 +6605,7 @@ body{font-size:14px;line-height:1.65}
     if(/^\/api\/v1\/freelancer\/proposals(?:\?.*)?$/.test(path))return 6000;
     return 0;
   }
-  window.minjazClearApiCacheV28=function(){cacheV28.clear();pendingV28.clear()};
+  window.minjazClearApiCacheV28=function(){cacheEpochV28++;cacheV28.clear();pendingV28.clear()};
   api=async function(path,opt={}){
     var method=methodV28(opt),ttl=method==='GET'?ttlV28(String(path||'')):0;
     if(method!=='GET'){window.minjazClearApiCacheV28();var write=await baseApiV28(path,opt);if(write&&write.r&&write.r.ok)window.minjazClearApiCacheV28();return write}
@@ -6601,9 +6613,10 @@ body{font-size:14px;line-height:1.65}
     var key=String(path),now=Date.now(),hit=cacheV28.get(key);
     if(hit&&now-hit.at<ttl)return hit.value;
     if(pendingV28.has(key))return pendingV28.get(key);
+    var epoch=cacheEpochV28;
     var req=(async function(){
       var value=await baseApiV28(path,opt);
-      if(value&&value.r&&value.r.ok)cacheV28.set(key,{at:Date.now(),value:value});
+      if(epoch===cacheEpochV28&&value&&value.r&&value.r.ok)cacheV28.set(key,{at:Date.now(),value:value});
       return value;
     })();
     pendingV28.set(key,req);
