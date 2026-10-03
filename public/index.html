@@ -5592,7 +5592,10 @@ body{font-size:14px;line-height:1.65}
     var q=(proposalSearchV22||'').trim().toLowerCase();
     return proposalCacheV22.filter(function(p){
       var st=proposalStateV22(p);
-      if(proposalFilterV22!=='all'&&st.key!==proposalFilterV22)return false;
+      if(proposalFilterV22!=='all'){
+        if(proposalFilterV22==='accepted'){if(p.proposal_status!=='accepted')return false}
+        else if(st.key!==proposalFilterV22)return false;
+      }
       if(q&&([p.title,p.client_name,p.category_name,p.message,p.task_id].join(' ').toLowerCase().indexOf(q)<0))return false;
       return true;
     });
@@ -5600,7 +5603,14 @@ body{font-size:14px;line-height:1.65}
   function renderProposalHistoryV22(){
     var host=document.getElementById('tasks');if(!host)return;
     var counts={all:proposalCacheV22.length,sent:0,accepted:0,rejected:0,active:0,completed:0};
-    proposalCacheV22.forEach(function(p){var st=proposalStateV22(p);counts[st.key]=(counts[st.key]||0)+1;if(p.proposal_status==='accepted')counts.accepted++});
+    proposalCacheV22.forEach(function(p){
+      var st=proposalStateV22(p);
+      if(p.proposal_status==='sent')counts.sent++;
+      if(p.proposal_status==='accepted')counts.accepted++;
+      if(p.proposal_status==='rejected')counts.rejected++;
+      if(st.key==='active')counts.active++;
+      if(st.key==='completed')counts.completed++;
+    });
     var rows=proposalRowsV22();
     host.innerHTML=
       '<div class="sectionHead"><div><h2>'+tV22('الفرص والعروض','Opportunities & proposals')+'</h2><p>'+tV22('تابع كل عرض أرسلته حتى بعد انتهاء استقبال العروض.','Track every proposal even after the opportunity closes.')+'</p></div><span class="pill blue">'+proposalCacheV22.length+' '+tV22('عرض','proposals')+'</span></div>'+
