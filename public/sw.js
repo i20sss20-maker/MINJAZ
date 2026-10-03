@@ -1,6 +1,6 @@
-const VERSION='web-v30-2';
+const VERSION='web-v31';
 const CACHE=`minjaz-shell-${VERSION}`;
-const SHELL=['/','/manifest.webmanifest','/icon.svg'];
+const SHELL=['/','/manifest.webmanifest','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.css','/minjaz-work-center-v31.js'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
