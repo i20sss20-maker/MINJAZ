@@ -4274,6 +4274,74 @@ body{font-size:14px;line-height:1.65}
     'مراجعة والموافقة':'Review and accept'
   });
 
+
+  Object.assign(EN,{
+    'الموعد:':'Deadline:',
+    'تم تحديد الإشعارات كمقروءة':'Notifications marked as read',
+    'إرسال العرض':'Send proposal',
+    'تعذر حفظ الإعداد':'Could not save the setting',
+    'تم حفظ الإعداد':'Setting saved',
+    'اكتب اسمًا صحيحًا':'Enter a valid name',
+    'تم تحديث الاسم':'Name updated',
+    'تعذر تصدير البيانات':'Could not export data',
+    'تم تجهيز ملف بياناتك':'Your data file is ready',
+    'مستخدمون جدد 24س':'New users · 24h',
+    'مهام مفتوحة':'Open tasks',
+    'طلبات نشطة':'Active orders',
+    'تسليم ينتظر العميل':'Deliveries awaiting client',
+    'نزاعات مفتوحة':'Open disputes',
+    'إلغاءات معلقة':'Pending cancellations',
+    'سحوبات معلقة':'Pending payouts',
+    'بلاغات أمان':'Safety reports',
+    'مهام':'Tasks',
+    'عروض':'Proposals',
+    'طلبات':'Orders',
+    'نافذة مِنجاز':'MINJAZ window',
+    'رجع الاتصال بالإنترنت':'Internet connection restored',
+    'أنت غير متصل الآن — بعض الإجراءات بتتوقف إلى أن يرجع الإنترنت':'You are offline — some actions will pause until the connection returns',
+    'نجهز الصفحة…':'Preparing the page…',
+    'نجهز الرئيسية…':'Preparing home…',
+    'نحمّل المهام…':'Loading tasks…',
+    'نحمّل الطلبات…':'Loading orders…',
+    'نحمّل المستقلين…':'Loading freelancers…',
+    'نحمّل فريقك…':'Loading your team…',
+    'نحمّل الإشعارات…':'Loading notifications…',
+    'نجهز الحساب…':'Preparing account…',
+    'نحمّل لوحة التشغيل…':'Loading operations dashboard…',
+    'إعادة كل بيانات النسخة التجريبية على هذا المتصفح؟':'Reset all demo data in this browser?',
+    'تم حفظ المسودة تلقائيًا':'Draft saved automatically',
+    'تم مسح المسودة':'Draft cleared',
+    'استعدنا آخر مسودة محفوظة':'Your latest saved draft was restored',
+    'استعدنا رسالة غير مرسلة من هذا الجهاز.':'An unsent message from this device was restored.',
+    'بدون موعد محدد':'No specific deadline',
+    'الموعد':'Deadline',
+    'يوم':'day',
+    'بانتظار مراجعة النزاع':'Awaiting dispute review',
+    'لا يوجد إجراء — الطلب ملغى':'No action — order cancelled',
+    'الطلب مكتمل':'Order completed',
+    'أكمل الدفع لبدء التنفيذ':'Complete payment to start work',
+    'بانتظار دفع العميل':'Awaiting client payment',
+    'نفّذ العمل ثم أرسل التسليم':'Complete the work, then submit delivery',
+    'التنفيذ جاري — تابع المحادثة':'Work in progress — follow the conversation',
+    'نفّذ التعديل وأعد التسليم':'Complete the revision and redeliver',
+    'راجع التسليم: اعتماد أو طلب تعديل':'Review delivery: approve or request a revision',
+    'بانتظار مراجعة العميل':'Awaiting client review',
+    'افتح الطلب لمتابعة الحالة':'Open the order to follow its status',
+    'اسم المهمة أو الطرف الآخر أو رقم الطلب':'Task name, other party, or order number',
+    'كل الحالات':'All statuses',
+    'ملغى':'Cancelled',
+    'كل الحسابات':'All accounts',
+    'محلولة':'Resolved',
+    'معلقة':'Pending',
+    'مرفوضة':'Rejected',
+    'اسم، رقم طلب، حالة أو موضوع':'Name, order number, status, or subject',
+    'اختر نوع الطلب المناسب. طلبات الوصول أو التصحيح أو الحذف تُراجع من الإدارة قبل التنفيذ.':'Choose the appropriate request type. Access, correction, and deletion requests are reviewed by the admin team before processing.',
+    'تقدر تثبّت مِنجاز على جهازك وفتحه كتطبيق مستقل.':'You can install MINJAZ on your device and open it as a standalone app.',
+    'إذا كان متصفحك يدعم التثبيت، راح يظهر خيار التثبيت تلقائيًا.':'If your browser supports installation, the install option will appear automatically.',
+    'الإشعارات —':'Notifications —',
+    'غير مقروء':'unread'
+  });
+
   const PLACEHOLDERS={
     'مثال: صالح':'Example: Saleh',
     'مثال: تصميم، Excel، ترجمة':'Example: design, Excel, translation',
@@ -4325,6 +4393,15 @@ body{font-size:14px;line-height:1.65}
     [/^(\d+)\s*مهمة$/,'$1 tasks']
   );
 
+
+
+  regexRules.push(
+    [/^حظر (.+)؟ سيختفي من الاكتشاف ولن تبدأ تعاملات جديدة بينكما، لكن الطلبات القائمة ستبقى متاحة\.$/,'Block $1? They will disappear from discovery and new interactions will be disabled, while existing orders remain available.'],
+    [/^الإشعارات —\s*(\d+)\s*غير مقروء$/,'Notifications — $1 unread'],
+    [/^(\d+)\s*يوم$/,'$1 days'],
+    [/^(\d+)\s*ساعة$/,'$1 hours'],
+    [/^(\d+)\s*د متوسط الرد$/,'$1d avg. response']
+  );
 
   function translateString(s){
     if(lang!=='en')return s;
@@ -4585,6 +4662,54 @@ body{font-size:14px;line-height:1.65}
   observer.observe(document.body,{childList:true,subtree:true});
   window.addEventListener('storage',e=>{if(e.key==='minjaz_theme_mode')sync()});
   setTimeout(sync,20);
+})();
+</script>
+
+
+<script id="minjazI18nRuntimePolishV16">
+(function(){
+  const lang=()=>window.minjazLangV15?.()||'ar';
+
+  function syncTitle(){
+    const title=document.getElementById('pageTitle')?.textContent?.trim();
+    if(title)document.title=title+(lang()==='en'?' | MINJAZ':' | مِنجاز');
+  }
+
+  function syncNotifA11y(){
+    const b=document.getElementById('notifBtn');
+    if(!b)return;
+    const count=Number(b.querySelector('.notifCount')?.textContent||0);
+    if(lang()==='en'){
+      b.setAttribute('aria-label',count>0?'Notifications — '+count+' unread':'Notifications');
+      b.setAttribute('title','Notifications');
+    }
+  }
+
+  const baseGo=window.go;
+  if(typeof baseGo==='function'){
+    window.go=async function(id){
+      const out=await baseGo(id);
+      syncTitle();
+      syncNotifA11y();
+      return out;
+    };
+  }
+
+  const baseRefresh=window.refreshNotifBadge;
+  if(typeof baseRefresh==='function'){
+    window.refreshNotifBadge=async function(options){
+      const out=await baseRefresh(options);
+      syncNotifA11y();
+      return out;
+    };
+  }
+
+  const observer=new MutationObserver(()=>{
+    syncNotifA11y();
+  });
+  observer.observe(document.body,{childList:true,subtree:true});
+
+  setTimeout(()=>{syncTitle();syncNotifA11y()},80);
 })();
 </script>
 
