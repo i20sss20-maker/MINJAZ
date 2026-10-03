@@ -485,6 +485,48 @@ def run():
     assert "available_balance" in earnings, earnings
     assert isinstance(notifications.get("items"), list), notifications
     assert int(notifications.get("unread") or 0) > 0, notifications
+
+    order_unread_before = [
+        item for item in (notifications.get("items") or [])
+        if int(item.get("order_id") or 0) == int(order_id) and not item.get("read_at")
+    ]
+    assert order_unread_before, notifications
+    group_read = call(
+        "POST",
+        "/api/v1/notifications/read-group",
+        {"order_id": order_id},
+        freelancer_token,
+        expected=(200,),
+    )
+    assert group_read.get("ok") is True and group_read.get("scope") == "order", group_read
+    assert int(group_read.get("order_id") or 0) == int(order_id), group_read
+    assert int(group_read.get("updated") or 0) >= len(order_unread_before), group_read
+
+    after_group_read = call(
+        "GET",
+        "/api/v1/notifications?unread=1",
+        token=freelancer_token,
+        expected=(200,),
+    )
+    assert not any(
+        int(item.get("order_id") or 0) == int(order_id)
+        for item in (after_group_read.get("items") or [])
+    ), after_group_read
+    assert any(
+        int(item.get("task_id") or 0) == int(task_id)
+        for item in (after_group_read.get("items") or [])
+    ), after_group_read
+
+    task_group_read = call(
+        "POST",
+        "/api/v1/notifications/read-group",
+        {"task_id": task_id},
+        freelancer_token,
+        expected=(200,),
+    )
+    assert task_group_read.get("ok") is True and task_group_read.get("scope") == "task", task_group_read
+    assert int(task_group_read.get("task_id") or 0) == int(task_id), task_group_read
+
     call("POST", "/api/v1/notifications/read-all", {}, freelancer_token, expected=(200,))
     after_read = call(
         "GET",
@@ -524,6 +566,7 @@ def run():
         "task_invite": True,
         "task_invite_retry_safe": True,
         "trusted_team": True,
+        "notifications_read_group": True,
         "notifications_read_all": True,
         "task_id": task_id,
         "order_id": order_id,
