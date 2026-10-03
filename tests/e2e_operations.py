@@ -95,6 +95,19 @@ def run():
     file_center=call("GET","/api/v1/files",token=ct,expected=(200,))
     assert isinstance(file_center.get("items"),list),file_center
 
+    # File-center permissions: owner sees a task attachment; unrelated freelancer must not.
+    isolated_name=f"ops-private-{seed}.pdf"
+    isolated_task=call("POST","/api/v1/tasks",{
+        "category_id":cat,"title":"اختبار عزل ملفات مركز الملفات",
+        "description":"اختبار أمني آلي يثبت أن مرفقات المهمة لا تظهر إلا لصاحبها أو أطراف طلب مشترك.",
+        "budget_min":100,"budget_max":180,"urgency":"normal",
+        "attachments":[{"name":isolated_name,"url":f"https://example.com/{isolated_name}","mime_type":"application/pdf","size_bytes":3210}]
+    },ct)
+    owner_files=call("GET","/api/v1/files",token=ct,expected=(200,)).get("items") or []
+    assert any(x.get("file_name")==isolated_name and int(x.get("task_id") or 0)==int(isolated_task["id"]) for x in owner_files),owner_files
+    freelancer_files=call("GET","/api/v1/files",token=ft,expected=(200,)).get("items") or []
+    assert not any(x.get("file_name")==isolated_name for x in freelancer_files),freelancer_files
+
     # Completed order -> earnings -> KYC -> payout lifecycle.
     task1,order1=create_order(ct,ft,cat,"اختبار أرباح وسحب")
     call("POST",f"/api/v1/orders/{order1['id']}/deliver",{"note":"تسليم اختبار الأرباح."},ft)
@@ -218,7 +231,7 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),
-        "admin_auth":True,"sessions":True,"file_center":True,"payout_lifecycle":True,
+        "admin_auth":True,"sessions":True,"file_center":True,"file_center_isolation":True,"payout_lifecycle":True,
         "cancellation_refund":True,"dispute_resume":True,
         "support_admin":True,"privacy_admin":True,"safety_admin":True,
         "safety_admin_retry_safe":True,
