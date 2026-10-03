@@ -2001,6 +2001,48 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazFreelancerWorkV23">
+.workCenterV23{margin-bottom:16px}
+.workCenterHeadV23{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.workCenterHeadV23 h2{font:700 16px Alexandria;margin:0 0 4px}.workCenterHeadV23 p{font-size:10px;color:var(--muted);margin:0;line-height:1.6}
+.workMetricsV23{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.workMetricV23{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--panel) 95%,#eef3ff 5%));padding:11px 12px}
+.workMetricV23 b{display:block;font:700 18px Alexandria;margin-bottom:2px}.workMetricV23 span{font-size:8px;color:var(--muted)}
+.workBoardV23{display:grid;gap:8px}
+.workCardV23{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:13px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.workCardV23.overdue{border-color:#f0b8b8;background:linear-gradient(135deg,#fff8f8,var(--panel))}
+.workCardV23.soon{border-color:#f3d39a;background:linear-gradient(135deg,#fffbf2,var(--panel))}
+.workCardV23.revision{border-color:#b9c8ff;background:linear-gradient(135deg,#f7f9ff,var(--panel))}
+.workCardV23 h3{font:700 12px Alexandria;margin:0 0 4px}.workCardV23 p{font-size:9px;color:var(--muted);line-height:1.6;margin:3px 0}
+.workCardMetaV23{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.workCardSideV23{text-align:end;min-width:145px}
+.workDeadlineV23{font:700 9px Alexandria;margin-bottom:7px}.workDeadlineV23 small{display:block;font:400 7px system-ui;color:var(--muted);margin-top:3px}
+.executionPanelV23{margin:11px 0 14px;border:1px solid #dce5ff;border-radius:18px;background:linear-gradient(135deg,#f8faff,#fff);padding:13px}
+.executionTopV23{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.executionTopV23 h3{font:700 12px Alexandria;margin:0 0 4px}.executionTopV23 p{font-size:8px;color:var(--muted);line-height:1.6;margin:0}
+.executionGridV23{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}
+.executionFactV23{border:1px solid var(--line);border-radius:13px;background:var(--panel);padding:9px}
+.executionFactV23 b{display:block;font:700 11px Alexandria}.executionFactV23 small{font-size:7px;color:var(--muted)}
+.executionHistoryV23{display:grid;gap:7px;margin-top:10px}
+.executionItemV23{border:1px solid var(--line);border-radius:13px;background:var(--panel);padding:9px}
+.executionItemV23 b{font:700 9px Alexandria}.executionItemV23 p{font-size:8px;color:var(--muted);line-height:1.6;margin:4px 0}.executionItemV23 small{font-size:7px;color:var(--muted)}
+.deliveryPrepV23{border:1px solid #dce5ff;border-radius:16px;background:linear-gradient(135deg,#f8faff,#fff);padding:11px;margin:10px 0}
+.deliveryPrepGridV23{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}
+.deliveryPrepItemV23{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px}
+.deliveryPrepItemV23 b{display:block;font:700 9px Alexandria}.deliveryPrepItemV23 small{font-size:7px;color:var(--muted)}
+.deliveryPrepItemV23.ok{border-color:#b7e2ca;background:#f7fcf9}.deliveryPrepItemV23.ok b{color:#067647}
+.deliveryDraftV23{font-size:7px;color:var(--muted);text-align:end;margin-top:4px}
+[data-theme="dark"] .workCardV23.overdue{background:linear-gradient(135deg,#2a171b,var(--panel));border-color:#6f343d}
+[data-theme="dark"] .workCardV23.soon{background:linear-gradient(135deg,#2a2315,var(--panel));border-color:#725c2c}
+[data-theme="dark"] .workCardV23.revision,[data-theme="dark"] .executionPanelV23,[data-theme="dark"] .deliveryPrepV23{background:linear-gradient(135deg,#141a30,#101526);border-color:#2b3a68}
+[data-theme="dark"] .deliveryPrepItemV23.ok{background:#10251c;border-color:#28543e}
+@media(max-width:760px){
+ .workMetricsV23{grid-template-columns:1fr 1fr}
+ .workCardV23{grid-template-columns:1fr}.workCardSideV23{text-align:start;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+ .executionGridV23{grid-template-columns:1fr 1fr}.deliveryPrepGridV23{grid-template-columns:1fr 1fr}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4773,7 +4815,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v22</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v23</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -5689,6 +5731,161 @@ body{font-size:14px;line-height:1.65}
   var baseProposalModalV22=window.proposalModal421;
   if(typeof baseProposalModalV22==='function')window.proposalModal421=function(){
     var out=baseProposalModalV22.apply(this,arguments);enhanceProposalModalV22();return out;
+  };
+})();
+</script>
+
+
+<script id="minjazFreelancerWorkRuntimeV23">
+(function(){
+  function langV23(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV23(ar,en){return langV23()==='en'?en:ar}
+  function roleV23(){try{return me&&me.user&&me.user.role||''}catch(e){return''}}
+  function parseDateV23(v){var d=v?new Date(v):null;return d&&!isNaN(d.getTime())?d:null}
+  function localeV23(){return langV23()==='en'?'en-US':'ar-SA'}
+  function fmtDateV23(d){return d?d.toLocaleString(localeV23(),{dateStyle:'medium',timeStyle:'short'}):'—'}
+  function remainingV23(d){
+    if(!d)return null;
+    var ms=d.getTime()-Date.now(),abs=Math.abs(ms),h=Math.floor(abs/3600000),m=Math.floor((abs%3600000)/60000);
+    if(ms<0)return {ms:ms,kind:'overdue',label:tV23('متأخر '+h+' س '+m+' د','Overdue '+h+'h '+m+'m')};
+    if(ms<=86400000)return {ms:ms,kind:'soon',label:tV23('باقي '+h+' س '+m+' د','Due in '+h+'h '+m+'m')};
+    var days=Math.floor(ms/86400000),hrs=Math.floor((ms%86400000)/3600000);
+    return {ms:ms,kind:'upcoming',label:tV23('باقي '+days+' يوم '+hrs+' س','Due in '+days+'d '+hrs+'h')};
+  }
+  function paymentEventV23(timeline){
+    return (timeline||[]).find(function(x){return x.type==='payment'})||null;
+  }
+  function deadlineFromV23(o,timeline){
+    var explicit=parseDateV23(o&&o.due_at);
+    if(explicit)return {date:explicit,source:tV23('موعد محدد في المهمة','Task deadline')};
+    if(o&&o.payment_status==='paid'&&Number(o.promised_hours||0)>0){
+      var pay=paymentEventV23(timeline),pd=parseDateV23(pay&&pay.created_at);
+      if(pd)return {date:new Date(pd.getTime()+Number(o.promised_hours)*3600000),source:tV23('محسوب من تأكيد الدفع + مدة العرض','Calculated from payment + proposal duration')};
+    }
+    return {date:null,source:tV23('لا يوجد موعد محسوب بعد','No calculated deadline yet')};
+  }
+  async function enrichDeadlineV23(o){
+    if(o.due_at)return Object.assign({},o,{_v23Deadline:deadlineFromV23(o,[])});
+    if(o.payment_status!=='paid'||!Number(o.promised_hours||0))return Object.assign({},o,{_v23Deadline:deadlineFromV23(o,[])});
+    try{var x=await api('/api/v1/orders/'+o.id+'/timeline');return Object.assign({},o,{_v23Timeline:x.j?.items||[],_v23Deadline:deadlineFromV23(o,x.j?.items||[])})}catch(e){return Object.assign({},o,{_v23Deadline:deadlineFromV23(o,[])})}
+  }
+  function nextWorkV23(o){
+    if(o.status==='revision_requested')return tV23('نفّذ التعديل ثم أعد التسليم','Complete revision and redeliver');
+    if(o.status==='in_progress')return tV23('أكمل التنفيذ ثم سلّم العمل','Finish work and deliver');
+    if(o.status==='delivered')return tV23('بانتظار مراجعة العميل','Waiting for client review');
+    if(o.status==='awaiting_payment')return tV23('بانتظار دفع العميل','Waiting for client payment');
+    if(o.status==='disputed')return tV23('الطلب تحت المراجعة','Order under review');
+    return tV23('تابع حالة الطلب','Follow order status');
+  }
+  function priorityV23(o){
+    if(o.status==='revision_requested')return 0;
+    var rem=o._v23Deadline&&remainingV23(o._v23Deadline.date);
+    if(rem&&rem.kind==='overdue')return 1;
+    if(rem&&rem.kind==='soon')return 2;
+    if(o.status==='in_progress')return 3;
+    if(o.status==='delivered')return 4;
+    if(o.status==='awaiting_payment')return 5;
+    return 6;
+  }
+  function workCardV23(o){
+    var d=o._v23Deadline||{date:null,source:''},rem=remainingV23(d.date);
+    var cls=o.status==='revision_requested'?'revision':rem&&rem.kind==='overdue'?'overdue':rem&&rem.kind==='soon'?'soon':'';
+    var deadline=d.date?'<div class="workDeadlineV23">'+(rem?rem.label:fmtDateV23(d.date))+'<small>'+fmtDateV23(d.date)+' · '+esc(d.source)+'</small></div>':'<div class="workDeadlineV23">'+tV23('بدون موعد محسوب','No calculated deadline')+'<small>'+esc(d.source||'')+'</small></div>';
+    var quick=(o.status==='in_progress'||o.status==='revision_requested')?'<button class="btn primary" onclick="deliveryModal('+Number(o.id)+')">'+tV23('تسليم العمل','Deliver work')+'</button>':'';
+    return '<div class="workCardV23 '+cls+'"><div><h3>'+esc(o.title||tV23('طلب','Order'))+'</h3><p>'+esc(nextWorkV23(o))+'</p><div class="workCardMetaV23"><span class="pill '+statusClass(o.status)+'">'+esc(statusMap[o.status]||o.status)+'</span><span class="pill gray">'+tV23('العميل: ','Client: ')+esc(o.client_name||'—')+'</span><span class="pill gray">'+Number(o.revisions_remaining||0)+' '+tV23('تعديلات متبقية','revisions left')+'</span></div></div><div class="workCardSideV23">'+deadline+'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" onclick="orderModal('+Number(o.id)+')">'+tV23('فتح الطلب','Open order')+'</button>'+quick+'</div></div></div>';
+  }
+  async function enhanceOrdersV23(){
+    if(roleV23()!=='freelancer')return;
+    var host=document.getElementById('orders');if(!host||host.querySelector('[data-freelancer-work-v23]'))return;
+    var x=await api('/api/v1/orders');if(!x.r.ok)return;
+    var all=x.j?.items||[],active=all.filter(function(o){return ['awaiting_payment','in_progress','revision_requested','delivered','disputed'].indexOf(o.status)>=0});
+    var enriched=await Promise.all(active.slice(0,30).map(enrichDeadlineV23));
+    enriched.sort(function(a,b){var pa=priorityV23(a),pb=priorityV23(b);if(pa!==pb)return pa-pb;var ad=a._v23Deadline?.date?.getTime()||Number.MAX_SAFE_INTEGER,bd=b._v23Deadline?.date?.getTime()||Number.MAX_SAFE_INTEGER;return ad-bd});
+    var overdue=enriched.filter(function(o){var r=o._v23Deadline&&remainingV23(o._v23Deadline.date);return ['in_progress','revision_requested'].includes(o.status)&&r&&r.kind==='overdue'}).length;
+    var soon=enriched.filter(function(o){var r=o._v23Deadline&&remainingV23(o._v23Deadline.date);return ['in_progress','revision_requested'].includes(o.status)&&r&&r.kind==='soon'}).length;
+    var revisions=enriched.filter(function(o){return o.status==='revision_requested'}).length;
+    var waiting=enriched.filter(function(o){return o.status==='delivered'}).length;
+    var sec=document.createElement('section');sec.className='workCenterV23';sec.dataset.freelancerWorkV23='1';
+    sec.innerHTML='<div class="workCenterHeadV23"><div><h2>'+tV23('مركز التنفيذ','Work center')+'</h2><p>'+tV23('رتّب شغلك حسب الإجراء والموعد الفعلي من بيانات الطلب.','Prioritize work by action and deadline from real order data.')+'</p></div><span class="pill blue">v23</span></div>'+
+      '<div class="workMetricsV23"><div class="workMetricV23"><b>'+revisions+'</b><span>'+tV23('طلبات تعديل','Revision requests')+'</span></div><div class="workMetricV23"><b>'+overdue+'</b><span>'+tV23('متأخر','Overdue')+'</span></div><div class="workMetricV23"><b>'+soon+'</b><span>'+tV23('خلال 24 ساعة','Due within 24h')+'</span></div><div class="workMetricV23"><b>'+waiting+'</b><span>'+tV23('بانتظار العميل','Waiting for client')+'</span></div></div>'+
+      '<div class="workBoardV23">'+(enriched.map(workCardV23).join('')||'<div class="card empty">'+tV23('ما عندك أعمال تحتاج متابعة الآن.','No work needs follow-up right now.')+'</div>')+'</div>';
+    host.prepend(sec);
+  }
+  var baseRenderOrdersV23=window.renderOrders;
+  if(typeof baseRenderOrdersV23==='function')window.renderOrders=async function(){
+    var out=await baseRenderOrdersV23.apply(this,arguments);
+    try{await enhanceOrdersV23()}catch(e){}
+    return out;
+  };
+
+  async function decorateOrderExecutionV23(id){
+    if(roleV23()!=='freelancer')return;
+    var modal=document.getElementById('modal');if(!modal||modal.querySelector('[data-execution-panel-v23]'))return;
+    var rs=await Promise.all([api('/api/v1/orders/'+id),api('/api/v1/orders/'+id+'/timeline'),api('/api/v1/orders/'+id+'/deliveries'),api('/api/v1/orders/'+id+'/revisions')]);
+    var o=rs[0].j||{},timeline=rs[1].j?.items||[],deliveries=rs[2].j?.items||[],revisions=rs[3].j?.items||[];
+    var deadline=deadlineFromV23(o,timeline),rem=remainingV23(deadline.date),openRevision=[].concat(revisions).reverse().find(function(r){return r.status!=='satisfied'});
+    var statusLabel=rem?rem.label:(deadline.date?fmtDateV23(deadline.date):tV23('بدون موعد محسوب','No calculated deadline'));
+    var sec=document.createElement('div');sec.className='executionPanelV23';sec.dataset.executionPanelV23='1';
+    sec.innerHTML='<div class="executionTopV23"><div><h3>'+tV23('مركز تنفيذ الطلب','Order work center')+'</h3><p>'+esc(nextWorkV23(o))+'</p></div><span class="pill '+(rem&&rem.kind==='overdue'?'red':rem&&rem.kind==='soon'?'amber':o.status==='revision_requested'?'blue':'gray')+'">'+esc(statusLabel)+'</span></div>'+
+      '<div class="executionGridV23">'+
+        '<div class="executionFactV23"><b>'+Number(o.promised_hours||0)+' '+tV23('ساعة','h')+'</b><small>'+tV23('مدة التسليم المتفق عليها','Agreed delivery time')+'</small></div>'+
+        '<div class="executionFactV23"><b>'+Number(o.revisions_remaining||0)+' / '+Number(o.revisions_allowed||0)+'</b><small>'+tV23('التعديلات المتبقية','Revisions remaining')+'</small></div>'+
+        '<div class="executionFactV23"><b>'+deliveries.length+'</b><small>'+tV23('مرات التسليم','Deliveries')+'</small></div>'+
+        '<div class="executionFactV23"><b>'+(deadline.date?fmtDateV23(deadline.date):'—')+'</b><small>'+esc(deadline.source)+'</small></div>'+
+      '</div>'+
+      (openRevision?'<div class="executionItemV23" style="margin-top:10px"><b>'+tV23('التعديل المطلوب الآن','Current revision request')+'</b><p>'+esc(openRevision.note||'')+'</p><small>'+fmtDateV23(parseDateV23(openRevision.created_at))+'</small></div>':'')+
+      (deliveries.length?'<div class="executionHistoryV23"><b style="font:700 10px Alexandria">'+tV23('سجل التسليمات','Delivery history')+'</b>'+deliveries.slice(0,6).map(function(d,i){return '<div class="executionItemV23"><b>'+tV23('تسليم ','Delivery ')+(deliveries.length-i)+'</b><p>'+esc(d.note||tV23('بدون ملاحظات','No notes'))+'</p><small>'+fmtDateV23(parseDateV23(d.created_at))+' · '+Number(d.attachments?.length||0)+' '+tV23('مرفق','attachments')+'</small></div>'}).join('')+'</div>':'');
+    var action=modal.querySelector('[data-order-action-v19]');
+    if(action)action.insertAdjacentElement('afterend',sec);else{var step=modal.querySelector('.orderStepper');if(step)step.insertAdjacentElement('afterend',sec);else modal.prepend(sec)}
+  }
+  var baseOrderV23=window.orderModal;
+  if(typeof baseOrderV23==='function')window.orderModal=async function(id){
+    var out=await baseOrderV23.apply(this,arguments);
+    try{await decorateOrderExecutionV23(id)}catch(e){}
+    return out;
+  };
+
+  function deliveryDraftKeyV23(id){return 'minjaz_delivery_draft_v23_'+(me&&me.user?me.user.id:'guest')+'_'+id}
+  function paintDeliveryPrepV23(id,o,revisions,deliveries){
+    var box=document.querySelector('[data-delivery-prep-v23]'),note=document.getElementById('delNote');if(!box||!note)return;
+    var files=document.getElementById('delFiles'),urls=document.getElementById('delAttachments');
+    var fileCount=files&&files.files?files.files.length:0,urlCount=(urls?.value||'').split(/\n+/).map(function(x){return x.trim()}).filter(Boolean).length;
+    var open=[].concat(revisions||[]).reverse().find(function(r){return r.status!=='satisfied'});
+    var grid=box.querySelector('.deliveryPrepGridV23');
+    grid.innerHTML=
+      '<div class="deliveryPrepItemV23 '+(note.value.trim().length>=10?'ok':'')+'"><b>'+(note.value.trim().length>=10?'✓ ':'○ ')+tV23('ملاحظات واضحة','Clear notes')+'</b><small>'+note.value.trim().length+'/5000</small></div>'+
+      '<div class="deliveryPrepItemV23 '+((fileCount+urlCount)>0?'ok':'')+'"><b>'+((fileCount+urlCount)>0?'✓ ':'○ ')+tV23('المرفقات','Attachments')+'</b><small>'+(fileCount+urlCount)+' / 5 · '+tV23('اختياري','optional')+'</small></div>'+
+      '<div class="deliveryPrepItemV23 '+(!open||o.status==='revision_requested'?'ok':'')+'"><b>'+(!open?'✓ ':o.status==='revision_requested'?'✓ ':'○ ')+tV23('سياق التعديل','Revision context')+'</b><small>'+(open?esc((open.note||'').slice(0,80)):tV23('لا يوجد تعديل مفتوح','No open revision'))+'</small></div>';
+    var c=document.querySelector('[data-delivery-draft-v23]');if(c)c.textContent=tV23('تم حفظ المسودة على هذا الجهاز · ','Draft saved on this device · ')+note.value.length+'/5000';
+    try{
+      var payload={saved_at:Date.now(),note:note.value,urls:urls?.value||''};
+      if(note.value.trim()||(urls?.value||'').trim())localStorage.setItem(deliveryDraftKeyV23(id),JSON.stringify(payload));else localStorage.removeItem(deliveryDraftKeyV23(id));
+    }catch(e){}
+  }
+  async function enhanceDeliveryModalV23(id){
+    var modal=document.getElementById('modal'),note=document.getElementById('delNote');if(!modal||!note||modal.querySelector('[data-delivery-prep-v23]'))return;
+    var rs=await Promise.all([api('/api/v1/orders/'+id),api('/api/v1/orders/'+id+'/revisions'),api('/api/v1/orders/'+id+'/deliveries')]);
+    var o=rs[0].j||{},revisions=rs[1].j?.items||[],deliveries=rs[2].j?.items||[];
+    try{var d=JSON.parse(localStorage.getItem(deliveryDraftKeyV23(id))||'null');if(d&&Date.now()-Number(d.saved_at||0)<7*24*3600000){if(d.note&&!note.value)note.value=d.note;var urls=document.getElementById('delAttachments');if(urls&&d.urls&&!urls.value)urls.value=d.urls}}catch(e){}
+    var open=[].concat(revisions).reverse().find(function(r){return r.status!=='satisfied'});
+    var box=document.createElement('div');box.className='deliveryPrepV23';box.dataset.deliveryPrepV23='1';
+    box.innerHTML='<div><b style="font:700 10px Alexandria">'+tV23('تجهيز التسليم','Delivery readiness')+'</b><div style="font-size:8px;color:var(--muted);margin-top:3px">'+(open?tV23('هذا التسليم يعالج طلب تعديل مفتوح.','This delivery addresses an open revision request.'):tV23('راجع الملاحظات والمرفقات قبل الإرسال.','Review notes and attachments before sending.'))+'</div></div><div class="deliveryPrepGridV23"></div><div class="deliveryDraftV23" data-delivery-draft-v23></div>';
+    var actions=modal.querySelector('.actions');if(actions)actions.insertAdjacentElement('beforebegin',box);
+    ['delNote','delAttachments','delFiles'].forEach(function(k){var el=document.getElementById(k);if(el&&!el.dataset.v23Bound){el.dataset.v23Bound='1';el.addEventListener('input',function(){paintDeliveryPrepV23(id,o,revisions,deliveries)});el.addEventListener('change',function(){paintDeliveryPrepV23(id,o,revisions,deliveries)})}});
+    note.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();window.deliver(id)}});
+    paintDeliveryPrepV23(id,o,revisions,deliveries);
+  }
+  var baseDeliveryModalV23=window.deliveryModal;
+  if(typeof baseDeliveryModalV23==='function')window.deliveryModal=async function(id){
+    var out=baseDeliveryModalV23.apply(this,arguments);
+    try{await enhanceDeliveryModalV23(id)}catch(e){}
+    return out;
+  };
+  var baseDeliverV23=window.deliver;
+  if(typeof baseDeliverV23==='function')window.deliver=async function(id){
+    var out=await baseDeliverV23.apply(this,arguments);
+    if(!document.getElementById('delNote')){try{localStorage.removeItem(deliveryDraftKeyV23(id))}catch(e){}}
+    return out;
   };
 })();
 </script>
