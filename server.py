@@ -3096,6 +3096,45 @@ class H(BaseHTTPRequestHandler):
                         rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
                     return self.sendj(200 if replayed else 201,msg)
 
+            if p=='/api/v1/conversations' and method=='GET':
+                u=self.require();
+                if not u:return
+                uid=int(u['id'])
+                items=q("""select o.id order_id,o.task_id,o.status,o.payment_status,o.created_at,t.title,
+                                  case when o.client_id=%s then f.id else c.id end counterpart_user_id,
+                                  case when o.client_id=%s then f.name else c.name end counterpart_name,
+                                  lm.id last_message_id,lm.body last_message,lm.created_at last_message_at,
+                                  lm.sender_id,lm.sender_name,lm.attachment_count,
+                                  coalesce((select count(*)::int from user_notifications_v2 n
+                                            where n.user_id=%s and n.order_id=o.id
+                                              and n.kind='message' and n.read_at is null),0) unread_messages
+                           from orders o
+                           join tasks t on t.id=o.task_id
+                           join users c on c.id=o.client_id
+                           join users f on f.id=o.freelancer_id
+                           join lateral (
+                               select m.id,m.body,m.created_at,m.sender_id,us.name sender_name,
+                                      (select count(*)::int from attachments a where a.message_id=m.id) attachment_count
+                               from messages m join users us on us.id=m.sender_id
+                               where m.order_id=o.id
+                               order by m.created_at desc,m.id desc
+                               limit 1
+                           ) lm on true
+                           where o.client_id=%s or o.freelancer_id=%s
+                           order by lm.created_at desc
+                           limit 200""",(uid,uid,uid,uid,uid))
+                return self.sendj(200,{'items':items})
+
+            m=re.fullmatch(r'/api/v1/conversations/(\d+)/read',p)
+            if m and method=='POST':
+                u=self.require();
+                if not u:return
+                oid=int(m.group(1));uid=int(u['id'])
+                o=q('select id from orders where id=%s and (client_id=%s or freelancer_id=%s)',(oid,uid,uid),'one')
+                if not o:return self.sendj(404,{'error':'order_not_found'})
+                rows=q("update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and order_id=%s and kind='message' and read_at is null returning id",(uid,oid))
+                return self.sendj(200,{'ok':True,'order_id':oid,'updated':len(rows or [])})
+
             if p=='/api/v1/notifications' and method=='GET':
                 u=self.require();
                 if not u:return
