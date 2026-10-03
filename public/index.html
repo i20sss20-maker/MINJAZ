@@ -2080,6 +2080,49 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazCollabV25">
+.chatWorkspaceV25{margin:18px 0 8px;border:1px solid var(--line);border-radius:20px;background:var(--panel);overflow:hidden}
+.chatWorkspaceHeadV25{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 98%,#eef3ff 2%),var(--panel))}
+.chatTabsV25{display:flex;gap:6px;flex-wrap:wrap}.chatTabV25{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 10px;font:700 8px Alexandria;color:var(--muted);cursor:pointer}
+.chatTabV25.on{background:#3157f6;border-color:#3157f6;color:#fff}
+.chatHeadActionsV25{display:flex;align-items:center;gap:6px}.chatHeadActionsV25 .btn{min-height:34px;padding:6px 9px}
+.chatSearchV25{padding:9px 11px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}
+.chatSearchV25 input{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:9px 10px;font-size:11px;color:var(--ink);outline:none}
+.chatSearchV25 input:focus{border-color:#8d83ff;box-shadow:var(--ring)}
+.chatViewV25{display:none}.chatViewV25.on{display:block}
+.chatMessagesV25{height:390px;overflow:auto;padding:12px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 98%,#eef3ff 2%),var(--panel));scroll-behavior:smooth}
+.chatDayV25{display:flex;align-items:center;gap:8px;margin:11px 0;color:var(--muted);font-size:7px}.chatDayV25:before,.chatDayV25:after{content:"";height:1px;background:var(--line);flex:1}
+.chatMsgV25{max-width:82%;margin:6px 0;padding:10px 11px;border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:0 5px 16px rgba(17,21,42,.035)}
+.chatMsgV25.me{margin-inline-start:auto;background:#f3f6ff;border-color:#dbe3ff}
+.chatMsgV25Head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}.chatMsgV25Head b{font:700 8px Alexandria}.chatMsgV25Head small{font-size:7px;color:var(--muted)}
+.chatMsgV25Body{font-size:10px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+.chatMsgV25 .attachList{margin-top:7px}
+.chatComposerV25{padding:10px 11px;border-top:1px solid var(--line);background:var(--panel)}
+.chatComposerV25 .chatSend{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:end}
+.chatComposerV25 textarea{width:100%;min-height:44px;max-height:130px;resize:vertical;border:1px solid var(--line);border-radius:13px;background:var(--panel);padding:10px 11px;font:inherit;font-size:11px;color:var(--ink);outline:none}
+.chatComposerV25 textarea:focus{border-color:#8d83ff;box-shadow:var(--ring)}
+.chatComposerMetaV25{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px;font-size:7px;color:var(--muted)}
+.chatComposerV25 .chatAttach{margin-top:8px}
+.chatActivityV25,.chatFilesV25{max-height:430px;overflow:auto;padding:11px}
+.activityItemV25{display:grid;grid-template-columns:auto 1fr;gap:9px;padding:10px 0;border-bottom:1px solid var(--line)}.activityItemV25:last-child{border-bottom:0}
+.activityDotV25{width:9px;height:9px;border-radius:50%;background:#3157f6;margin-top:5px;box-shadow:0 0 0 4px #eef3ff}
+.activityItemV25 b{font:700 9px Alexandria}.activityItemV25 p{font-size:8px;color:var(--muted);line-height:1.6;margin:3px 0}.activityItemV25 small{font-size:7px;color:var(--muted)}
+.fileGroupV25{padding:10px 0;border-bottom:1px solid var(--line)}.fileGroupV25:last-child{border-bottom:0}.fileGroupV25 h4{font:700 9px Alexandria;margin:0 0 6px}.fileGroupV25 p{font-size:8px;color:var(--muted);margin:0 0 6px}
+.chatEmptyV25{padding:28px 14px;text-align:center;color:var(--muted);font-size:9px}
+.chatJumpV25{position:sticky;bottom:8px;display:flex;justify-content:center;pointer-events:none}.chatJumpV25 button{pointer-events:auto;box-shadow:0 10px 24px rgba(17,21,42,.12)}
+.chatHiddenV25{display:none!important}
+[data-theme="dark"] .chatMsgV25.me{background:#151e38;border-color:#2a3d73}
+[data-theme="dark"] .activityDotV25{box-shadow:0 0 0 4px #151c33}
+@media(max-width:760px){
+ .chatWorkspaceHeadV25{align-items:stretch;flex-direction:column}.chatHeadActionsV25{justify-content:space-between}
+ .chatTabsV25{display:grid;grid-template-columns:repeat(3,1fr)}.chatTabV25{text-align:center}
+ .chatSearchV25{grid-template-columns:1fr}
+ .chatMessagesV25{height:46dvh;min-height:300px;padding:9px}.chatMsgV25{max-width:92%}
+ .chatComposerV25 .chatSend{grid-template-columns:1fr}.chatComposerV25 .chatSend .btn{width:100%}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4852,7 +4895,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v24</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v25</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -6047,6 +6090,137 @@ body{font-size:14px;line-height:1.65}
     var out=await baseOrderV24.apply(this,arguments);
     try{await decorateClientProjectV24(id)}catch(e){}
     return out;
+  };
+})();
+</script>
+
+
+<script id="minjazCollabRuntimeV25">
+(function(){
+  function langV25(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV25(ar,en){return langV25()==='en'?en:ar}
+  function localeV25(){return langV25()==='en'?'en-US':'ar-SA'}
+  function dateV25(v){var d=v?new Date(v):null;return d&&!isNaN(d.getTime())?d:null}
+  function dayKeyV25(v){var d=dateV25(v);return d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):''}
+  function dayLabelV25(v){var d=dateV25(v);if(!d)return'';var now=new Date(),today=dayKeyV25(now),y=new Date(now.getTime()-86400000);if(dayKeyV25(d)===today)return tV25('اليوم','Today');if(dayKeyV25(d)===dayKeyV25(y))return tV25('أمس','Yesterday');return d.toLocaleDateString(localeV25(),{weekday:'short',day:'numeric',month:'short',year:d.getFullYear()!==now.getFullYear()?'numeric':undefined})}
+  function timeV25(v){var d=dateV25(v);return d?d.toLocaleTimeString(localeV25(),{hour:'2-digit',minute:'2-digit'}):''}
+  function safeUrlV25(v){try{var u=new URL(String(v||''));return u.protocol==='https:'?u.href:''}catch(e){return''}}
+  function sizeV25(n){n=Number(n||0);if(!n)return'';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(n<10240?1:0)+' KB';return (n/1048576).toFixed(1)+' MB'}
+  function attachHtmlV25(a){
+    return (a||[]).map(function(x){var u=safeUrlV25(x.file_url||x.url);if(!u)return'';return '<a class="attachChip" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer nofollow">📎 <span>'+esc(x.file_name||x.name||tV25('ملف','File'))+'</span>'+(x.size_bytes?' <small>'+sizeV25(x.size_bytes)+'</small>':'')+'</a>'}).join('');
+  }
+  function isSystemMirrorV25(m){var b=String(m&&m.body||'').trim();return /^طلب تعديل\s+/.test(b)}
+  function scrollLatestV25(){var box=document.querySelector('[data-chat-messages-v25]');if(box)box.scrollTo({top:box.scrollHeight,behavior:'smooth'})}
+  window.minjazChatLatestV25=scrollLatestV25;
+  var chatModeV25='messages',chatQueryV25='',chatDataV25={id:0,messages:[],timeline:[],deliveries:[],taskAttachments:[]};
+
+  function renderMessagesV25(){
+    var box=document.querySelector('[data-chat-messages-v25]');if(!box)return;
+    var q=chatQueryV25.trim().toLowerCase();
+    var msgs=(chatDataV25.messages||[]).filter(function(m){if(isSystemMirrorV25(m))return false;if(!q)return true;return [m.body,m.sender_name].join(' ').toLowerCase().indexOf(q)>=0||(m.attachments||[]).some(function(a){return String(a.file_name||a.name||'').toLowerCase().indexOf(q)>=0})});
+    var html='',lastDay='';
+    msgs.forEach(function(m){
+      var dk=dayKeyV25(m.created_at);if(dk!==lastDay){html+='<div class="chatDayV25">'+dayLabelV25(m.created_at)+'</div>';lastDay=dk}
+      html+='<div class="chatMsgV25 '+(sameId(m.sender_id,me.user.id)?'me':'')+'"><div class="chatMsgV25Head"><b>'+esc(m.sender_name||'')+'</b><small>'+timeV25(m.created_at)+'</small></div>'+(m.body?'<div class="chatMsgV25Body">'+esc(m.body)+'</div>':'')+((m.attachments||[]).length?'<div class="attachList">'+attachHtmlV25(m.attachments)+'</div>':'')+'</div>';
+    });
+    box.innerHTML=html||'<div class="chatEmptyV25">'+(q?tV25('ما لقينا رسائل مطابقة للبحث.','No messages match your search.'):tV25('ابدأ المحادثة من هنا.','Start the conversation here.'))+'</div>';
+  }
+  function renderActivityV25(){
+    var box=document.querySelector('[data-chat-activity-v25]');if(!box)return;
+    var items=(chatDataV25.timeline||[]).filter(function(x){return x.type!=='message'}).slice().reverse();
+    box.innerHTML=items.map(function(x){return '<div class="activityItemV25"><span class="activityDotV25"></span><div><b>'+esc(x.title||x.type||tV25('تحديث','Update'))+'</b>'+(x.details?'<p>'+esc(x.details)+'</p>':'')+'<small>'+((x.actor_name?esc(x.actor_name)+' · ':'')+(dateV25(x.created_at)?dateV25(x.created_at).toLocaleString(localeV25()):''))+'</small></div></div>'}).join('')||'<div class="chatEmptyV25">'+tV25('ما فيه نشاط مسجل بعد.','No activity recorded yet.')+'</div>';
+  }
+  function renderFilesV25(){
+    var box=document.querySelector('[data-chat-files-v25]');if(!box)return;
+    var groups=[];
+    var task=(chatDataV25.taskAttachments||[]);if(task.length)groups.push({title:tV25('مرفقات المهمة','Task attachments'),text:tV25('الملفات الأصلية المرفقة بالمهمة.','Original files attached to the task.'),files:task});
+    (chatDataV25.deliveries||[]).forEach(function(d,i){if((d.attachments||[]).length)groups.push({title:tV25('تسليم ','Delivery ')+(i+1),text:d.note||'',files:d.attachments})});
+    (chatDataV25.messages||[]).forEach(function(m){if((m.attachments||[]).length)groups.push({title:tV25('ملفات من ','Files from ')+(m.sender_name||tV25('المحادثة','chat')),text:m.body||'',files:m.attachments})});
+    box.innerHTML=groups.map(function(g){return '<div class="fileGroupV25"><h4>'+esc(g.title)+'</h4>'+(g.text?'<p>'+esc(g.text)+'</p>':'')+'<div class="attachList">'+attachHtmlV25(g.files)+'</div></div>'}).join('')||'<div class="chatEmptyV25">'+tV25('ما فيه ملفات داخل هذا الطلب حتى الآن.','No files in this order yet.')+'</div>';
+  }
+  function applyModeV25(){
+    document.querySelectorAll('[data-chat-tab-v25]').forEach(function(b){b.classList.toggle('on',b.dataset.chatTabV25===chatModeV25)});
+    document.querySelectorAll('[data-chat-view-v25]').forEach(function(v){v.classList.toggle('on',v.dataset.chatViewV25===chatModeV25)});
+    var search=document.querySelector('[data-chat-search-v25]'),composer=document.querySelector('[data-chat-composer-v25]');
+    if(search)search.classList.toggle('chatHiddenV25',chatModeV25!=='messages');
+    if(composer)composer.classList.toggle('chatHiddenV25',chatModeV25!=='messages');
+    if(chatModeV25==='messages')requestAnimationFrame(scrollLatestV25);
+  }
+  window.minjazChatModeV25=function(v){chatModeV25=['messages','activity','files'].includes(v)?v:'messages';applyModeV25()};
+  window.minjazChatSearchV25=function(v){chatQueryV25=v||'';renderMessagesV25()};
+  function composerReadyV25(){
+    var text=document.getElementById('chatMsg')?.value.trim()||'',links=document.getElementById('chatAttachments')?.value.trim()||'',files=document.getElementById('chatFiles')?.files?.length||0;
+    return !!(text||links||files);
+  }
+  function syncComposerV25(){
+    var ta=document.getElementById('chatMsg'),count=document.querySelector('[data-chat-char-v25]'),btn=document.querySelector('[data-chat-composer-v25] .chatSend .btn.primary');
+    if(count&&ta)count.textContent=ta.value.length+'/4000';
+    if(btn)btn.disabled=!composerReadyV25()||window.__minjazChatSendingV25===chatDataV25.id;
+  }
+  async function decorateChatV25(id){
+    var modal=document.getElementById('modal'),oldChat=document.getElementById('chatBox'),oldSend=document.querySelector('.chatSend');
+    if(!modal||!oldChat||!oldSend||modal.querySelector('[data-chat-workspace-v25]'))return;
+    var order=null,messages=[],timeline=[],deliveries=[],taskAttachments=[];
+    try{
+      var ro=await api('/api/v1/orders/'+id);order=ro.j||{};
+      var calls=[api('/api/v1/orders/'+id+'/messages'),api('/api/v1/orders/'+id+'/timeline'),api('/api/v1/orders/'+id+'/deliveries')];
+      if(order.task_id)calls.push(api('/api/v1/tasks/'+order.task_id+'/attachments'));
+      var rs=await Promise.all(calls);messages=rs[0].j?.items||[];timeline=rs[1].j?.items||[];deliveries=rs[2].j?.items||[];taskAttachments=rs[3]?.j?.items||[];
+    }catch(e){}
+    chatDataV25={id:Number(id),messages:messages,timeline:timeline,deliveries:deliveries,taskAttachments:taskAttachments};
+    var sectionHead=oldChat.previousElementSibling;
+    var attachWrap=document.getElementById('chatAttachments')?.closest('.chatAttach');
+    var workspace=document.createElement('div');workspace.className='chatWorkspaceV25';workspace.dataset.chatWorkspaceV25='1';
+    workspace.innerHTML='<div class="chatWorkspaceHeadV25"><div class="chatTabsV25"><button type="button" class="chatTabV25 on" data-chat-tab-v25="messages" onclick="minjazChatModeV25(\'messages\')">'+tV25('الرسائل','Messages')+' · '+messages.filter(function(m){return !isSystemMirrorV25(m)}).length+'</button><button type="button" class="chatTabV25" data-chat-tab-v25="activity" onclick="minjazChatModeV25(\'activity\')">'+tV25('نشاط الطلب','Order activity')+' · '+timeline.filter(function(x){return x.type!=='message'}).length+'</button><button type="button" class="chatTabV25" data-chat-tab-v25="files" onclick="minjazChatModeV25(\'files\')">'+tV25('الملفات','Files')+' · '+([].concat(taskAttachments).length+deliveries.reduce(function(n,d){return n+(d.attachments||[]).length},0)+messages.reduce(function(n,m){return n+(m.attachments||[]).length},0))+'</button></div><div class="chatHeadActionsV25"><button type="button" class="btn ghost" onclick="minjazChatLatestV25()">'+tV25('↓ آخر رسالة','↓ Latest')+'</button></div></div>'+
+      '<div class="chatSearchV25" data-chat-search-v25><input type="search" placeholder="'+tV25('ابحث في الرسائل أو أسماء الملفات','Search messages or file names')+'" oninput="minjazChatSearchV25(this.value)"><span class="pill gray">'+tV25('رسائل الطرفين فقط','Conversation only')+'</span></div>'+
+      '<div class="chatViewV25 on" data-chat-view-v25="messages"><div class="chatMessagesV25" data-chat-messages-v25></div><div class="chatJumpV25"><button type="button" class="btn ghost" onclick="minjazChatLatestV25()">'+tV25('↓ آخر رسالة','↓ Latest message')+'</button></div><div class="chatComposerV25" data-chat-composer-v25><div class="chatSend"><textarea id="chatMsg" maxlength="4000" placeholder="'+tV25('اكتب رسالة…','Write a message…')+'"></textarea><button class="btn primary" type="button" onclick="sendMessage('+Number(id)+')">'+tV25('إرسال','Send')+'</button></div><div class="chatComposerMetaV25"><span>'+tV25('Enter للإرسال · Shift+Enter لسطر جديد','Enter to send · Shift+Enter for new line')+'</span><span data-chat-char-v25>0/4000</span></div><div class="chatAttach"><input class="filePick" type="file" id="chatFiles" multiple accept="'+esc(window.minjazFileAccept||'')+'"><input id="chatAttachments" placeholder="'+tV25('أو رابط مرفق HTTPS — اختياري','Or HTTPS attachment link — optional')+'" style="margin-top:6px"><div id="chatUploadState" class="uploadState"></div><div class="attachHint">'+tV25('تقدر ترسل نص، ملف فقط، رابط فقط، أو تجمع بينهم.','Send text, a file only, a link only, or combine them.')+'</div></div></div></div>'+
+      '<div class="chatViewV25" data-chat-view-v25="activity"><div class="chatActivityV25" data-chat-activity-v25></div></div>'+
+      '<div class="chatViewV25" data-chat-view-v25="files"><div class="chatFilesV25" data-chat-files-v25></div></div>';
+    if(sectionHead&&sectionHead.classList.contains('sectionHead'))sectionHead.replaceWith(workspace);else oldChat.replaceWith(workspace);
+    if(document.body.contains(oldChat))oldChat.remove();if(document.body.contains(oldSend))oldSend.remove();if(attachWrap&&document.body.contains(attachWrap))attachWrap.remove();
+    renderMessagesV25();renderActivityV25();renderFilesV25();applyModeV25();
+    var ta=document.getElementById('chatMsg'),files=document.getElementById('chatFiles'),links=document.getElementById('chatAttachments');
+    if(ta){ta.addEventListener('input',syncComposerV25);ta.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(composerReadyV25())window.sendMessage(id)}else if(e.key==='Escape')ta.blur()})}
+    if(files){files.addEventListener('change',syncComposerV25)}if(links){links.addEventListener('input',syncComposerV25)}
+    if(window.minjazDescribeStorage)window.minjazDescribeStorage('chatUploadState');
+    syncComposerV25();requestAnimationFrame(scrollLatestV25);
+  }
+  var baseOrderV25=window.orderModal;
+  if(typeof baseOrderV25==='function')window.orderModal=async function(id){
+    var out=await baseOrderV25.apply(this,arguments);
+    try{await decorateChatV25(id)}catch(e){}
+    return out;
+  };
+
+  window.__minjazChatSendingV25=null;
+  window.__messagePendingPayloads=window.__messagePendingPayloads||{};
+  window.sendMessage=async function(id){
+    if(window.__minjazChatSendingV25===id)return;
+    var v=document.getElementById('chatMsg')?.value.trim()||'',btn=document.querySelector('[data-chat-composer-v25] .chatSend .btn.primary');
+    if(!composerReadyV25())return toast(tV25('اكتب رسالة أو أضف مرفقًا','Write a message or add an attachment'));
+    window.__minjazChatSendingV25=id;if(btn){btn.disabled=true;btn.textContent=tV25('جاري الإرسال…','Sending…')}
+    var pending=window.__messagePendingPayloads[id];
+    var currentSignature=v+'|'+(document.getElementById('chatAttachments')?.value||'')+'|'+(document.getElementById('chatFiles')?.files?.length||0);
+    if(pending&&pending._v25Signature!==currentSignature){delete window.__messagePendingPayloads[id];pending=null}
+    if(!pending){
+      var attachments=[];
+      try{attachments=window.minjazCollectAttachments?await window.minjazCollectAttachments('chatFiles','chatAttachments','chatUploadState'):[]}
+      catch(e){window.__minjazChatSendingV25=null;if(btn){btn.disabled=false;btn.textContent=tV25('إرسال','Send')}return toast(e.message==='storage_not_configured'?tV25('اربط Railway Bucket أو استخدم رابط HTTPS','Connect Railway Bucket or use an HTTPS link'):tV25('تعذر رفع المرفق','Attachment upload failed'))}
+      if(!v&&!attachments.length){window.__minjazChatSendingV25=null;if(btn){btn.disabled=false;btn.textContent=tV25('إرسال','Send')}return toast(tV25('اكتب رسالة أو أضف مرفقًا','Write a message or add an attachment'))}
+      pending={body:v,attachments:attachments,idempotency_key:'msg-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),_v25Signature:currentSignature};
+      window.__messagePendingPayloads[id]=pending;
+    }
+    var payload={body:pending.body,attachments:pending.attachments,idempotency_key:pending.idempotency_key},response;
+    try{response=await api('/api/v1/orders/'+id+'/messages',{method:'POST',body:JSON.stringify(payload)})}
+    catch(e){window.__minjazChatSendingV25=null;if(btn){btn.disabled=false;btn.textContent=tV25('إرسال','Send')}return toast(tV25('تعذر إرسال الرسالة — تقدر تعيد المحاولة','Could not send — you can retry'))}
+    var r=response.r,j=response.j;
+    if(!r.ok){
+      window.__minjazChatSendingV25=null;if(btn){btn.disabled=false;btn.textContent=tV25('إرسال','Send')}
+      if(j?.error==='idempotency_key_reused'){delete window.__messagePendingPayloads[id];return toast(tV25('تغير محتوى الرسالة؛ أعد المحاولة','Message content changed; retry'))}
+      return toast(j?.error==='message_rate_limited'?tV25('وصلت الحد المؤقت للرسائل','Temporary message limit reached'):tV25('تعذر إرسال الرسالة','Could not send message'));
+    }
+    delete window.__messagePendingPayloads[id];window.__minjazChatSendingV25=null;
+    await window.orderModal(id);
   };
 })();
 </script>
