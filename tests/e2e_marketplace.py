@@ -400,6 +400,54 @@ def run():
     ).get("items") or []
     assert any("رسالة اختبار" in (item.get("body") or "") for item in messages)
 
+    freelancer_conversations = call(
+        "GET",
+        "/api/v1/conversations",
+        token=freelancer_token,
+        expected=(200,),
+    ).get("items") or []
+    convo = next(
+        (item for item in freelancer_conversations if int(item.get("order_id") or 0) == int(order_id)),
+        None,
+    )
+    assert convo, freelancer_conversations
+    assert "رسالة اختبار" in str(convo.get("last_message") or ""), convo
+    assert int(convo.get("unread_messages") or 0) >= 1, convo
+    assert int(convo.get("counterpart_user_id") or 0) == int(client_me["user"]["id"]), convo
+
+    conversation_read = call(
+        "POST",
+        f"/api/v1/conversations/{order_id}/read",
+        {},
+        freelancer_token,
+        expected=(200,),
+    )
+    assert conversation_read.get("ok") is True, conversation_read
+    assert int(conversation_read.get("updated") or 0) >= 1, conversation_read
+
+    conversations_after_read = call(
+        "GET",
+        "/api/v1/conversations",
+        token=freelancer_token,
+        expected=(200,),
+    ).get("items") or []
+    convo_after = next(
+        (item for item in conversations_after_read if int(item.get("order_id") or 0) == int(order_id)),
+        None,
+    )
+    assert convo_after and int(convo_after.get("unread_messages") or 0) == 0, convo_after
+
+    unread_payment_after_chat = call(
+        "GET",
+        "/api/v1/notifications?kind=payment&unread=1",
+        token=freelancer_token,
+        expected=(200,),
+    )
+    assert any(
+        int(item.get("order_id") or 0) == int(order_id)
+        for item in (unread_payment_after_chat.get("items") or [])
+    ), unread_payment_after_chat
+
     search_message = call(
         "GET",
         "/api/v1/search?q=%D8%B1%D8%B3%D8%A7%D9%84%D8%A9%20%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1&limit=8",
@@ -598,6 +646,8 @@ def run():
         "orders": True,
         "payment_mock": True,
         "messages": True,
+        "conversation_inbox": True,
+        "conversation_read_isolation": True,
         "global_search": True,
         "delivery": True,
         "revision": True,
