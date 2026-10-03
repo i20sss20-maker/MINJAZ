@@ -1,0 +1,18 @@
+.workCenterV31{display:grid;gap:14px}
+.wcHeroV31{border:1px solid var(--line);border-radius:22px;padding:20px;background:linear-gradient(135deg,var(--panel),#3157f60c)}
+.wcHeroTopV31{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.wcHeroV31 h2{font-family:Alexandria;margin:0 0 6px;font-size:19px}.wcHeroV31 p{margin:0;color:var(--muted);font-size:10px;line-height:1.8}
+.wcQuickV31{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+.wcMetricsV31{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.wcMetricV31{border:1px solid var(--line);border-radius:15px;background:var(--panel);padding:12px}.wcMetricV31 b{display:block;font:800 20px Alexandria}.wcMetricV31 small{display:block;color:var(--muted);font-size:8px;margin-top:3px}
+.wcGridV31{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px}
+.wcPanelV31{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:14px;min-width:0}
+.wcPanelHeadV31{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.wcPanelHeadV31 h3{font:700 12px Alexandria;margin:0}.wcPanelHeadV31 small{font-size:8px;color:var(--muted)}
+.wcListV31{display:grid;gap:8px}.wcActionV31,.wcConversationV31,.wcFileV31,.wcNotifV31{border:1px solid var(--line);border-radius:13px;padding:10px;background:color-mix(in srgb,var(--panel) 94%,var(--blue) 6%)}
+.wcActionV31{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}.wcActionV31 b,.wcConversationV31 b,.wcFileV31 b,.wcNotifV31 b{font-size:9px}.wcActionV31 p,.wcConversationV31 p,.wcFileV31 p,.wcNotifV31 p{font-size:8px;line-height:1.65;color:var(--muted);margin:4px 0 0}
+.wcMetaV31{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.wcMetaV31 span{font-size:7px}
+.wcConversationV31,.wcFileV31{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px}.wcFileV31 a{text-decoration:none}
+.wcEmptyV31{border:1px dashed var(--line);border-radius:13px;padding:16px;text-align:center;color:var(--muted);font-size:9px}
+.wcRefreshV31{white-space:nowrap}
+@media(max-width:900px){.wcGridV31{grid-template-columns:1fr}.wcMetricsV31{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.wcHeroTopV31{flex-direction:column}.wcMetricsV31{grid-template-columns:repeat(2,minmax(0,1fr))}.wcActionV31,.wcConversationV31,.wcFileV31{grid-template-columns:1fr}.wcActionV31 .btn,.wcConversationV31 .btn,.wcFileV31 .btn{width:100%}}
