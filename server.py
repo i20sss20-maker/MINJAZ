@@ -52,6 +52,8 @@ KYC_WEBHOOK_SECRET=os.getenv('KYC_WEBHOOK_SECRET','').strip()
 PUSH_MODE=os.getenv('PUSH_MODE','off').strip().lower()
 PUSH_ADAPTER_URL=os.getenv('PUSH_ADAPTER_URL','').strip().rstrip('/')
 PUSH_ADAPTER_BEARER=os.getenv('PUSH_ADAPTER_BEARER','').strip()
+PAYMENTS_HEALTH_URL=os.getenv('PAYMENTS_HEALTH_URL',os.getenv('RAILWAY_SERVICE_MINJAZ_PAYMENTS_API_URL','')).strip().rstrip('/')
+INTEGRATIONS_HEALTH_URL=os.getenv('INTEGRATIONS_HEALTH_URL',os.getenv('RAILWAY_SERVICE_MINJAZ_INTEGRATIONS_API_URL','')).strip().rstrip('/')
 _cors_raw=os.getenv('CORS_ORIGINS',os.getenv('CORS_ORIGIN','https://minjaz-unified-production.up.railway.app'))
 CORS_ORIGINS={x.strip().rstrip('/') for x in _cors_raw.split(',') if x.strip()}
 
@@ -1087,6 +1089,48 @@ def dispatch_push_async(user_id,title,body=None,kind='general',order_id=None,tas
     def _send():
         push_adapter_request('/v1/send',payload,'POST')
     threading.Thread(target=_send,name='minjaz-push',daemon=True).start()
+
+def _provider_health(name,url):
+    if not _https_url(url):
+        return {'name':name,'reachable':False,'configured':False,'status':'not_configured'}
+    started=datetime.now()
+    req=urllib.request.Request(url.rstrip('/')+'/health',headers={'Accept':'application/json','User-Agent':f'MINJAZ/{VERSION}'},method='GET')
+    try:
+        with urllib.request.urlopen(req,timeout=2.2) as resp:
+            raw=resp.read(131072)
+            payload=json.loads(raw or b'{}') if raw else {}
+            latency=max(0,int((datetime.now()-started).total_seconds()*1000))
+            return {'name':name,'reachable':200<=int(resp.status)<300,'configured':True,'status':'ok','latency_ms':latency,'data':payload if isinstance(payload,dict) else {}}
+    except Exception as exc:
+        return {'name':name,'reachable':False,'configured':True,'status':'unavailable','error':type(exc).__name__}
+
+def provider_health_snapshot():
+    targets=[('push',PUSH_ADAPTER_URL),('payments',PAYMENTS_HEALTH_URL),('integrations',INTEGRATIONS_HEALTH_URL)]
+    out={};threads=[];lock=threading.Lock()
+    def run(name,url):
+        item=_provider_health(name,url)
+        with lock:
+            out[name]=item
+    for name,url in targets:
+        t=threading.Thread(target=run,args=(name,url),daemon=True);threads.append(t);t.start()
+    for t in threads:
+        t.join(2.6)
+    for name,url in targets:
+        out.setdefault(name,{'name':name,'reachable':False,'configured':bool(_https_url(url)),'status':'timeout'})
+    push=out.get('push') or {}
+    push_data=push.pop('data',{}) if isinstance(push.get('data'),dict) else {}
+    push['provider_configured']=bool(push_data.get('push_configured')) if push.get('reachable') else False
+    payments=out.get('payments') or {}
+    pay_data=payments.pop('data',{}) if isinstance(payments.get('data'),dict) else {}
+    payments['provider_configured']=bool(pay_data.get('moyasar_configured')) if payments.get('reachable') else False
+    payments['provider_mode']=str(pay_data.get('provider_mode') or 'unknown')[:32] if payments.get('reachable') else 'unknown'
+    integrations=out.get('integrations') or {}
+    int_data=integrations.pop('data',{}) if isinstance(integrations.get('data'),dict) else {}
+    sms=int_data.get('sms') if isinstance(int_data.get('sms'),dict) else {}
+    kyc=int_data.get('kyc') if isinstance(int_data.get('kyc'),dict) else {}
+    integrations['sms']={'provider':str(sms.get('provider') or 'unknown')[:40],'configured':bool(sms.get('configured'))} if integrations.get('reachable') else {'provider':'unknown','configured':False}
+    integrations['kyc']={'provider':str(kyc.get('provider') or 'unknown')[:40],'configured':bool(kyc.get('configured'))} if integrations.get('reachable') else {'provider':'unknown','configured':False}
+    return out
 
 def ensure_schema():
     q("""create table if not exists order_disputes(
@@ -2217,9 +2261,9 @@ class H(BaseHTTPRequestHandler):
                 ]})
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8'}[p]
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':
@@ -3402,8 +3446,8 @@ class H(BaseHTTPRequestHandler):
                 if p=='/api/admin/operations' and method=='GET':
                     metrics={'new_users_24h':q("select count(*)::int n from users where created_at>now()-interval '24 hours'",(), 'one')['n'],'open_tasks':q("select count(*)::int n from tasks where status='open'",(), 'one')['n'],'awaiting_payment':q("select count(*)::int n from orders where status='awaiting_payment'",(), 'one')['n'],'active_orders':q("select count(*)::int n from orders where status in ('in_progress','revision_requested')",(), 'one')['n'],'delivered_waiting':q("select count(*)::int n from orders where status='delivered'",(), 'one')['n'],'open_disputes':q("select count(*)::int n from order_disputes where status in ('open','in_review')",(), 'one')['n'],'pending_cancellations':q("select count(*)::int n from order_cancellation_requests where status in ('pending','in_review')",(), 'one')['n'],'pending_payouts':q("select count(*)::int n from payout_requests where status in ('pending','processing')",(), 'one')['n'],'open_safety_reports':q("select count(*)::int n from safety_reports where status in ('open','in_review')",(), 'one')['n'],'open_support':q("select count(*)::int n from support_tickets where status in ('open','in_progress')",(), 'one')['n'],'pending_privacy':q("select count(*)::int n from privacy_requests where status in ('pending','in_progress')",(), 'one')['n']}
                     funnel={'tasks_7d':q("select count(*)::int n from tasks where created_at>now()-interval '7 days'",(), 'one')['n'],'proposals_7d':q("select count(*)::int n from proposals where created_at>now()-interval '7 days'",(), 'one')['n'],'orders_7d':q("select count(*)::int n from orders where created_at>now()-interval '7 days'",(), 'one')['n'],'completed_7d':q("select count(*)::int n from orders where completed_at>now()-interval '7 days'",(), 'one')['n']}
-                    obs=operational_snapshot()
-                    return self.sendj(200,{'metrics':metrics,'funnel':funnel,'audit':q("select aal.*,u.name admin_name from admin_audit_logs aal join users u on u.id=aal.admin_id order by aal.created_at desc limit 40"),'operational':obs})
+                    obs=operational_snapshot();providers=provider_health_snapshot()
+                    return self.sendj(200,{'metrics':metrics,'funnel':funnel,'audit':q("select aal.*,u.name admin_name from admin_audit_logs aal join users u on u.id=aal.admin_id order by aal.created_at desc limit 40"),'operational':obs,'providers':providers})
                 if p=='/api/admin/disputes' and method=='GET':
                     return self.sendj(200,{'items':q("select d.*,t.title,cu.name client_name,fu.name freelancer_name,ou.name opened_by_name from order_disputes d join orders o on o.id=d.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ou on ou.id=d.opened_by order by case when d.status in ('open','in_review') then 0 else 1 end,d.created_at desc limit 300")})
                 m=re.fullmatch(r'/api/admin/disputes/(\d+)',p)

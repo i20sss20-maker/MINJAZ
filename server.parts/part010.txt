@@ -1,4 +1,14 @@
-t_desc':a.sort(key=lambda x:float(x.get('budget_max') or x.get('budget_min') or 0),reverse=True)
+tion: min_budget=None
+                    if qtext:
+                        a=[x for x in a if qtext in _match_text(' '.join([str(x.get('title') or ''),str(x.get('description') or ''),str(x.get('category_name') or ''),str(x.get('service_name') or '')]))]
+                    if cat_id is not None:a=[x for x in a if int(x.get('category_id') or 0)==cat_id]
+                    if urgency in ('normal','urgent'):a=[x for x in a if x.get('urgency')==urgency]
+                    if bid=='sent':a=[x for x in a if bool(x.get('has_proposal'))]
+                    elif bid=='new':a=[x for x in a if not bool(x.get('has_proposal'))]
+                    if min_budget is not None:
+                        a=[x for x in a if float(x.get('budget_max') or x.get('budget_min') or 0)>=min_budget]
+                    sort=(query.get('sort') or ['match'])[0]
+                    if sort=='budget_desc':a.sort(key=lambda x:float(x.get('budget_max') or x.get('budget_min') or 0),reverse=True)
                     elif sort=='latest':a.sort(key=lambda x:str(x.get('created_at') or ''),reverse=True)
                     else:a.sort(key=lambda x:(int(x.get('match_score') or 0),str(x.get('created_at') or '')),reverse=True)
                     try: limit=max(1,min(int((query.get('limit') or ['200'])[0]),200))
@@ -204,11 +214,4 @@ t_desc':a.sort(key=lambda x:float(x.get('budget_max') or x.get('budget_min') or 
                 if action=='pay':
                     if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
                     if o.get('payment_status')=='paid':return self.sendj(200,{'ok':True,'already_paid':True})
-                    if o.get('status')!='awaiting_payment':return self.sendj(409,{'error':'invalid_order_state','state':o.get('status')})
-                    if PAYMENT_MODE=='mock':
-                        if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
-                        locked,changed,err=pay_mock_atomic(oid,u['id'])
-                        if err=='order_not_found':return self.sendj(404,{'error':err})
-                        if err=='client_only':return self.sendj(403,{'error':err})
-                        if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
-                        if not changed:return self.sendj(200,{'ok':True,'mode':'mock','already
+                    if o.get('status')!='awaiting_payment':return self.sendj(409,{

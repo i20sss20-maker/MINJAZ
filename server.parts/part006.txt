@@ -1,4 +1,36 @@
-r x in q("select e.*,u.name actor_name from order_events e left join users u on u.id=e.actor_id where e.order_id=%s order by e.created_at",(order_id,)):
+ompleted_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
+    except Exception:
+        pass
+
+
+def ensure_timeline_schema():
+    q("""create table if not exists order_events(
+        id bigserial primary key,
+        order_id bigint not null references orders(id) on delete cascade,
+        actor_id bigint references users(id),
+        event_type text not null,
+        title text not null,
+        details text,
+        meta jsonb not null default '{}'::jsonb,
+        created_at timestamptz not null default now()
+    );
+    create index if not exists idx_order_events_order on order_events(order_id,created_at);""",(),None)
+
+def log_order_event(order_id,event_type,title,actor_id=None,details=None,meta=None):
+    try:
+        q("insert into order_events(order_id,actor_id,event_type,title,details,meta) values(%s,%s,%s,%s,%s,%s::jsonb)",(order_id,actor_id,event_type,title,(details or None),json.dumps(meta or {},ensure_ascii=False)),None)
+    except Exception as e:
+        print('EVENT_ERR',repr(e),flush=True)
+
+def order_timeline(order_id):
+    o=q("select o.*,t.title task_title from orders o join tasks t on t.id=o.task_id where o.id=%s",(order_id,),'one')
+    if not o:return []
+    ev=[]
+    def add(ts,kind,title,details=None,actor=None,meta=None):
+        if not ts:return
+        ev.append({'created_at':ts,'type':kind,'title':title,'details':details,'actor_name':actor,'meta':meta or {}})
+    add(o.get('created_at'),'order_created','تم اختيار العرض وإنشاء الطلب',o.get('task_title'))
+    for x in q("select e.*,u.name actor_name from order_events e left join users u on u.id=e.actor_id where e.order_id=%s order by e.created_at",(order_id,)):
         add(x.get('created_at'),x.get('event_type'),x.get('title'),x.get('details'),x.get('actor_name'),x.get('meta') or {})
     for x in q("select m.*,u.name actor_name,(select count(*)::int from attachments a where a.message_id=m.id) attachment_count from messages m join users u on u.id=m.sender_id where m.order_id=%s order by m.created_at",(order_id,)):
         body=str(x.get('body') or '')
@@ -242,13 +274,4 @@ class H(BaseHTTPRequestHandler):
     def do_DELETE(self): self.route('DELETE')
     def route(self,method):
         try:
-            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
-            if p=='/health':
-                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
-            if method=='GET' and p=='/readiness':
-                checks=[
-                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
-                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
-                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
-                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
-                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAG
+            pars

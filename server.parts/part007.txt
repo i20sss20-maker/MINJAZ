@@ -1,4 +1,13 @@
-E_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
+ed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p=='/health':
+                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
+            if method=='GET' and p=='/readiness':
+                checks=[
+                    {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
+                    {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
+                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
+                    {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
+                    {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
                     {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
                     {'key':'legal_versions','ok':all(legal_versions().values()),'value':','.join(legal_versions().values()),'required':True},
@@ -53,9 +62,9 @@ E_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':Tru
                 ]})
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8'}[p]
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':
@@ -148,21 +157,4 @@ E_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':Tru
                 self.set_session_cookie(raw)
                 if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
                 return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
-            if method=='POST' and p=='/api/v1/auth/logout':
-                u=self.require();
-                if not u:return
-                q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
-            if method=='GET' and p=='/api/v1/me':
-                u=self.require();
-                if not u:return
-                roles=enabled_roles(u['id'])
-                if not roles:
-                    q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
-                prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
-                return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
-            if p=='/api/v1/me/profile' and method=='PATCH':
-                u=self.require();
-                if not u:return
-                b=self.body();name=str(b.get('name') or '').strip()[:120]
-                if len(name)<2:return self.sendj(400,{'error':'inv
+            if metho

@@ -1,7 +1,4 @@
-lback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,False,'active_cancellation_exists'
-            cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
-            d=dict(cur.fetchone())
-            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+   cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
             cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
             if idempotency_key:
                 cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
@@ -116,6 +113,48 @@ def dispatch_push_async(user_id,title,body=None,kind='general',order_id=None,tas
     def _send():
         push_adapter_request('/v1/send',payload,'POST')
     threading.Thread(target=_send,name='minjaz-push',daemon=True).start()
+
+def _provider_health(name,url):
+    if not _https_url(url):
+        return {'name':name,'reachable':False,'configured':False,'status':'not_configured'}
+    started=datetime.now()
+    req=urllib.request.Request(url.rstrip('/')+'/health',headers={'Accept':'application/json','User-Agent':f'MINJAZ/{VERSION}'},method='GET')
+    try:
+        with urllib.request.urlopen(req,timeout=2.2) as resp:
+            raw=resp.read(131072)
+            payload=json.loads(raw or b'{}') if raw else {}
+            latency=max(0,int((datetime.now()-started).total_seconds()*1000))
+            return {'name':name,'reachable':200<=int(resp.status)<300,'configured':True,'status':'ok','latency_ms':latency,'data':payload if isinstance(payload,dict) else {}}
+    except Exception as exc:
+        return {'name':name,'reachable':False,'configured':True,'status':'unavailable','error':type(exc).__name__}
+
+def provider_health_snapshot():
+    targets=[('push',PUSH_ADAPTER_URL),('payments',PAYMENTS_HEALTH_URL),('integrations',INTEGRATIONS_HEALTH_URL)]
+    out={};threads=[];lock=threading.Lock()
+    def run(name,url):
+        item=_provider_health(name,url)
+        with lock:
+            out[name]=item
+    for name,url in targets:
+        t=threading.Thread(target=run,args=(name,url),daemon=True);threads.append(t);t.start()
+    for t in threads:
+        t.join(2.6)
+    for name,url in targets:
+        out.setdefault(name,{'name':name,'reachable':False,'configured':bool(_https_url(url)),'status':'timeout'})
+    push=out.get('push') or {}
+    push_data=push.pop('data',{}) if isinstance(push.get('data'),dict) else {}
+    push['provider_configured']=bool(push_data.get('push_configured')) if push.get('reachable') else False
+    payments=out.get('payments') or {}
+    pay_data=payments.pop('data',{}) if isinstance(payments.get('data'),dict) else {}
+    payments['provider_configured']=bool(pay_data.get('moyasar_configured')) if payments.get('reachable') else False
+    payments['provider_mode']=str(pay_data.get('provider_mode') or 'unknown')[:32] if payments.get('reachable') else 'unknown'
+    integrations=out.get('integrations') or {}
+    int_data=integrations.pop('data',{}) if isinstance(integrations.get('data'),dict) else {}
+    sms=int_data.get('sms') if isinstance(int_data.get('sms'),dict) else {}
+    kyc=int_data.get('kyc') if isinstance(int_data.get('kyc'),dict) else {}
+    integrations['sms']={'provider':str(sms.get('provider') or 'unknown')[:40],'configured':bool(sms.get('configured'))} if integrations.get('reachable') else {'provider':'unknown','configured':False}
+    integrations['kyc']={'provider':str(kyc.get('provider') or 'unknown')[:40],'configured':bool(kyc.get('configured'))} if integrations.get('reachable') else {'provider':'unknown','configured':False}
+    return out
 
 def ensure_schema():
     q("""create table if not exists order_disputes(
@@ -272,36 +311,4 @@ def create_portfolio_item_atomic(fid,title,description=None,external_url=None,id
     c=db_connect()
     try:
         c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select id from users where id=%s for update',(int(fid),))
-            if not cur.fetchone():
-                c.rollback();return None,False,'freelancer_not_found'
-            if idempotency_key:
-                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
-                existing=cur.fetchone()
-                if existing:
-                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
-                        c.rollback();return None,False,'idempotency_key_reused'
-                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
-            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
-            if int(cur.fetchone()['n'] or 0)>=12:
-                c.rollback();return None,False,'portfolio_limit'
-            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
-                           values(%s,%s,%s,%s,%s,%s)
-                           returning id,title,description,external_url,created_at""",
-                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
-            row=dict(cur.fetchone())
-        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
-    except psycopg2.errors.UniqueViolation:
-        c.rollback()
-        if not idempotency_key:raise
-        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
-        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
-            return existing,True,None
-        return None,False,'idempotency_key_reused'
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCu

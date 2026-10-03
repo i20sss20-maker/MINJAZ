@@ -1,7 +1,4 @@
-xecute('select id,client_id,status from tasks where id=%s for update',(seed['task_id'],))
-            task=cur.fetchone()
-            if not task or int(task['client_id'])!=int(client_id):
-                c.rollback();return None,None,'proposal_not_found'
+     c.rollback();return None,None,'proposal_not_found'
             cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
             x=cur.fetchone()
             if not x:
@@ -307,4 +304,7 @@ def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,ide
             cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active_cancel=cur.fetchone()
             if active_cancel:
-                c.rol
+                c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,False,'active_cancellation_exists'
+            cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
+            d=dict(cur.fetchone())
+         

@@ -1,4 +1,33 @@
-st_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
+pdate orders set status='cancelled' where id=%s",(cr['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
+                                   resolved_at=now(),updated_at=now()
+                               where id=%s returning *""",
+                            (refund,note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),refund,None
+            c.rollback();return None,dict(cr),None,'invalid_status'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def account_request_fingerprint(kind,payload):
+    normalized={'kind':str(kind),'payload':payload or {}}
+    return hashlib.sha256(json.dumps(normalized,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,request_fingerprint):
+    cur.execute("""insert into account_request_idempotency_keys(user_id,idempotency_key,request_kind,request_fingerprint)
+                   values(%s,%s,%s,%s) on conflict(user_id,idempotency_key) do nothing
+                   returning user_id""",(int(user_id),idempotency_key,request_kind,request_fingerprint))
+    if cur.fetchone():
+        return None,None
+    cur.execute('select request_kind,request_fingerprint,result_id from account_request_idempotency_keys where user_id=%s and idempotency_key=%s',(int(user_id),idempotency_key))
+    row=cur.fetchone()
+    if not row:return None,'idempotency_conflict'
+    if str(row.get('request_kind') or '')!=str(request_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
         return None,'idempotency_key_reused'
     if not row.get('result_id'):return None,'idempotency_conflict'
     return dict(row),None
@@ -290,36 +319,4 @@ def auth(headers):
 
 def refresh_freelancer(fid):
     try:
-        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
-    except Exception:
-        pass
-
-
-def ensure_timeline_schema():
-    q("""create table if not exists order_events(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        actor_id bigint references users(id),
-        event_type text not null,
-        title text not null,
-        details text,
-        meta jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null default now()
-    );
-    create index if not exists idx_order_events_order on order_events(order_id,created_at);""",(),None)
-
-def log_order_event(order_id,event_type,title,actor_id=None,details=None,meta=None):
-    try:
-        q("insert into order_events(order_id,actor_id,event_type,title,details,meta) values(%s,%s,%s,%s,%s,%s::jsonb)",(order_id,actor_id,event_type,title,(details or None),json.dumps(meta or {},ensure_ascii=False)),None)
-    except Exception as e:
-        print('EVENT_ERR',repr(e),flush=True)
-
-def order_timeline(order_id):
-    o=q("select o.*,t.title task_title from orders o join tasks t on t.id=o.task_id where o.id=%s",(order_id,),'one')
-    if not o:return []
-    ev=[]
-    def add(ts,kind,title,details=None,actor=None,meta=None):
-        if not ts:return
-        ev.append({'created_at':ts,'type':kind,'title':title,'details':details,'actor_name':actor,'meta':meta or {}})
-    add(o.get('created_at'),'order_created','تم اختيار العرض وإنشاء الطلب',o.get('task_title'))
-    fo
+        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.c

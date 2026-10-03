@@ -1,4 +1,21 @@
-alid_name'})
+d=='POST' and p=='/api/v1/auth/logout':
+                u=self.require();
+                if not u:return
+                q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
+            if method=='GET' and p=='/api/v1/me':
+                u=self.require();
+                if not u:return
+                roles=enabled_roles(u['id'])
+                if not roles:
+                    q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
+                prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
+                return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
+            if p=='/api/v1/me/profile' and method=='PATCH':
+                u=self.require();
+                if not u:return
+                b=self.body();name=str(b.get('name') or '').strip()[:120]
+                if len(name)<2:return self.sendj(400,{'error':'invalid_name'})
                 r=q('update users set name=%s where id=%s and name is distinct from %s returning id,phone,name,role,is_verified',(name,u['id'],name),'one')
                 if r:
                     log_account_activity(u['id'],'profile_updated','تم تحديث الاسم الظاهر',u.get('session_id'));r['idempotent_replay']=False;return self.sendj(200,r)
@@ -182,16 +199,4 @@ alid_name'})
                 fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
                 fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
                 viewer=auth(self.headers)
-                if viewer:
-                    fp['blocked_by_me']=bool(q('select 1 from user_blocks where blocker_id=%s and blocked_id=%s',(viewer['id'],fid),'one'))
-                    fp['interaction_restricted']=interaction_restricted(viewer['id'],fid)
-                return self.sendj(200,fp)
-            if p=='/api/v1/freelancer/portfolio':
-                u=self.require('freelancer');
-                if not u:return
-                if method=='GET':return self.sendj(200,{'items':q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
-                if method=='POST':
-                    b=self.body();title=str(b.get('title') or '').strip();desc=str(b.get('description') or '').strip();url=str(b.get('external_url') or '').strip();idempotency_key=str(b.get('idempotency_key') or '').strip()
-                    if len(title)<3:return self.sendj(400,{'error':'invalid_title'})
-                    if url and not url.startswith('https://'):return self.sendj(400,{'error':'https_url_required'})
-          
+    

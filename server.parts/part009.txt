@@ -1,4 +1,16 @@
-          if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
+            if viewer:
+                    fp['blocked_by_me']=bool(q('select 1 from user_blocks where blocker_id=%s and blocked_id=%s',(viewer['id'],fid),'one'))
+                    fp['interaction_restricted']=interaction_restricted(viewer['id'],fid)
+                return self.sendj(200,fp)
+            if p=='/api/v1/freelancer/portfolio':
+                u=self.require('freelancer');
+                if not u:return
+                if method=='GET':return self.sendj(200,{'items':q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 20',(u['id'],))})
+                if method=='POST':
+                    b=self.body();title=str(b.get('title') or '').strip();desc=str(b.get('description') or '').strip();url=str(b.get('external_url') or '').strip();idempotency_key=str(b.get('idempotency_key') or '').strip()
+                    if len(title)<3:return self.sendj(400,{'error':'invalid_title'})
+                    if url and not url.startswith('https://'):return self.sendj(400,{'error':'https_url_required'})
+                    if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
                     r,replayed,err=create_portfolio_item_atomic(u['id'],title,desc,url,idempotency_key or None)
                     if err=='portfolio_limit':return self.sendj(409,{'error':err})
                     if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
@@ -209,14 +221,4 @@
                     try: cat_id=int(cat_raw) if cat_raw else None
                     except Exception: cat_id=None
                     try: min_budget=float((query.get('min_budget') or [''])[0]) if (query.get('min_budget') or [''])[0] else None
-                    except Exception: min_budget=None
-                    if qtext:
-                        a=[x for x in a if qtext in _match_text(' '.join([str(x.get('title') or ''),str(x.get('description') or ''),str(x.get('category_name') or ''),str(x.get('service_name') or '')]))]
-                    if cat_id is not None:a=[x for x in a if int(x.get('category_id') or 0)==cat_id]
-                    if urgency in ('normal','urgent'):a=[x for x in a if x.get('urgency')==urgency]
-                    if bid=='sent':a=[x for x in a if bool(x.get('has_proposal'))]
-                    elif bid=='new':a=[x for x in a if not bool(x.get('has_proposal'))]
-                    if min_budget is not None:
-                        a=[x for x in a if float(x.get('budget_max') or x.get('budget_min') or 0)>=min_budget]
-                    sort=(query.get('sort') or ['match'])[0]
-                    if sort=='budge
+                    except Excep

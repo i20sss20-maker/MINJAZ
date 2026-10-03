@@ -1,4 +1,11 @@
-_paid':True})
+'error':'invalid_order_state','state':o.get('status')})
+                    if PAYMENT_MODE=='mock':
+                        if IS_PROD:return self.sendj(503,{'error':'mock_payment_disabled'})
+                        locked,changed,err=pay_mock_atomic(oid,u['id'])
+                        if err=='order_not_found':return self.sendj(404,{'error':err})
+                        if err=='client_only':return self.sendj(403,{'error':err})
+                        if err:return self.sendj(409,{'error':err,'state':locked.get('status') if locked else None})
+                        if not changed:return self.sendj(200,{'ok':True,'mode':'mock','already_paid':True})
                         log_order_event(oid,'payment','تم الدفع التجريبي',u['id'],meta={'mode':'mock'});notify(locked['freelancer_id'],'تم دفع الطلب','تقدر تبدأ التنفيذ الآن','payment',oid);return self.sendj(200,{'ok':True,'mode':'mock'})
                     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL):return self.sendj(503,{'error':'payment_provider_not_configured'})
                     if o.get('payment_checkout_url') and o.get('provider_payment_id'):
@@ -179,12 +186,4 @@ _paid':True})
                     msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
                     msg['idempotent_replay']=bool(replayed)
                     if not replayed:
-                        rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
-                    return self.sendj(200 if replayed else 201,msg)
-
-            if p=='/api/v1/files' and method=='GET':
-                u=self.require();
-                if not u:return
-                uid=int(u['id'])
-                items=q("""select a.id,a.uploaded_by,a.task_id,a.order_id,a.message_id,a.delivery_id,
-                                  a.file_name,a.file_url,a.storage_key,a
+                        rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد'

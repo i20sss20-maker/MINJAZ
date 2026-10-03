@@ -1,4 +1,6 @@
-ctive_request_exists':return self.sendj(409,{'error':err})
+potency_key else None
+                    req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
+                    if err=='active_request_exists':return self.sendj(409,{'error':err})
                     if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
                     if err:return self.sendj(409,{'error':err})
                     req['idempotent_replay']=bool(replayed)
@@ -11,8 +13,8 @@ ctive_request_exists':return self.sendj(409,{'error':err})
                 if p=='/api/admin/operations' and method=='GET':
                     metrics={'new_users_24h':q("select count(*)::int n from users where created_at>now()-interval '24 hours'",(), 'one')['n'],'open_tasks':q("select count(*)::int n from tasks where status='open'",(), 'one')['n'],'awaiting_payment':q("select count(*)::int n from orders where status='awaiting_payment'",(), 'one')['n'],'active_orders':q("select count(*)::int n from orders where status in ('in_progress','revision_requested')",(), 'one')['n'],'delivered_waiting':q("select count(*)::int n from orders where status='delivered'",(), 'one')['n'],'open_disputes':q("select count(*)::int n from order_disputes where status in ('open','in_review')",(), 'one')['n'],'pending_cancellations':q("select count(*)::int n from order_cancellation_requests where status in ('pending','in_review')",(), 'one')['n'],'pending_payouts':q("select count(*)::int n from payout_requests where status in ('pending','processing')",(), 'one')['n'],'open_safety_reports':q("select count(*)::int n from safety_reports where status in ('open','in_review')",(), 'one')['n'],'open_support':q("select count(*)::int n from support_tickets where status in ('open','in_progress')",(), 'one')['n'],'pending_privacy':q("select count(*)::int n from privacy_requests where status in ('pending','in_progress')",(), 'one')['n']}
                     funnel={'tasks_7d':q("select count(*)::int n from tasks where created_at>now()-interval '7 days'",(), 'one')['n'],'proposals_7d':q("select count(*)::int n from proposals where created_at>now()-interval '7 days'",(), 'one')['n'],'orders_7d':q("select count(*)::int n from orders where created_at>now()-interval '7 days'",(), 'one')['n'],'completed_7d':q("select count(*)::int n from orders where completed_at>now()-interval '7 days'",(), 'one')['n']}
-                    obs=operational_snapshot()
-                    return self.sendj(200,{'metrics':metrics,'funnel':funnel,'audit':q("select aal.*,u.name admin_name from admin_audit_logs aal join users u on u.id=aal.admin_id order by aal.created_at desc limit 40"),'operational':obs})
+                    obs=operational_snapshot();providers=provider_health_snapshot()
+                    return self.sendj(200,{'metrics':metrics,'funnel':funnel,'audit':q("select aal.*,u.name admin_name from admin_audit_logs aal join users u on u.id=aal.admin_id order by aal.created_at desc limit 40"),'operational':obs,'providers':providers})
                 if p=='/api/admin/disputes' and method=='GET':
                     return self.sendj(200,{'items':q("select d.*,t.title,cu.name client_name,fu.name freelancer_name,ou.name opened_by_name from order_disputes d join orders o on o.id=d.order_id join tasks t on t.id=o.task_id join users cu on cu.id=o.client_id join users fu on fu.id=o.freelancer_id join users ou on ou.id=d.opened_by order by case when d.status in ('open','in_review') then 0 else 1 end,d.created_at desc limit 300")})
                 m=re.fullmatch(r'/api/admin/disputes/(\d+)',p)

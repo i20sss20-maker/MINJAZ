@@ -52,6 +52,8 @@ KYC_WEBHOOK_SECRET=os.getenv('KYC_WEBHOOK_SECRET','').strip()
 PUSH_MODE=os.getenv('PUSH_MODE','off').strip().lower()
 PUSH_ADAPTER_URL=os.getenv('PUSH_ADAPTER_URL','').strip().rstrip('/')
 PUSH_ADAPTER_BEARER=os.getenv('PUSH_ADAPTER_BEARER','').strip()
+PAYMENTS_HEALTH_URL=os.getenv('PAYMENTS_HEALTH_URL',os.getenv('RAILWAY_SERVICE_MINJAZ_PAYMENTS_API_URL','')).strip().rstrip('/')
+INTEGRATIONS_HEALTH_URL=os.getenv('INTEGRATIONS_HEALTH_URL',os.getenv('RAILWAY_SERVICE_MINJAZ_INTEGRATIONS_API_URL','')).strip().rstrip('/')
 _cors_raw=os.getenv('CORS_ORIGINS',os.getenv('CORS_ORIGIN','https://minjaz-unified-production.up.railway.app'))
 CORS_ORIGINS={x.strip().rstrip('/') for x in _cors_raw.split(',') if x.strip()}
 
@@ -312,5 +314,4 @@ def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order
             cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
             if not cur.fetchone():
                 continue
-            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
-            cur.execute
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['siz
