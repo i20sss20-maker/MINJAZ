@@ -146,6 +146,16 @@
                 except Exception:limit=100
                 items=q('select id,order_id,task_id,kind,title,body,read_at,created_at from user_notifications_v2 where '+' and '.join(where)+' order by created_at desc limit '+str(limit),tuple(params));
                 unread=q('select count(*)::int n from user_notifications_v2 where user_id=%s and read_at is null',(u['id'],),'one')['n'];counts={x['kind']:x['n'] for x in q('select kind,count(*)::int n from user_notifications_v2 where user_id=%s group by kind',(u['id'],))};return self.sendj(200,{'items':items,'unread':unread,'counts':counts})
+            if p=='/api/v1/notifications/read-group' and method=='POST':
+                u=self.require();
+                if not u:return
+                b=self.body();oid=int(b.get('order_id') or 0);tid=int(b.get('task_id') or 0)
+                if bool(oid)==bool(tid):return self.sendj(400,{'error':'single_notification_group_required'})
+                if oid:
+                    rows=q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and order_id=%s returning id',(u['id'],oid))
+                    return self.sendj(200,{'ok':True,'scope':'order','order_id':oid,'updated':len(rows or [])})
+                rows=q('update user_notifications_v2 set read_at=coalesce(read_at,now()) where user_id=%s and task_id=%s returning id',(u['id'],tid))
+                return self.sendj(200,{'ok':True,'scope':'task','task_id':tid,'updated':len(rows or [])})
             if p=='/api/v1/notifications/read-all' and method=='POST':
                 u=self.require();
                 if not u:return
