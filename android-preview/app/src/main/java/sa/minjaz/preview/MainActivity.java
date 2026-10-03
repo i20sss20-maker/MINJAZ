@@ -109,21 +109,15 @@ public class MainActivity extends Activity {
         box.setPadding(dp(28), dp(28), dp(28), dp(28));
         box.setBackgroundColor(surfaceColor());
 
-        boolean english = isEnglishDevice();
-
         TextView title = new TextView(this);
-        title.setText(english ? "Could not connect to MINJAZ" : "تعذر الاتصال بمِنجاز");
+        title.setText(getString(R.string.connection_error_title));
         title.setTextSize(20);
         title.setTextColor(primaryTextColor());
         title.setGravity(Gravity.CENTER);
         box.addView(title);
 
         TextView message = new TextView(this);
-        message.setText(
-            english
-                ? "Check your internet connection and try again."
-                : "تحقق من اتصال الإنترنت ثم حاول مرة أخرى."
-        );
+        message.setText(getString(R.string.connection_error_message));
         message.setTextSize(14);
         message.setTextColor(secondaryTextColor());
         message.setGravity(Gravity.CENTER);
@@ -135,11 +129,11 @@ public class MainActivity extends Activity {
         box.addView(message, messageParams);
 
         Button retry = new Button(this);
-        retry.setText(english ? "Try again" : "إعادة المحاولة");
+        retry.setText(getString(R.string.retry));
         retry.setOnClickListener(v -> {
             hideError();
             if (webView.getUrl() == null || webView.getUrl().trim().isEmpty()) {
-                webView.loadUrl(APP_URL);
+                webView.loadUrl(appUrlWithLocale());
             } else {
                 webView.reload();
             }
@@ -170,7 +164,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.7");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.8");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
@@ -224,9 +218,9 @@ public class MainActivity extends Activity {
     private void loadLaunchDestination(Intent intent) {
         Uri data = intent == null ? null : intent.getData();
         if (isInternalUri(data)) {
-            webView.loadUrl(data.toString());
+            webView.loadUrl(localizedInternalUrl(data));
         } else {
-            webView.loadUrl(APP_URL);
+            webView.loadUrl(appUrlWithLocale());
             if (data != null) openExternal(data);
         }
     }
@@ -292,7 +286,7 @@ public class MainActivity extends Activity {
             }
 
             request.setTitle(fileName);
-            request.setDescription("مِنجاز");
+            request.setDescription(getString(R.string.app_name));
             request.setAllowedOverMetered(true);
             request.setAllowedOverRoaming(false);
             request.setNotificationVisibility(
@@ -419,7 +413,7 @@ public class MainActivity extends Activity {
 
     private void recoverWebView() {
         final String lastUrl =
-            webView != null && webView.getUrl() != null ? webView.getUrl() : APP_URL;
+            webView != null && webView.getUrl() != null ? webView.getUrl() : appUrlWithLocale();
 
         if (webView != null) {
             root.removeView(webView);
@@ -462,7 +456,7 @@ public class MainActivity extends Activity {
         setIntent(intent);
         Uri data = intent == null ? null : intent.getData();
         if (isInternalUri(data)) {
-            webView.loadUrl(data.toString());
+            webView.loadUrl(localizedInternalUrl(data));
         } else if (data != null) {
             openExternal(data);
         }
@@ -538,6 +532,30 @@ public class MainActivity extends Activity {
             webView = null;
         }
         super.onDestroy();
+    }
+
+    private String localeCode() {
+        Locale locale = getResources().getConfiguration().getLocales().get(0);
+        if (locale != null && "en".equalsIgnoreCase(locale.getLanguage())) {
+            return "en";
+        }
+        return "ar";
+    }
+
+    private String appUrlWithLocale() {
+        return APP_URL + "?app_lang=" + localeCode();
+    }
+
+    private String localizedInternalUrl(Uri uri) {
+        if (uri == null) return appUrlWithLocale();
+        String existing = uri.getQueryParameter("app_lang");
+        if ("ar".equalsIgnoreCase(existing) || "en".equalsIgnoreCase(existing)) {
+            return uri.toString();
+        }
+        return uri.buildUpon()
+            .appendQueryParameter("app_lang", localeCode())
+            .build()
+            .toString();
     }
 
     private boolean isSystemDark() {
