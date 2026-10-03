@@ -2,6 +2,7 @@ import json, os, random, time, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE=os.getenv("E2E_BASE_URL","https://minjaz-stage-fixed-production.up.railway.app").rstrip("/")
+EXPECTED_COMMIT=(os.getenv("E2E_EXPECTED_COMMIT") or os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()[:12]
 ADMIN_PHONE=os.getenv("E2E_ADMIN_PHONE","").strip()
 PORT=int(os.getenv("PORT","3000"))
 
@@ -28,9 +29,10 @@ def wait_for_health(timeout_seconds=180):
     while time.time()<deadline:
         try:
             health=call("GET","/health",expected=(200,))
-            if health.get("ok") is True and health.get("database") is True:
+            same_release=(not EXPECTED_COMMIT) or str(health.get("release_commit") or "")==EXPECTED_COMMIT
+            if health.get("ok") is True and health.get("database") is True and same_release:
                 return health
-            last_error=AssertionError(("health_not_ready",health))
+            last_error=AssertionError(("health_not_ready",{"expected_commit":EXPECTED_COMMIT,"health":health}))
         except Exception as exc:
             last_error=exc
         time.sleep(3)
