@@ -5,7 +5,7 @@ This module is the installable Android shell for the MINJAZ beta web application
 - applicationId: `sa.minjaz.preview`
 - minSdk: 24
 - targetSdk / compileSdk: 36
-- version: `0.9-work-center` (`versionCode 9`)
+- version: `0.10-android-stability` (`versionCode 10`)
 - form factors: phones, tablets, foldables, ChromeOS / resizable windows
 - production URL: `https://minjaz-app-prod-production.up.railway.app`
 
@@ -20,3 +20,5 @@ Runtime recovery v0.5 adds WebView crash recovery and automatic retry after conn
 Release engineering v0.6 adds a non-debuggable release build and generates unsigned APK + AAB artifacts. Signing material must remain outside source control and be configured separately before Google Play submission.
 
 Android v0.9 aligns the wrapper with MINJAZ Work Center v31, keeps external navigation isolated, downloads HTTPS attachments (including signed storage URLs) through Android DownloadManager, and shows the native retry screen for main-frame HTTP errors.
+
+Android v0.10 adds a main-frame load watchdog, safer network recovery after resume, WebView renderer recovery, smarter back navigation (close overlays → home → native history), resize/orientation stability, and stricter artifact version checks.
