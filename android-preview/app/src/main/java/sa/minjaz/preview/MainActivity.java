@@ -485,15 +485,9 @@ public class MainActivity extends Activity {
                 try {
                     Uri currentUri = Uri.parse(current);
                     if (isInternalUri(currentUri)) {
-                        String currentLang = currentUri.getQueryParameter("app_lang");
-                        if (!localeCode().equalsIgnoreCase(currentLang)) {
-                            webView.loadUrl(
-                                currentUri.buildUpon()
-                                    .clearQuery()
-                                    .appendQueryParameter("app_lang", localeCode())
-                                    .build()
-                                    .toString()
-                            );
+                        String localized = localizedInternalUrl(currentUri);
+                        if (!current.equals(localized)) {
+                            webView.loadUrl(localized);
                         }
                     }
                 } catch (Exception ignored) {
@@ -567,14 +561,15 @@ public class MainActivity extends Activity {
 
     private String localizedInternalUrl(Uri uri) {
         if (uri == null) return appUrlWithLocale();
-        String existing = uri.getQueryParameter("app_lang");
-        if ("ar".equalsIgnoreCase(existing) || "en".equalsIgnoreCase(existing)) {
-            return uri.toString();
+        Uri.Builder builder = uri.buildUpon().clearQuery();
+        for (String name : uri.getQueryParameterNames()) {
+            if ("app_lang".equals(name)) continue;
+            for (String value : uri.getQueryParameters(name)) {
+                builder.appendQueryParameter(name, value);
+            }
         }
-        return uri.buildUpon()
-            .appendQueryParameter("app_lang", localeCode())
-            .build()
-            .toString();
+        builder.appendQueryParameter("app_lang", localeCode());
+        return builder.build().toString();
     }
 
     private boolean isSystemDark() {
