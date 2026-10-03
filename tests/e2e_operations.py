@@ -22,6 +22,22 @@ def call(method,path,body=None,token=None,expected=(200,201)):
         except Exception: payload={"raw":raw.decode(errors="replace")}
         raise AssertionError((path,e.code,payload)) from e
 
+def wait_for_health(timeout_seconds=180):
+    deadline=time.time()+max(5,int(timeout_seconds))
+    last_error=None
+    while time.time()<deadline:
+        try:
+            health=call("GET","/health",expected=(200,))
+            if health.get("ok") is True and health.get("database") is True:
+                return health
+            last_error=AssertionError(("health_not_ready",health))
+        except Exception as exc:
+            last_error=exc
+        time.sleep(3)
+    if last_error:
+        raise last_error
+    raise AssertionError("health_timeout")
+
 def login(phone,role,name):
     if not phone: raise AssertionError("missing_phone")
     for attempt in range(3):
@@ -57,8 +73,7 @@ def create_order(ct,ft,category_id,title,price=120):
 
 def run():
     assert ADMIN_PHONE,"E2E_ADMIN_PHONE is required"
-    health=call("GET","/health",expected=(200,))
-    assert health.get("ok") is True and health.get("database") is True,health
+    health=wait_for_health(180)
     cats=call("GET","/api/v1/categories",expected=(200,)).get("items") or []
     assert cats,"categories_empty"
     cat=cats[0]["id"]
