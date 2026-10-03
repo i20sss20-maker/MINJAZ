@@ -4,7 +4,8 @@
   function e(v){if(typeof esc==='function')return esc(v==null?'':String(v));return String(v==null?'':v).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]})}
   function m(v){return typeof money==='function'?money(v):Number(v||0).toLocaleString(lang()==='en'?'en-US':'ar-SA')+' SAR'}
   function when(v){try{return v?new Date(v).toLocaleString(lang()==='en'?'en-US':'ar-SA'):''}catch(_){return''}}
-  var state={data:null,loading:false};
+  function freshLabel(){if(!state.updatedAt)return t('غير محدّث','Not updated');var sec=Math.max(0,Math.round((Date.now()-state.updatedAt)/1000));if(sec<10)return t('محدّث الآن','Updated now');if(sec<60)return t('محدّث قبل '+sec+' ث','Updated '+sec+'s ago');var min=Math.floor(sec/60);return t('محدّث قبل '+min+' د','Updated '+min+'m ago')}
+  var state={data:null,loading:false,updatedAt:0};
 
   function ensurePage(){
     if(document.getElementById('workcenter'))return;
@@ -85,7 +86,7 @@
     var unread=conversations.reduce(function(s,x){return s+Number(x.unread_messages||0)},0);
     var role=me?.user?.role;
     host.innerHTML='<div class="workCenterV31">'+
-      '<section class="wcHeroV31"><div class="wcHeroTopV31"><div><span class="pill blue">v31</span><h2>'+t('مركز العمل','Work center')+'</h2><p>'+t('طلباتك ورسائلك وملفاتك والخطوات اللي تحتاج منك إجراء — كلها في مكان واحد.','Orders, messages, files, and next actions in one place.')+'</p></div><button class="btn ghost wcRefreshV31" onclick="renderWorkCenterV31(true)">↻ '+t('تحديث','Refresh')+'</button></div><div class="wcQuickV31">'+
+      '<section class="wcHeroV31"><div class="wcHeroTopV31"><div><div class="wcVersionV311"><span class="pill blue">v31.1</span><span class="pill gray wcFreshV311">'+e(freshLabel())+'</span></div><h2>'+t('مركز العمل','Work center')+'</h2><p>'+t('طلباتك ورسائلك وملفاتك والخطوات اللي تحتاج منك إجراء — كلها في مكان واحد.','Orders, messages, files, and next actions in one place.')+'</p></div><button class="btn ghost wcRefreshV31" onclick="renderWorkCenterV31(true)">↻ '+t('تحديث','Refresh')+'</button></div><div class="wcQuickV31">'+
       (role==='client'?'<button class="btn primary" onclick="newTaskModal()">＋ '+t('مهمة جديدة','New task')+'</button>':'<button class="btn primary" onclick="go(\'tasks\')">'+t('استكشف الفرص','Browse opportunities')+'</button>')+
       '<button class="btn ghost" onclick="go(\'orders\')">'+t('الطلبات','Orders')+'</button><button class="btn ghost" onclick="go(\'inbox\')">'+t('الرسائل','Messages')+'</button><button class="btn ghost" onclick="go(\'files\')">'+t('الملفات','Files')+'</button></div></section>'+
       '<div class="wcMetricsV31"><div class="wcMetricV31"><b>'+actions.length+'</b><small>'+t('إجراءات مقترحة','Suggested actions')+'</small></div><div class="wcMetricV31"><b>'+active+'</b><small>'+t('طلبات نشطة','Active orders')+'</small></div><div class="wcMetricV31"><b>'+unread+'</b><small>'+t('رسائل غير مقروءة','Unread messages')+'</small></div><div class="wcMetricV31"><b>'+files.length+'</b><small>'+t('ملفات مرتبطة','Linked files')+'</small></div></div>'+
@@ -121,7 +122,7 @@
       proposals:r[5]?.items||[]
     };
     var partial=r.some(function(x){return x===null});
-    state.data=data;paint(data,partial);
+    state.data=data;state.updatedAt=Date.now();paint(data,partial);
   };
 
   var baseGoV31=window.go;
@@ -141,6 +142,16 @@
   if(typeof baseBootV31==='function')window.boot=async function(){
     var out=await baseBootV31.apply(this,arguments);ensurePage();ensureNav();return out;
   };
+
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState!=='visible')return;
+    var page=document.getElementById('workcenter');
+    if(page?.classList.contains('on')&&Date.now()-Number(state.updatedAt||0)>30000)window.renderWorkCenterV31(true);
+  });
+  window.addEventListener('focus',function(){
+    var page=document.getElementById('workcenter');
+    if(page?.classList.contains('on')&&Date.now()-Number(state.updatedAt||0)>30000)window.renderWorkCenterV31(true);
+  });
 
   setTimeout(function(){ensurePage();if(window.me?.user)ensureNav()},250);
 })();
