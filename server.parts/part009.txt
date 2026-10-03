@@ -26,6 +26,73 @@
                        limit 200""",(u['id'],))
                 return self.sendj(200,{'items':a})
 
+            if p=='/api/v1/search' and method=='GET':
+                u=self.require();
+                if not u:return
+                raw=str((query.get('q') or [''])[0] or '').strip()[:120]
+                try:limit=max(1,min(int((query.get('limit') or ['6'])[0]),12))
+                except Exception:limit=6
+                if len(raw)<2:return self.sendj(200,{'query':raw,'items':{'tasks':[],'orders':[],'freelancers':[],'messages':[]}})
+                needle=_match_text(raw)
+                def matched(*vals):
+                    return needle in _match_text(' '.join(str(v or '') for v in vals))
+                task_rows=[]
+                if u['role']=='client':
+                    task_rows=q("""select t.id,t.title,t.description,t.status,t.urgency,t.created_at,c.name_ar category_name
+                                   from tasks t left join categories c on c.id=t.category_id
+                                   where t.client_id=%s order by t.created_at desc limit 250""",(u['id'],))
+                elif u['role']=='freelancer':
+                    task_rows=q("""select t.id,t.title,t.description,t.status,t.urgency,t.created_at,t.client_id,c.name_ar category_name,s.name_ar service_name
+                                   from tasks t left join categories c on c.id=t.category_id left join services s on s.id=t.service_id
+                                   where t.status='open' and t.client_id<>%s
+                                     and not exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=t.client_id) or (ub.blocker_id=t.client_id and ub.blocked_id=%s))
+                                     and not exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,t.client_id))
+                                     and not exists(select 1 from task_moderation tm where tm.task_id=t.id and tm.hidden=true)
+                                   order by t.created_at desc limit 300""",(u['id'],u['id'],u['id'],u['id']))
+                else:
+                    task_rows=q("""select t.id,t.title,t.description,t.status,t.urgency,t.created_at,c.name_ar category_name
+                                   from tasks t left join categories c on c.id=t.category_id order by t.created_at desc limit 300""")
+                tasks=[]
+                for x in task_rows:
+                    if matched(x.get('title'),x.get('description'),x.get('category_name'),x.get('service_name')):
+                        tasks.append({'id':x['id'],'title':x.get('title'),'subtitle':x.get('category_name') or 'عام','status':x.get('status'),'urgency':x.get('urgency'),'created_at':x.get('created_at')})
+                        if len(tasks)>=limit:break
+
+                order_rows=q("""select o.id,o.task_id,o.status,o.payment_status,o.created_at,t.title,t.description,
+                                      c.name client_name,f.name freelancer_name
+                               from orders o join tasks t on t.id=o.task_id
+                               join users c on c.id=o.client_id join users f on f.id=o.freelancer_id
+                               where o.client_id=%s or o.freelancer_id=%s
+                               order by o.created_at desc limit 250""",(u['id'],u['id']))
+                orders=[]
+                for x in order_rows:
+                    counterpart=x.get('freelancer_name') if u['role']=='client' else x.get('client_name')
+                    if matched(x.get('title'),x.get('description'),counterpart,x.get('status'),x.get('payment_status')):
+                        orders.append({'id':x['id'],'task_id':x.get('task_id'),'title':x.get('title'),'subtitle':counterpart,'status':x.get('status'),'payment_status':x.get('payment_status'),'created_at':x.get('created_at')})
+                        if len(orders)>=limit:break
+
+                freelancer_rows=q("""select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status
+                                     from users us join freelancer_profiles fp on fp.user_id=us.id
+                                     order by fp.rating desc,fp.completed_tasks desc limit 300""")
+                freelancers=[]
+                for x in freelancer_rows:
+                    if u['role']=='client' and interaction_restricted(u['id'],x['user_id']):continue
+                    if matched(x.get('name'),x.get('bio'),' '.join(x.get('skills') or [])):
+                        freelancers.append({'user_id':x['user_id'],'name':x.get('name'),'bio':x.get('bio'),'skills':x.get('skills') or [],'rating':x.get('rating'),'completed_tasks':x.get('completed_tasks'),'is_available':x.get('is_available'),'kyc_status':x.get('kyc_status')})
+                        if len(freelancers)>=limit:break
+
+                message_rows=q("""select m.id,m.order_id,m.body,m.created_at,us.name sender_name,t.title order_title
+                                  from messages m join users us on us.id=m.sender_id
+                                  join orders o on o.id=m.order_id join tasks t on t.id=o.task_id
+                                  where o.client_id=%s or o.freelancer_id=%s
+                                  order by m.created_at desc limit 400""",(u['id'],u['id']))
+                messages=[]
+                for x in message_rows:
+                    if matched(x.get('body'),x.get('sender_name'),x.get('order_title')):
+                        messages.append({'id':x['id'],'order_id':x.get('order_id'),'title':x.get('order_title'),'sender_name':x.get('sender_name'),'body':str(x.get('body') or '')[:240],'created_at':x.get('created_at')})
+                        if len(messages)>=limit:break
+                return self.sendj(200,{'query':raw,'items':{'tasks':tasks,'orders':orders,'freelancers':freelancers,'messages':messages}})
+
             if p=='/api/v1/tasks' and method=='GET':
                 u=self.require();
                 if not u:return
