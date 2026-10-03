@@ -58,6 +58,14 @@ jobs:
           curl -fsS --retry 5 --retry-delay 2 "$BASE/sw.js" -o sw.js
           test -s manifest.webmanifest
           test -s sw.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-work-center-v31.js" -o work-center.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-work-center-v31.css" -o work-center.css
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-files-demo-v302.js" -o files-demo.js
+          grep -q "renderWorkCenterV31" work-center.js
+          grep -q "workCenterV31" work-center.css
+          grep -q "/api/v1/files" files-demo.js
+          grep -q "/minjaz-work-center-v31.js" index.html
+          grep -q "web-v31" sw.js
 
           curl -fsS -D headers.txt -o /dev/null -H "Origin: $BASE" "$BASE/health"
           grep -qi "access-control-allow-origin: $BASE" headers.txt
