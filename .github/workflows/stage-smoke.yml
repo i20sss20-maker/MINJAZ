@@ -46,6 +46,9 @@ jobs:
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-files-demo-v302.js" -o files-demo.js
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-push-v312.js" -o push-runtime.js
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-admin-provider-v315.js" -o admin-provider.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-release-v316.js" -o release-v316.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/privacy" -o privacy.html
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/account-deletion" -o account-deletion.html
           grep -q "renderWorkCenterV31" work-center.js
           grep -q "workCenterV31" work-center.css
           grep -q "/api/v1/files" files-demo.js
@@ -53,7 +56,11 @@ jobs:
           grep -q "/api/v1/push/config" push-runtime.js
           grep -q "/api/admin/operations" admin-provider.js
           grep -q "/minjaz-admin-provider-v315.js" index.html
+          grep -q "openAccountDeletionV316" release-v316.js
+          grep -q "/minjaz-release-v316.js" index.html
+          grep -q "سياسة الخصوصية" privacy.html
+          grep -q "حذف حساب مِنجاز" account-deletion.html
           grep -q "/minjaz-push-v312.js" index.html
           grep -q "/minjaz-work-center-v31.js" index.html
-          grep -q "web-v31.5" sw.js
+          grep -q "web-v31.6" sw.js
           echo "PUBLIC_STAGE_OK index_bytes=$(wc -c < index.html) manifest_bytes=$(wc -c < manifest.webmanifest) sw_bytes=$(wc -c < sw.js)"

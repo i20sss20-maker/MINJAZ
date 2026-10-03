@@ -1,5 +1,4 @@
-     c.rollback();return None,None,'proposal_not_found'
-            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+id']))
             x=cur.fetchone()
             if not x:
                 c.rollback();return None,None,'proposal_not_found'
@@ -307,4 +306,7 @@ def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,ide
                 c.rollback();x=dict(o);x['active_id']=active_cancel['id'];return None,x,False,'active_cancellation_exists'
             cur.execute("insert into order_disputes(order_id,opened_by,reason,details,previous_order_status,previous_task_status) values(%s,%s,%s,%s,%s,%s) returning *",(int(oid),int(user_id),str(reason or '')[:180],str(details or '')[:4000] or None,o.get('status'),o.get('task_status')))
             d=dict(cur.fetchone())
-         
+            cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
+            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
+            if idempotency_key:
+                cur.execute('update

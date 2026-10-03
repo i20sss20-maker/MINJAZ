@@ -47,21 +47,21 @@ jobs:
 
       - name: Build release APK and AAB
         working-directory: android-preview
-        run: gradle --no-daemon clean :app:assembleRelease :app:bundleRelease
+        run: gradle --no-daemon clean :app:assembleProductionRelease :app:bundleProductionRelease
 
       - name: Verify release artifacts
         shell: bash
         run: |
           set -euo pipefail
-          APK="android-preview/app/build/outputs/apk/release/app-release-unsigned.apk"
-          AAB="android-preview/app/build/outputs/bundle/release/app-release.aab"
+          APK="android-preview/app/build/outputs/apk/production/release/app-production-release-unsigned.apk"
+          AAB="android-preview/app/build/outputs/bundle/productionRelease/app-production-release.aab"
           test -s "$APK"
           test -s "$AAB"
 
           aapt dump badging "$APK" | tee /tmp/minjaz-release-badging.txt
-          grep -q "package: name='sa.minjaz.preview'" /tmp/minjaz-release-badging.txt
-          grep -q "versionCode='10'" /tmp/minjaz-release-badging.txt
-          grep -q "versionName='0.10-android-stability'" /tmp/minjaz-release-badging.txt
+          grep -q "package: name='sa.minjaz.app'" /tmp/minjaz-release-badging.txt
+          grep -q "versionCode='11'" /tmp/minjaz-release-badging.txt
+          grep -q "versionName='1.0.0-rc1'" /tmp/minjaz-release-badging.txt
           grep -q "targetSdkVersion:'36'" /tmp/minjaz-release-badging.txt
           grep -q "sdkVersion:'24'" /tmp/minjaz-release-badging.txt
 
@@ -70,10 +70,10 @@ jobs:
       - name: Upload unsigned release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MINJAZ-0.10-release-unsigned
+          name: MINJAZ-1.0.0-rc1-release-unsigned
           path: |
-            android-preview/app/build/outputs/apk/release/app-release-unsigned.apk
-            android-preview/app/build/outputs/bundle/release/app-release.aab
+            android-preview/app/build/outputs/apk/production/release/app-production-release-unsigned.apk
+            android-preview/app/build/outputs/bundle/productionRelease/app-production-release.aab
             /tmp/MINJAZ-release.sha256
           if-no-files-found: error
           retention-days: 14
@@ -106,12 +106,12 @@ jobs:
         run: |
           set -euo pipefail
           KEYSTORE=/tmp/minjaz-release.jks
-          SIGNED_APK=/tmp/MINJAZ-0.10-production-signed.apk
-          SIGNED_AAB=/tmp/MINJAZ-0.10-production-signed.aab
+          SIGNED_APK=/tmp/MINJAZ-1.0.0-rc1-production-signed.apk
+          SIGNED_AAB=/tmp/MINJAZ-1.0.0-rc1-production-signed.aab
           printf '%s' "$KS_B64" | base64 --decode > "$KEYSTORE"
           chmod 600 "$KEYSTORE"
-          cp android-preview/app/build/outputs/bundle/release/app-release.aab "$SIGNED_AAB"
-          apksigner sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$SIGNED_APK" android-preview/app/build/outputs/apk/release/app-release-unsigned.apk
+          cp android-preview/app/build/outputs/bundle/productionRelease/app-production-release.aab "$SIGNED_AAB"
+          apksigner sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$SIGNED_APK" android-preview/app/build/outputs/apk/production/release/app-production-release-unsigned.apk
           jarsigner -keystore "$KEYSTORE" -storepass "$KS_PASS" -keypass "$KEY_PASS" "$SIGNED_AAB" "$KEY_ALIAS"
           apksigner verify --verbose "$SIGNED_APK"
           jarsigner -verify "$SIGNED_AAB"
@@ -122,10 +122,10 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: MINJAZ-0.10-production-signed
+          name: MINJAZ-1.0.0-rc1-production-signed
           path: |
-            /tmp/MINJAZ-0.10-production-signed.apk
-            /tmp/MINJAZ-0.10-production-signed.aab
+            /tmp/MINJAZ-1.0.0-rc1-production-signed.apk
+            /tmp/MINJAZ-1.0.0-rc1-production-signed.aab
             /tmp/MINJAZ-production-signed.sha256
           if-no-files-found: error
           retention-days: 30

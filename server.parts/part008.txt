@@ -1,4 +1,11 @@
-d=='POST' and p=='/api/v1/auth/logout':
+elf.require();
+                if not u:return
+                raw,transport=session_token_from_headers(self.headers)
+                if not raw:return self.sendj(401,{'error':'unauthorized'})
+                self.set_session_cookie(raw)
+                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
+                return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
+            if method=='POST' and p=='/api/v1/auth/logout':
                 u=self.require();
                 if not u:return
                 q('update sessions set revoked_at=now() where id=%s and user_id=%s',(u['session_id'],u['id']),None);self.clear_session_cookie();log_account_activity(u['id'],'logout','تسجيل الخروج',u.get('session_id'));return self.sendj(200,{'ok':True})
@@ -196,7 +203,4 @@ d=='POST' and p=='/api/v1/auth/logout':
                 fid=int(m.group(1))
                 fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s",(fid,),'one')
                 if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
-                fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
-                fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
-                viewer=auth(self.headers)
-    
+                fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_it

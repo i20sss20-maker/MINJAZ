@@ -166,7 +166,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.10");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/" + BuildConfig.VERSION_NAME);
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);

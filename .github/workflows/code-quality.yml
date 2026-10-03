@@ -224,6 +224,9 @@ jobs:
           assert "credentials:'same-origin'" in ui
           assert '/minjaz-push-v312.js' in ui
           assert '/minjaz-admin-provider-v315.js' in ui
+          assert '/minjaz-release-v316.js' in ui
+          assert "p=='/api/v1/public/config'" in server
+          assert "'/account-deletion'" in server
           assert 'def provider_health_snapshot()' in server
           assert "'providers':providers" in server
           assert "p=='/api/v1/push/config'" in server
@@ -252,12 +255,13 @@ jobs:
           set -euo pipefail
           node --check public/minjaz-push-v312.js
           node --check public/minjaz-admin-provider-v315.js
+          node --check public/minjaz-release-v316.js
           node --check services/push/server.js
           node --check services/payments/server.js
           node --check services/integrations/server.js
           grep -q "moyasar_invoice_links" database/migrations/023_moyasar_invoice_links.sql
           grep -q "self.addEventListener('push'" public/sw.js
-          grep -q "web-v31.5" public/sw.js
+          grep -q "web-v31.6" public/sw.js
 
       - name: Compile E2E test suites
         run: |

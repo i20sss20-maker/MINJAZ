@@ -2253,17 +2253,33 @@ class H(BaseHTTPRequestHandler):
                 if result['event_type']=='payment.failed' and result.get('failed_effective'):
                     log_order_event(o['id'],'payment_failed','تعذر تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'تعذر تأكيد الدفع','يمكنك إعادة المحاولة من رابط الدفع أو التواصل مع الدعم','payment',o['id'])
                 return self.sendj(200,{'ok':True})
+            if method=='GET' and p=='/api/v1/public/config':
+                production_channel=APP_ENV=='production' and LEGAL_REVIEW_STATUS=='approved'
+                return self.sendj(200,{
+                    'app_name':'مِنجاز',
+                    'version':VERSION,
+                    'release_channel':'production' if production_channel else 'beta',
+                    'legal_review_status':LEGAL_REVIEW_STATUS,
+                    'privacy_url':'/privacy',
+                    'account_deletion_url':'/account-deletion',
+                    'account_deletion_supported':True
+                })
             if method=='GET' and p=='/api/v1/legal/documents':
                 return self.sendj(200,{'documents':[
                     {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
                     {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
                     {'key':'marketplace_rules','title':'قواعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
                 ]})
+            if method=='GET' and p in ('/privacy','/privacy.html','/account-deletion','/account-deletion.html'):
+                static_name='privacy.html' if p in ('/privacy','/privacy.html') else 'account-deletion.html'
+                data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8'}[p]
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js','/minjaz-release-v316.js':'minjaz-release-v316.js'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8','/minjaz-release-v316.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':

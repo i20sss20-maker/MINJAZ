@@ -1,4 +1,4 @@
-potency_key else None
+             fingerprint=account_request_fingerprint('privacy',payload) if idempotency_key else None
                     req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
                     if err=='active_request_exists':return self.sendj(409,{'error':err})
                     if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})

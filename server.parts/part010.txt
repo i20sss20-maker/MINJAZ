@@ -1,4 +1,8 @@
-tion: min_budget=None
+              bid=(query.get('proposal') or [''])[0]
+                    try: cat_id=int(cat_raw) if cat_raw else None
+                    except Exception: cat_id=None
+                    try: min_budget=float((query.get('min_budget') or [''])[0]) if (query.get('min_budget') or [''])[0] else None
+                    except Exception: min_budget=None
                     if qtext:
                         a=[x for x in a if qtext in _match_text(' '.join([str(x.get('title') or ''),str(x.get('description') or ''),str(x.get('category_name') or ''),str(x.get('service_name') or '')]))]
                     if cat_id is not None:a=[x for x in a if int(x.get('category_id') or 0)==cat_id]
@@ -212,6 +216,4 @@ tion: min_budget=None
                 o=q('select * from orders where id=%s',(oid,),'one')
                 if not o:return self.sendj(404,{'error':'order_not_found'})
                 if action=='pay':
-                    if u['role']!='client' or int(o['client_id'])!=int(u['id']):return self.sendj(403,{'error':'client_only'})
-                    if o.get('payment_status')=='paid':return self.sendj(200,{'ok':True,'already_paid':True})
-                    if o.get('status')!='awaiting_payment':return self.sendj(409,{
+                    if u['role']!='client' or int(o['client_id'])!=int(u

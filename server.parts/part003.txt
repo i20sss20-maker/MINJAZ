@@ -1,7 +1,4 @@
-   cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
-            cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
-            if idempotency_key:
-                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
+ order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
         c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),False,None
     except Exception:
         c.rollback();raise
@@ -311,4 +308,9 @@ def create_portfolio_item_atomic(fid,title,description=None,external_url=None,id
     c=db_connect()
     try:
         c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCu
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select id from users where id=%s for update',(int(fid),))
+            if not cur.fetchone():
+                c.rollback();return None,False,'freelancer_not_found'
+            if idempotency_key:
+                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idemp

@@ -1,4 +1,4 @@
-,'message',oid)
+re id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
                     return self.sendj(200 if replayed else 201,msg)
 
             if p=='/api/v1/files' and method=='GET':
@@ -245,4 +245,4 @@
                     idempotency_key=str(b.get('idempotency_key') or '').strip()
                     if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
                     payload={'request_type':typ,'details':details}
-                    fingerprint=account_request_fingerprint('privacy',payload) if idem
+       

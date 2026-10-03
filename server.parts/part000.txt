@@ -314,4 +314,5 @@ def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order
             cur.execute("select id from upload_intents where user_id=%s and object_key=%s and completed_at is not null and consumed_at is null for update",(uploaded_by,a['storage_key']))
             if not cur.fetchone():
                 continue
-            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['siz
+            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'railway_bucket') returning id",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['storage_key'],a['mime_type'],a['size_bytes']))
+            cur.execute("update upload_intents set consumed_at=now() whe

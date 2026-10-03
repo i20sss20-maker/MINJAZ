@@ -1,9 +1,4 @@
-rsor) as cur:
-            cur.execute('select id from users where id=%s for update',(int(fid),))
-            if not cur.fetchone():
-                c.rollback();return None,False,'freelancer_not_found'
-            if idempotency_key:
-                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
+otency_key=%s',(int(fid),idempotency_key))
                 existing=cur.fetchone()
                 if existing:
                     if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
@@ -311,4 +306,9 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
                         cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
                         refund='manual_required'
                 else:
-                    cur.execute("u
+                    cur.execute("update orders set status='cancelled' where id=%s",(cr['order_id'],))
+                cur.execute("update tasks set status='cancelled',updated_at=now() where id=%s",(cr['task_id'],))
+                cur.execute("""update order_cancellation_requests
+                               set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
+                                   resolved_at=now(),updated_at=now()
+   

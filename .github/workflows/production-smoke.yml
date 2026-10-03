@@ -72,11 +72,18 @@ jobs:
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-work-center-v31.js" -o work-center.js
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-work-center-v31.css" -o work-center.css
           curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-files-demo-v302.js" -o files-demo.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/minjaz-release-v316.js" -o release-v316.js
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/privacy" -o privacy.html
+          curl -fsS --retry 5 --retry-delay 2 "$BASE/account-deletion" -o account-deletion.html
           grep -q "renderWorkCenterV31" work-center.js
           grep -q "workCenterV31" work-center.css
           grep -q "/api/v1/files" files-demo.js
           grep -q "/minjaz-work-center-v31.js" index.html
-          grep -q "web-v31" sw.js
+          grep -q "/minjaz-release-v316.js" index.html
+          grep -q "openAccountDeletionV316" release-v316.js
+          grep -q "سياسة الخصوصية" privacy.html
+          grep -q "حذف حساب مِنجاز" account-deletion.html
+          grep -q "web-v31.6" sw.js
 
           curl -fsS -D headers.txt -o /dev/null -H "Origin: $BASE" "$BASE/health"
           grep -qi "access-control-allow-origin: $BASE" headers.txt

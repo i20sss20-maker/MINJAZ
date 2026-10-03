@@ -1,6 +1,4 @@
-ed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
-            if p=='/health':
-                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
+NT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
                 checks=[
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
@@ -54,17 +52,33 @@ ed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
                 if result['event_type']=='payment.failed' and result.get('failed_effective'):
                     log_order_event(o['id'],'payment_failed','تعذر تأكيد الدفع من مزود الدفع',None,meta={'mode':'adapter','event_id':event_id});notify(o['client_id'],'تعذر تأكيد الدفع','يمكنك إعادة المحاولة من رابط الدفع أو التواصل مع الدعم','payment',o['id'])
                 return self.sendj(200,{'ok':True})
+            if method=='GET' and p=='/api/v1/public/config':
+                production_channel=APP_ENV=='production' and LEGAL_REVIEW_STATUS=='approved'
+                return self.sendj(200,{
+                    'app_name':'مِنجاز',
+                    'version':VERSION,
+                    'release_channel':'production' if production_channel else 'beta',
+                    'legal_review_status':LEGAL_REVIEW_STATUS,
+                    'privacy_url':'/privacy',
+                    'account_deletion_url':'/account-deletion',
+                    'account_deletion_supported':True
+                })
             if method=='GET' and p=='/api/v1/legal/documents':
                 return self.sendj(200,{'documents':[
                     {'key':'terms','title':'شروط استخدام مِنجاز','version':LEGAL_TERMS_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['استخدام المنصة للخدمات الرقمية المسموحة فقط.','يلتزم المستخدم بالمعلومات الصحيحة وعدم تجاوز المنصة أثناء الطلب.','المدفوعات والاستردادات والنزاعات تخضع لحالة الطلب ومزود الدفع عند تفعيله.','النص القانوني الحالي مسودة Beta ويحتاج اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
                     {'key':'privacy','title':'سياسة الخصوصية','version':LEGAL_PRIVACY_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['نستخدم بيانات الحساب لتشغيل المنصة والأمان والدعم وتنفيذ الطلبات.','لا نعرض رقم الجوال في الملفات العامة أو تفاصيل المهمة للطرف الآخر.','يمكن تقديم طلب وصول أو تصحيح أو حذف أو تقييد من صفحة الحساب.','سياسة الاحتفاظ النهائية ومزودو المعالجة يحتاجون اعتمادًا قانونيًا قبل الإطلاق التجاري.']},
                     {'key':'marketplace_rules','title':'قواعد سوق مِنجاز','version':LEGAL_MARKETPLACE_VERSION,'review_status':('approved' if LEGAL_REVIEW_STATUS=='approved' else 'draft_pending_legal_review'),'sections':['يُمنع الاحتيال والانتحال والخدمات المحظورة والمحتوى المؤذي.','العروض خاصة والعميل يختار العرض قبل الدفع والتنفيذ.','الحظر يمنع التعاملات الجديدة ولا يقطع حقوق الأطراف في الطلبات القائمة.','يمكن لفريق الأمان إخفاء مهمة أو تقييد تعاملات جديدة بعد المراجعة.']}
                 ]})
+            if method=='GET' and p in ('/privacy','/privacy.html','/account-deletion','/account-deletion.html'):
+                static_name='privacy.html' if p in ('/privacy','/privacy.html') else 'account-deletion.html'
+                data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
-            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js'):
-                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js'}[p]
-                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8'}[p]
+            if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):
+                static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js','/minjaz-release-v316.js':'minjaz-release-v316.js'}[p]
+                ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8','/minjaz-release-v316.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':
@@ -150,11 +164,4 @@ ed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
                 user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
                 return self.sendj(200,{'token':raw,'user':user,'roles':roles})
             if method=='POST' and p=='/api/v1/auth/session-cookie':
-                u=self.require();
-                if not u:return
-                raw,transport=session_token_from_headers(self.headers)
-                if not raw:return self.sendj(401,{'error':'unauthorized'})
-                self.set_session_cookie(raw)
-                if transport=='bearer':log_account_activity(u['id'],'session_hardened','تم ترقية جلسة المتصفح للتخزين الآمن',u.get('session_id'))
-                return self.sendj(200,{'ok':True,'expires_in_seconds':SESSION_COOKIE_MAX_AGE})
-            if metho
+                u=s

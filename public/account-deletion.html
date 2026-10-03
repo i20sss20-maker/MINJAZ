@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="index,follow">
+<title>حذف حساب مِنجاز</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;color:#172033;background:#f6f8fc}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:720px;margin:auto;padding:34px 18px 70px}
+.card{background:#fff;border:1px solid #e4e9f2;border-radius:22px;padding:24px;margin-bottom:14px}
+h1,h2{margin:0 0 10px}p,li{line-height:1.9;color:#4b5568}.muted{font-size:13px;color:#768196}
+button,a.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:13px;padding:12px 16px;font-weight:700;text-decoration:none;cursor:pointer}
+.primary{background:#3157f6;color:#fff}.danger{background:#b42318;color:#fff}.ghost{background:#eef2f7;color:#334155}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.status{padding:12px;border-radius:13px;background:#f8fafc;margin-top:12px;display:none}
+.status.on{display:block}.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:13px}
+label{display:flex;gap:8px;align-items:flex-start;margin-top:12px;color:#475569}
+</style>
+</head>
+<body><main class="wrap">
+<section class="card">
+<h1>حذف حساب مِنجاز</h1>
+<p>هذه الصفحة هي المسار الخارجي لطلب حذف حسابك وبياناتك المرتبطة به. يمكنك أيضًا الوصول لنفس الخيار من داخل التطبيق: <b>حسابي ← الخصوصية والبيانات ← حذف الحساب</b>.</p>
+<div class="warn">إذا كان لديك طلب نشط أو نزاع أو التزام مالي، قد نحتاج لإنهائه أو تسويته قبل إتمام الحذف. وقد نحتفظ فقط بالسجلات التي يلزم الاحتفاظ بها نظاميًا أو ماليًا أو أمنيًا.</div>
+<div id="signedOut" class="actions">
+<a class="btn primary" href="/?delete_account=1">تسجيل الدخول وطلب الحذف</a>
+<a class="btn ghost" href="/privacy">سياسة الخصوصية</a>
+</div>
+<div id="signedIn" style="display:none">
+<p id="accountText" class="muted"></p>
+<label><input id="confirmDelete" type="checkbox"> <span>أفهم أن طلب الحذف يعطل الوصول للحساب بعد إتمامه، وأن بعض السجلات قد تُحتفظ بها فقط عند وجود التزام نظامي أو مالي أو أمني.</span></label>
+<div class="actions"><button id="deleteBtn" class="danger" type="button">إرسال طلب حذف الحساب</button><a class="btn ghost" href="/">العودة لمِنجاز</a></div>
+</div>
+<div id="status" class="status"></div>
+</section>
+</main>
+<script>
+(function(){
+ const signedOut=document.getElementById('signedOut'),signedIn=document.getElementById('signedIn'),status=document.getElementById('status');
+ function show(msg,ok){status.textContent=msg;status.className='status on';status.style.color=ok?'#166534':'#9a3412'}
+ fetch('/api/v1/me',{credentials:'same-origin'}).then(async r=>{
+   if(!r.ok)return;
+   const j=await r.json();signedOut.style.display='none';signedIn.style.display='block';
+   document.getElementById('accountText').textContent='أنت مسجل الدخول باسم '+(j.user?.name||'مستخدم')+'.';
+ }).catch(()=>{});
+ document.getElementById('deleteBtn').addEventListener('click',async()=>{
+   if(!document.getElementById('confirmDelete').checked){show('أكد فهمك لما يحدث بعد طلب الحذف.',false);return}
+   const btn=document.getElementById('deleteBtn');btn.disabled=true;btn.textContent='جاري إرسال الطلب…';
+   const key='delete-web-'+(crypto.randomUUID?.()||Date.now().toString(36));
+   try{
+     const r=await fetch('/api/v1/privacy/requests',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({request_type:'delete',details:'طلب حذف الحساب من صفحة الويب الخارجية.',idempotency_key:key})});
+     const j=await r.json().catch(()=>({}));
+     if(r.ok){show('تم تسجيل طلب حذف الحساب. يمكنك متابعة حالته من صفحة حسابك في مِنجاز.',true);btn.textContent='تم إرسال الطلب';return}
+     if(r.status===401){show('انتهت جلسة الدخول. سجل الدخول ثم أعد طلب الحذف.',false);return}
+     if(j.error==='active_request_exists'){show('يوجد طلب حذف حساب قيد المعالجة بالفعل.',true);return}
+     show('تعذر تسجيل الطلب الآن. حاول مرة أخرى من داخل مِنجاز.',false);
+   }catch(_){show('تعذر الاتصال بمِنجاز الآن.',false)}
+   finally{if(btn.textContent!=='تم إرسال الطلب'){btn.disabled=false;btn.textContent='إرسال طلب حذف الحساب'}}
+ });
+})();
+</script>
+</body></html>

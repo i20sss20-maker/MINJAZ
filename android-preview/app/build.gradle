@@ -7,11 +7,24 @@ android {
     compileSdk 36
 
     defaultConfig {
-        applicationId "sa.minjaz.preview"
         minSdk 24
         targetSdk 36
-        versionCode 10
-        versionName "0.10-android-stability"
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        preview {
+            dimension "distribution"
+            applicationId "sa.minjaz.preview"
+            versionCode 10
+            versionName "0.10-android-stability"
+        }
+        production {
+            dimension "distribution"
+            applicationId "sa.minjaz.app"
+            versionCode 11
+            versionName "1.0.0-rc1"
+        }
     }
 
     buildFeatures {
