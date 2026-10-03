@@ -10,8 +10,8 @@ android {
         applicationId "sa.minjaz.preview"
         minSdk 24
         targetSdk 36
-        versionCode 9
-        versionName "0.9-work-center"
+        versionCode 10
+        versionName "0.10-android-stability"
     }
 
     buildFeatures {
