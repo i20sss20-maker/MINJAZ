@@ -1,7 +1,7 @@
 .workCenterV31{display:grid;gap:14px}
 .wcHeroV31{border:1px solid var(--line);border-radius:22px;padding:20px;background:linear-gradient(135deg,var(--panel),#3157f60c)}
 .wcHeroTopV31{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
-.wcHeroV31 h2{font-family:Alexandria;margin:0 0 6px;font-size:19px}.wcHeroV31 p{margin:0;color:var(--muted);font-size:10px;line-height:1.8}
+.wcVersionV311{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px}.wcFreshV311{font-size:7px}.wcHeroV31 h2{font-family:Alexandria;margin:0 0 6px;font-size:19px}.wcHeroV31 p{margin:0;color:var(--muted);font-size:10px;line-height:1.8}
 .wcQuickV31{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
 .wcMetricsV31{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .wcMetricV31{border:1px solid var(--line);border-radius:15px;background:var(--panel);padding:12px}.wcMetricV31 b{display:block;font:800 20px Alexandria}.wcMetricV31 small{display:block;color:var(--muted);font-size:8px;margin-top:3px}
