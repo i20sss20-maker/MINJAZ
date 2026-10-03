@@ -12,11 +12,26 @@
 <title>مِنجاز — مهمتك، لها من ينجزها</title>\n<script id="minjazEarlyPrefs">
 (function(){
   try{
-    const lang=localStorage.getItem('minjaz_lang')||'ar';
+    const LEGACY_LANG_KEY='minjaz_lang';
+    const LANG_MODE_KEY='minjaz_lang_mode';
+    const savedLang=localStorage.getItem(LEGACY_LANG_KEY);
+    let langMode=localStorage.getItem(LANG_MODE_KEY);
+    if(!['system','ar','en'].includes(langMode)){
+      langMode=(savedLang==='ar'||savedLang==='en')?savedLang:'system';
+    }
+    const qs=new URLSearchParams(location.search);
+    const appLang=(qs.get('app_lang')||'').toLowerCase();
+    const browserLang=(navigator.languages&&navigator.languages[0])||navigator.language||'ar';
+    const deviceLang=(appLang==='en'||appLang==='ar')?appLang:String(browserLang).toLowerCase();
+    const lang=langMode==='system'?(deviceLang.startsWith('en')?'en':'ar'):langMode;
+    localStorage.setItem(LANG_MODE_KEY,langMode);
+    localStorage.setItem(LEGACY_LANG_KEY,lang);
+
     const mode=localStorage.getItem('minjaz_theme_mode')||'system';
     const dark=mode==='dark'||(mode==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.lang=lang==='en'?'en':'ar';
+    document.documentElement.lang=lang;
     document.documentElement.dir=lang==='en'?'ltr':'rtl';
+    document.documentElement.dataset.langMode=langMode;
     document.documentElement.dataset.theme=dark?'dark':'light';
     document.documentElement.dataset.themeMode=mode;
   }catch(e){}
@@ -3725,12 +3740,16 @@ body{font-size:14px;line-height:1.65}
 <script id="minjazThemeI18nV15">
 (function(){
   const LANG_KEY='minjaz_lang';
+  const LANG_MODE_KEY='minjaz_lang_mode';
   const THEME_KEY='minjaz_theme_mode';
   const supportedLangs=new Set(['ar','en']);
+  const supportedLangModes=new Set(['system','ar','en']);
   const supportedThemes=new Set(['system','light','dark']);
   let lang=localStorage.getItem(LANG_KEY)||'ar';
+  let langMode=localStorage.getItem(LANG_MODE_KEY)||lang;
   let themeMode=localStorage.getItem(THEME_KEY)||'system';
   if(!supportedLangs.has(lang))lang='ar';
+  if(!supportedLangModes.has(langMode))langMode=lang;
   if(!supportedThemes.has(themeMode))themeMode='system';
 
   const originalText=new WeakMap();
@@ -4527,39 +4546,52 @@ body{font-size:14px;line-height:1.65}
     applyTheme();
   }
 
+  function resolveSystemLang(){
+    const qs=new URLSearchParams(location.search);
+    const appLang=(qs.get('app_lang')||'').toLowerCase();
+    const browserLang=(navigator.languages&&navigator.languages[0])||navigator.language||'ar';
+    const deviceLang=(appLang==='en'||appLang==='ar')?appLang:String(browserLang).toLowerCase();
+    return deviceLang.startsWith('en')?'en':'ar';
+  }
+
   function setLang(next){
-    if(!supportedLangs.has(next))return;
-    lang=next;
-    localStorage.setItem(LANG_KEY,next);
+    if(!supportedLangModes.has(next))return;
+    langMode=next;
+    lang=next==='system'?resolveSystemLang():next;
+    localStorage.setItem(LANG_MODE_KEY,next);
+    localStorage.setItem(LANG_KEY,lang);
     location.reload();
   }
 
   function refreshPreferenceUI(){
     document.querySelectorAll('[data-theme-choice]').forEach(x=>x.classList.toggle('on',x.dataset.themeChoice===themeMode));
-    document.querySelectorAll('[data-lang-choice]').forEach(x=>x.classList.toggle('on',x.dataset.langChoice===lang));
+    document.querySelectorAll('[data-lang-choice]').forEach(x=>x.classList.toggle('on',x.dataset.langChoice===langMode));
   }
 
   window.minjazSetThemeV15=setTheme;
   window.minjazSetLangV15=setLang;
   window.minjazPrefsV15=function(){
     const themeLabel=themeMode==='dark'?(lang==='en'?'Dark':'داكن'):themeMode==='light'?(lang==='en'?'Light':'فاتح'):(lang==='en'?'System':'حسب الجهاز');
-    const languageLabel=lang==='en'?'English':'العربية';
+    const systemLang=resolveSystemLang();
+    const languageLabel=langMode==='system'
+      ? (lang==='en'?'System ('+(systemLang==='en'?'English':'Arabic')+')':'حسب الجهاز ('+(systemLang==='en'?'English':'العربية')+')')
+      : (langMode==='en'?'English':'العربية');
     openModal('<div class="modalHead"><div><h2>'+(lang==='en'?'Appearance & language':'المظهر واللغة')+'</h2><div style="font-size:10px;color:var(--muted)">'+(lang==='en'?'Saved on this device':'تُحفظ الإعدادات على هذا الجهاز')+'</div></div><button class="x" onclick="closeModal()">×</button></div>'+
       '<div class="preferenceGrid">'+
         '<div class="preferenceGroup"><label>'+(lang==='en'?'Appearance':'المظهر')+'</label><div class="preferenceChoices">'+
-          '<button class="preferenceChoice '+(themeMode==='system'?'on':'')+'" data-theme-choice="system" onclick="minjazSetThemeV15(\\'system\\')">'+(lang==='en'?'System':'حسب الجهاز')+'</button>'+
-          '<button class="preferenceChoice '+(themeMode==='light'?'on':'')+'" data-theme-choice="light" onclick="minjazSetThemeV15(\\'light\\')">'+(lang==='en'?'Light':'فاتح')+'</button>'+
-          '<button class="preferenceChoice '+(themeMode==='dark'?'on':'')+'" data-theme-choice="dark" onclick="minjazSetThemeV15(\\'dark\\')">'+(lang==='en'?'Dark':'داكن')+'</button>'+
+          '<button class="preferenceChoice '+(themeMode==='system'?'on':'')+'" data-theme-choice="system" onclick="minjazSetThemeV15(\'system\')">'+(lang==='en'?'System':'حسب الجهاز')+'</button>'+
+          '<button class="preferenceChoice '+(themeMode==='light'?'on':'')+'" data-theme-choice="light" onclick="minjazSetThemeV15(\'light\')">'+(lang==='en'?'Light':'فاتح')+'</button>'+
+          '<button class="preferenceChoice '+(themeMode==='dark'?'on':'')+'" data-theme-choice="dark" onclick="minjazSetThemeV15(\'dark\')">'+(lang==='en'?'Dark':'داكن')+'</button>'+
         '</div></div>'+
-        '<div class="preferenceGroup"><label>'+(lang==='en'?'Language':'اللغة')+'</label><div class="preferenceChoices two">'+
-          '<button class="preferenceChoice '+(lang==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\\'ar\\')">العربية</button>'+
-          '<button class="preferenceChoice '+(lang==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\\'en\\')">English</button>'+
+        '<div class="preferenceGroup"><label>'+(lang==='en'?'Language':'اللغة')+'</label><div class="preferenceChoices">'+
+          '<button class="preferenceChoice '+(langMode==='system'?'on':'')+'" data-lang-choice="system" onclick="minjazSetLangV15(\'system\')">'+(lang==='en'?'System':'حسب الجهاز')+'</button>'+
+          '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
+          '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v15</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v17</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
-
   function injectQuickButton(){
     const chip=document.querySelector('.userChip');
     if(!chip||document.getElementById('prefQuickV15'))return;
@@ -4605,6 +4637,16 @@ body{font-size:14px;line-height:1.65}
   });
   observer.observe(document.body,{childList:true,subtree:true});
 
+  const languageChangeHandler=()=>{
+    if(langMode!=='system')return;
+    const resolved=resolveSystemLang();
+    if(resolved!==lang){
+      localStorage.setItem(LANG_KEY,resolved);
+      location.reload();
+    }
+  };
+  window.addEventListener('languagechange',languageChangeHandler);
+
   const media=window.matchMedia?.('(prefers-color-scheme: dark)');
   if(media){
     const onChange=()=>{if(themeMode==='system')applyTheme()};
@@ -4649,6 +4691,7 @@ body{font-size:14px;line-height:1.65}
   }
 
   window.minjazLangV15=()=>lang;
+  window.minjazLangModeV17=()=>langMode;
   window.minjazThemeModeV15=()=>themeMode;
   applyLocaleHelpers();
   applyTheme();
