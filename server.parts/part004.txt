@@ -1,49 +1,4 @@
-otency_key=%s',(int(fid),idempotency_key))
-                existing=cur.fetchone()
-                if existing:
-                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
-                        c.rollback();return None,False,'idempotency_key_reused'
-                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
-            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
-            if int(cur.fetchone()['n'] or 0)>=12:
-                c.rollback();return None,False,'portfolio_limit'
-            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
-                           values(%s,%s,%s,%s,%s,%s)
-                           returning id,title,description,external_url,created_at""",
-                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
-            row=dict(cur.fetchone())
-        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
-    except psycopg2.errors.UniqueViolation:
-        c.rollback()
-        if not idempotency_key:raise
-        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
-        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
-            return existing,True,None
-        return None,False,'idempotency_key_reused'
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
-    note=str(admin_note or '')[:3000] or None
-    st=str(status or '')
-    ta=str(task_action or '')
-    ua=str(user_action or '')
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute('select * from safety_reports where id=%s for update',(int(rid),))
-            sr=cur.fetchone()
-            if not sr:
-                c.rollback();return None,None,None,'report_not_found'
-            task_changed=False;user_changed=False
-            if ta in ('hide','restore') and sr.get('task_id'):
-                desired=ta=='hide'
-                cur.execute('select * from task_moderation where task_id=%s for update',(sr['task_id'],))
-                tm=cur.fetchone()
-                current=bool(tm.get('hidden')) if tm else False
+m else False
                 current_reason=(tm.get('reason') or None) if tm else None
                 if current!=desired or current_reason!=note:
                     cur.execute("""insert into task_moderation(task_id,hidden,reason,updated_by)
@@ -311,4 +266,55 @@ def admin_transition_cancellation(cid,admin_id,status='',admin_note=None,mark_re
                 cur.execute("""update order_cancellation_requests
                                set status='approved',refund_status=%s,admin_note=%s,resolved_by=%s,
                                    resolved_at=now(),updated_at=now()
-   
+                               where id=%s returning *""",
+                            (refund,note,int(admin_id),int(cid)))
+                row=dict(cur.fetchone());c.commit()
+                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
+                return out,dict(cr),refund,None
+            c.rollback();return None,dict(cr),None,'invalid_status'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def account_request_fingerprint(kind,payload):
+    normalized={'kind':str(kind),'payload':payload or {}}
+    return hashlib.sha256(json.dumps(normalized,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,request_fingerprint):
+    cur.execute("""insert into account_request_idempotency_keys(user_id,idempotency_key,request_kind,request_fingerprint)
+                   values(%s,%s,%s,%s) on conflict(user_id,idempotency_key) do nothing
+                   returning user_id""",(int(user_id),idempotency_key,request_kind,request_fingerprint))
+    if cur.fetchone():
+        return None,None
+    cur.execute('select request_kind,request_fingerprint,result_id from account_request_idempotency_keys where user_id=%s and idempotency_key=%s',(int(user_id),idempotency_key))
+    row=cur.fetchone()
+    if not row:return None,'idempotency_conflict'
+    if str(row.get('request_kind') or '')!=str(request_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
+        return None,'idempotency_key_reused'
+    if not row.get('result_id'):return None,'idempotency_conflict'
+    return dict(row),None
+
+def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'saved_search',idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,False,idem_err
+                if replay:
+                    cur.execute('select id,name,filters,created_at,updated_at from saved_task_searches where id=%s and freelancer_id=%s',(replay['result_id'],int(user_id)))
+                    row=cur.fetchone()
+                    if not row:
+                        c.rollback();return None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
+            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'saved-search-create:{int(user_id)}',))
+            cur.execute('select count(*)::int n from saved_task_searches where freelancer_id=%s',(int(user_id),))
+            if int((cur.fetchone() or {}).get('n') or 0)>=20:
+                c.rollback();return None,False,'saved_search_limit'
+            cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
+                           values(%s,%s,%s::jsonb)
+                           returning id,name,filters,created_at,updated_at""",
+                        (int(user_id),name,json.dumps

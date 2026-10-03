@@ -1,4 +1,23 @@
-ems where freelancer_id=%s order by created_at desc limit 12',(fid,))
+             viewer=auth(self.headers)
+                if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
+                qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
+                if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
+                if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or []))]
+                if avail=='1':a=[x for x in a if bool(x.get('is_available'))]
+                if verified=='1':a=[x for x in a if x.get('kyc_status')=='approved']
+                sort=(query.get('sort') or ['rating'])[0]
+                if sort=='completed':a.sort(key=lambda x:(int(x.get('completed_tasks') or 0),float(x.get('rating') or 0)),reverse=True)
+                elif sort=='response':a.sort(key=lambda x:(int(x.get('avg_response_minutes') or 999999),-float(x.get('rating') or 0)))
+                else:a.sort(key=lambda x:(float(x.get('rating') or 0),int(x.get('completed_tasks') or 0)),reverse=True)
+                try:limit=max(1,min(int((query.get('limit') or ['100'])[0]),200))
+                except Exception:limit=100
+                return self.sendj(200,{'items':a[:limit]})
+            m=re.fullmatch(r'/api/v1/freelancers/(\d+)/public',p)
+            if m and method=='GET':
+                fid=int(m.group(1))
+                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
+                if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
                 fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
                 viewer=auth(self.headers)
                 if viewer:
@@ -174,6 +193,7 @@ ems where freelancer_id=%s order by created_at desc limit 12',(fid,))
 
                 freelancer_rows=q("""select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status
                                      from users us join freelancer_profiles fp on fp.user_id=us.id
+                                     where us.deleted_at is null
                                      order by fp.rating desc,fp.completed_tasks desc limit 300""")
                 freelancers=[]
                 for x in freelancer_rows:
@@ -203,21 +223,4 @@ ems where freelancer_id=%s order by created_at desc limit 12',(fid,))
                     a=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,
                                  exists(select 1 from proposals p where p.task_id=t.id and p.freelancer_id=%s) has_proposal,
                                  exists(select 1 from task_invitations ti where ti.task_id=t.id and ti.freelancer_id=%s and ti.status in ('sent','viewed')) invited,
-                                 exists(select 1 from favorite_tasks ft where ft.task_id=t.id and ft.freelancer_id=%s) favorited
-                          from tasks t
-                          left join categories c on c.id=t.category_id
-                          left join services s on s.id=t.service_id
-                          where t.status='open' and t.client_id<>%s
-                            and not exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=t.client_id) or (ub.blocker_id=t.client_id and ub.blocked_id=%s))
-                            and not exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,t.client_id))
-                            and not exists(select 1 from task_moderation tm where tm.task_id=t.id and tm.hidden=true)
-                          order by t.created_at desc limit 300""",(u['id'],u['id'],u['id'],u['id'],u['id'],u['id'],u['id']))
-                    prof=q('select skills from freelancer_profiles where user_id=%s',(u['id'],),'one') or {}
-                    skills=prof.get('skills') or []
-                    for item in a:
-                        score,matched=opportunity_relevance(item,skills)
-                        item['match_score']=score; item['matched_skills']=matched
-                    qtext=_match_text((query.get('q') or [''])[0])
-                    cat_raw=(query.get('category_id') or [''])[0]
-                    urgency=(query.get('urgency') or [''])[0]
-      
+                             

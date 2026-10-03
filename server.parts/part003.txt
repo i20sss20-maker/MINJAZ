@@ -1,35 +1,4 @@
- order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
-        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),False,None
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if idempotency_key:
-                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'cancellation',oid,idempotency_fingerprint)
-                if idem_err:
-                    c.rollback();return None,None,False,idem_err
-                if replay:
-                    cur.execute('select * from order_cancellation_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
-                    cr=cur.fetchone()
-                    cur.execute("""select o.*,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s""",(int(oid),))
-                    o=cur.fetchone()
-                    if not cr or not o:
-                        c.rollback();return None,None,False,'idempotency_conflict'
-                    c.rollback();return {k:as_json(v) for k,v in dict(cr).items()},dict(o),True,None
-            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
-                           where o.id=%s for update of o,t""",(int(oid),))
-            o=cur.fetchone()
-            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
-                c.rollback();return None,None,False,'order_not_found'
-            if o.get('status') in ('completed','cancelled','disputed'):
-                c.rollback();return None,dict(o),False,'invalid_order_state'
-            cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+          cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active=cur.fetchone()
             if active:
                 c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,False,'active_cancellation_exists'
@@ -313,4 +282,49 @@ def create_portfolio_item_atomic(fid,title,description=None,external_url=None,id
             if not cur.fetchone():
                 c.rollback();return None,False,'freelancer_not_found'
             if idempotency_key:
-                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idemp
+                cur.execute('select * from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key))
+                existing=cur.fetchone()
+                if existing:
+                    if str(existing.get('request_fingerprint') or '')!=str(fingerprint or ''):
+                        c.rollback();return None,False,'idempotency_key_reused'
+                    c.rollback();return {k:as_json(v) for k,v in dict(existing).items()},True,None
+            cur.execute('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(int(fid),))
+            if int(cur.fetchone()['n'] or 0)>=12:
+                c.rollback();return None,False,'portfolio_limit'
+            cur.execute("""insert into freelancer_portfolio_items(freelancer_id,title,description,external_url,idempotency_key,request_fingerprint)
+                           values(%s,%s,%s,%s,%s,%s)
+                           returning id,title,description,external_url,created_at""",
+                        (int(fid),title,description,external_url,idempotency_key,fingerprint))
+            row=dict(cur.fetchone())
+        c.commit();return {k:as_json(v) for k,v in row.items()},False,None
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        if not idempotency_key:raise
+        existing=q('select id,title,description,external_url,created_at,request_fingerprint from freelancer_portfolio_items where freelancer_id=%s and idempotency_key=%s',(int(fid),idempotency_key),'one')
+        if existing and str(existing.get('request_fingerprint') or '')==str(fingerprint or ''):
+            return existing,True,None
+        return None,False,'idempotency_key_reused'
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='',user_action=''):
+    note=str(admin_note or '')[:3000] or None
+    st=str(status or '')
+    ta=str(task_action or '')
+    ua=str(user_action or '')
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('select * from safety_reports where id=%s for update',(int(rid),))
+            sr=cur.fetchone()
+            if not sr:
+                c.rollback();return None,None,None,'report_not_found'
+            task_changed=False;user_changed=False
+            if ta in ('hide','restore') and sr.get('task_id'):
+                desired=ta=='hide'
+                cur.execute('select * from task_moderation where task_id=%s for update',(sr['task_id'],))
+                tm=cur.fetchone()
+                current=bool(tm.get('hidden')) if t

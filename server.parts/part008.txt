@@ -1,4 +1,31 @@
-elf.require();
+,'freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
+                ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
+                if not ch:return self.sendj(404,{'error':'challenge_not_found'})
+                if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
+                if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
+                if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
+                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
+                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
+                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
+                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
+                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
+                if not u:
+                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
+                else:
+                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
+                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
+                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
+                q('update users set role=%s where id=%s',(role,u['id']),None)
+                u=q('select * from users where id=%s',(u['id'],),'one')
+                roles=enabled_roles(u['id'])
+                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
+                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
+                self.set_session_cookie(raw)
+                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
+                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
+                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
+            if method=='POST' and p=='/api/v1/auth/session-cookie':
+                u=self.require();
                 if not u:return
                 raw,transport=session_token_from_headers(self.headers)
                 if not raw:return self.sendj(401,{'error':'unauthorized'})
@@ -183,24 +210,5 @@ elf.require();
                           returning user_id,company_name,bio,city,sector,updated_at""",(u['id'],company,bio,city,sector),'one')
                     return self.sendj(200,r)
             if method=='GET' and p=='/api/v1/freelancers':
-                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id order by fp.rating desc,fp.completed_tasks desc limit 300")
-                viewer=auth(self.headers)
-                if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
-                qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
-                if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
-                if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or []))]
-                if avail=='1':a=[x for x in a if bool(x.get('is_available'))]
-                if verified=='1':a=[x for x in a if x.get('kyc_status')=='approved']
-                sort=(query.get('sort') or ['rating'])[0]
-                if sort=='completed':a.sort(key=lambda x:(int(x.get('completed_tasks') or 0),float(x.get('rating') or 0)),reverse=True)
-                elif sort=='response':a.sort(key=lambda x:(int(x.get('avg_response_minutes') or 999999),-float(x.get('rating') or 0)))
-                else:a.sort(key=lambda x:(float(x.get('rating') or 0),int(x.get('completed_tasks') or 0)),reverse=True)
-                try:limit=max(1,min(int((query.get('limit') or ['100'])[0]),200))
-                except Exception:limit=100
-                return self.sendj(200,{'items':a[:limit]})
-            m=re.fullmatch(r'/api/v1/freelancers/(\d+)/public',p)
-            if m and method=='GET':
-                fid=int(m.group(1))
-                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s",(fid,),'one')
-                if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
-                fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_it
+                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
+   

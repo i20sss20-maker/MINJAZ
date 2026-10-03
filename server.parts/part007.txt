@@ -1,4 +1,43 @@
-NT_ENVIRONMENT or None})
+d_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
+        csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        if IS_PROD: csp+='; upgrade-insecure-requests'
+        self.send_header('Content-Security-Policy',csp)
+        if not IS_PROD:self.send_header('X-Robots-Tag','noindex, nofollow, noarchive')
+        origin=(self.headers.get('Origin') or '').rstrip('/')
+        if origin and origin in CORS_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
+        for cookie in getattr(self,'_set_cookie_headers',[]):self.send_header('Set-Cookie',cookie)
+        self.send_header('Access-Control-Allow-Headers','content-type,authorization'); self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS'); self.end_headers()
+    def sendj(self,status,obj):
+        if isinstance(obj,dict) and status>=400 and 'request_id' not in obj: obj={**obj,'request_id':self.request_id()}
+        self._headers(status); self.wfile.write(json.dumps(obj,ensure_ascii=False,default=as_json).encode())
+    def raw_body(self):
+        if hasattr(self,'_raw_body_cache'): return self._raw_body_cache
+        n=int(self.headers.get('Content-Length','0') or 0)
+        if n>2_000_000: raise ValueError('too_large')
+        self._raw_body_cache=self.rfile.read(n) if n else b''
+        return self._raw_body_cache
+    def body(self):
+        raw=self.raw_body()
+        try:
+            return json.loads(raw or b'{}')
+        except json.JSONDecodeError as exc:
+            raise ValueError('invalid_json') from exc
+    def require(self,role=None):
+        u=auth(self.headers)
+        if not u: self.sendj(401,{'error':'unauthorized'}); return None
+        if role and u.get('role')!=role: self.sendj(403,{'error':role+'_only'}); return None
+        return u
+    def do_OPTIONS(self): self._headers(204)
+    def do_GET(self): self.route('GET')
+    def do_POST(self): self.route('POST')
+    def do_PATCH(self): self.route('PATCH')
+    def do_DELETE(self): self.route('DELETE')
+    def route(self,method):
+        try:
+            parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p=='/health':
+                started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
                 checks=[
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
@@ -137,31 +176,4 @@ NT_ENVIRONMENT or None})
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
-                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
-                ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
-                if not ch:return self.sendj(404,{'error':'challenge_not_found'})
-                if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
-                if ch.get('expired'):return self.sendj(410,{'error':'otp_expired'})
-                if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
-                if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
-                    q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
-                q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
-                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
-                u=q('select * from users where phone=%s',(ch['phone'],), 'one')
-                if not u:
-                    u=q('insert into users(phone,name,role,is_verified) values(%s,%s,%s,true) returning *',(ch['phone'],name,role),'one')
-                else:
-                    q('update users set name=%s,is_verified=true where id=%s',(name,u['id']),None)
-                q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],role),None)
-                if role=='freelancer': q("insert into freelancer_profiles(user_id) values(%s) on conflict(user_id) do nothing",(u['id'],),None)
-                q('update users set role=%s where id=%s',(role,u['id']),None)
-                u=q('select * from users where id=%s',(u['id'],),'one')
-                roles=enabled_roles(u['id'])
-                raw=secrets.token_hex(32); ua=str(self.headers.get('User-Agent') or '')[:500]; ip=self.client_ip()
-                ss=q("insert into sessions(user_id,token_hash,expires_at,user_agent,device_label,ip_hash,last_seen_at) values(%s,%s,now()+(%s || ' days')::interval,%s,%s,%s,now()) returning id",(u['id'],sha(raw+SECRET),SESSION_TTL_DAYS,ua,friendly_device(ua),sha(ip+SECRET)[:24] if ip else None),'one')
-                self.set_session_cookie(raw)
-                log_account_activity(u['id'],'login','تسجيل دخول ناجح',ss.get('id') if ss else None,{'device':friendly_device(ua)})
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role')}; user['roles']=roles
-                return self.sendj(200,{'token':raw,'user':user,'roles':roles})
-            if method=='POST' and p=='/api/v1/auth/session-cookie':
-                u=s
+                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client'

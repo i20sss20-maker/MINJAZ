@@ -1,4 +1,6 @@
-re id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
+                msg['idempotent_replay']=bool(replayed)
+                    if not replayed:
+                        rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
                     return self.sendj(200 if replayed else 201,msg)
 
             if p=='/api/v1/files' and method=='GET':
@@ -245,4 +247,8 @@ re id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['cli
                     idempotency_key=str(b.get('idempotency_key') or '').strip()
                     if idempotency_key and not re.fullmatch(r'[A-Za-z0-9._:-]{8,120}',idempotency_key):return self.sendj(400,{'error':'invalid_idempotency_key'})
                     payload={'request_type':typ,'details':details}
-       
+                    fingerprint=account_request_fingerprint('privacy',payload) if idempotency_key else None
+                    req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
+                    if err=='active_request_exists':return self.sendj(409,{'error':err})
+                    if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
+                    if err:return self.sendj(409,{

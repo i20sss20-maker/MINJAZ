@@ -1,22 +1,4 @@
-id']))
-            x=cur.fetchone()
-            if not x:
-                c.rollback();return None,None,'proposal_not_found'
-            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
-            if x.get('status')!='sent' or task.get('status')!='open':
-                cur.execute('select id from orders where task_id=%s',(task['id'],))
-                exists=cur.fetchone()
-                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
-            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
-            hidden=cur.fetchone()
-            cur.execute("""select 1 where
-                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
-                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
-                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
-            restricted=cur.fetchone()
-            if hidden or restricted:
-                c.rollback();return None,dict(x),'interaction_restricted'
-            cur.execute('select id from orders where task_id=%s',(x['task_id'],))
+task_id=%s',(x['task_id'],))
             if cur.fetchone():
                 c.rollback();return None,dict(x),'order_exists'
             fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
@@ -309,4 +291,35 @@ def open_dispute_atomic(oid,user_id,reason,details=None,idempotency_key=None,ide
             cur.execute("update orders set status='disputed' where id=%s",(int(oid),))
             cur.execute("update tasks set status='disputed',updated_at=now() where id=%s",(o['task_id'],))
             if idempotency_key:
-                cur.execute('update
+                cur.execute('update order_action_idempotency_keys set result_id=%s where actor_id=%s and idempotency_key=%s',(d['id'],int(user_id),idempotency_key))
+        c.commit();return {k:as_json(v) for k,v in d.items()},dict(o),False,None
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=None,idempotency_fingerprint=None):
+    c=db_connect()
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if idempotency_key:
+                replay,idem_err=claim_order_action_idempotency(cur,user_id,idempotency_key,'cancellation',oid,idempotency_fingerprint)
+                if idem_err:
+                    c.rollback();return None,None,False,idem_err
+                if replay:
+                    cur.execute('select * from order_cancellation_requests where id=%s and order_id=%s and requested_by=%s',(replay['result_id'],int(oid),int(user_id)))
+                    cr=cur.fetchone()
+                    cur.execute("""select o.*,t.title from orders o join tasks t on t.id=o.task_id where o.id=%s""",(int(oid),))
+                    o=cur.fetchone()
+                    if not cr or not o:
+                        c.rollback();return None,None,False,'idempotency_conflict'
+                    c.rollback();return {k:as_json(v) for k,v in dict(cr).items()},dict(o),True,None
+            cur.execute("""select o.*,t.status task_status,t.title from orders o join tasks t on t.id=o.task_id
+                           where o.id=%s for update of o,t""",(int(oid),))
+            o=cur.fetchone()
+            if not o or int(user_id) not in (int(o['client_id']),int(o['freelancer_id'])):
+                c.rollback();return None,None,False,'order_not_found'
+            if o.get('status') in ('completed','cancelled','disputed'):
+                c.rollback();return None,dict(o),False,'invalid_order_state'
+  

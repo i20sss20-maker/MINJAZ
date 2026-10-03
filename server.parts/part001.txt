@@ -1,12 +1,4 @@
-re user_id=%s and object_key=%s",(uploaded_by,a['storage_key']))
-        else:
-            cur.execute("insert into attachments(uploaded_by,task_id,order_id,message_id,delivery_id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode) values(%s,%s,%s,%s,%s,%s,%s,null,%s,%s,'external_link')",(uploaded_by,task_id,order_id,message_id,delivery_id,a['name'],a['url'],a['mime_type'],a['size_bytes']))
-        inserted+=1
-    return inserted
-
-def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
-    cleaned=clean_attachments(attachments,uploaded_by=uploaded_by)
-    if not cleaned:return 0
+ 0
     c=db_connect()
     try:
         c.autocommit=False
@@ -349,4 +341,22 @@ def create_order_atomic(proposal_id,client_id):
             task=cur.fetchone()
             if not task or int(task['client_id'])!=int(client_id):
                 c.rollback();return None,None,'proposal_not_found'
-            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['
+            cur.execute('select * from proposals where id=%s and task_id=%s for update',(int(proposal_id),task['id']))
+            x=cur.fetchone()
+            if not x:
+                c.rollback();return None,None,'proposal_not_found'
+            x=dict(x);x['client_id']=task['client_id'];x['task_id']=task['id'];x['task_status']=task['status']
+            if x.get('status')!='sent' or task.get('status')!='open':
+                cur.execute('select id from orders where task_id=%s',(task['id'],))
+                exists=cur.fetchone()
+                c.rollback();return None,x,'order_exists' if exists else 'proposal_not_available'
+            cur.execute('select 1 from task_moderation where task_id=%s and hidden=true limit 1',(x['task_id'],))
+            hidden=cur.fetchone()
+            cur.execute("""select 1 where
+                exists(select 1 from user_blocks ub where (ub.blocker_id=%s and ub.blocked_id=%s) or (ub.blocker_id=%s and ub.blocked_id=%s))
+                or exists(select 1 from user_moderation um where um.interaction_restricted=true and um.user_id in (%s,%s))
+                limit 1""",(client_id,x['freelancer_id'],x['freelancer_id'],client_id,client_id,x['freelancer_id']))
+            restricted=cur.fetchone()
+            if hidden or restricted:
+                c.rollback();return None,dict(x),'interaction_restricted'
+            cur.execute('select id from orders where 

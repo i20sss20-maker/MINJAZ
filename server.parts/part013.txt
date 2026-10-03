@@ -1,8 +1,4 @@
-             fingerprint=account_request_fingerprint('privacy',payload) if idempotency_key else None
-                    req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
-                    if err=='active_request_exists':return self.sendj(409,{'error':err})
-                    if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
-                    if err:return self.sendj(409,{'error':err})
+'error':err})
                     req['idempotent_replay']=bool(replayed)
                     return self.sendj(200 if replayed else 201,req)
             if p.startswith('/api/admin'):
@@ -114,7 +110,7 @@
                         from orders o join tasks t on t.id=o.task_id join users c on c.id=o.client_id join users f on f.id=o.freelancer_id
                         left join proposals p on p.id=o.proposal_id
                         order by case when o.status in ('awaiting_payment','in_progress','revision_requested','delivered','disputed') then 0 else 1 end,o.created_at desc limit 300""")})
-                if p=='/api/admin/users' and method=='GET':return self.sendj(200,{'items':q('select us.id,us.phone,us.name,us.role,us.is_verified,us.created_at,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status,(select array_agg(ur.role order by ur.role) from user_roles ur where ur.user_id=us.id and ur.enabled=true) roles from users us left join freelancer_profiles fp on fp.user_id=us.id order by us.created_at desc limit 300')})
+                if p=='/api/admin/users' and method=='GET':return self.sendj(200,{'items':q('select us.id,us.phone,us.name,us.role,us.is_verified,us.created_at,us.deleted_at,fp.rating,fp.completed_tasks,fp.is_available,fp.kyc_status,(select array_agg(ur.role order by ur.role) from user_roles ur where ur.user_id=us.id and ur.enabled=true) roles from users us left join freelancer_profiles fp on fp.user_id=us.id order by us.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/freelancers/(\d+)/kyc',p)
                 if m and method=='PATCH':
                     if KYC_MODE!='manual':return self.sendj(409,{'error':'kyc_managed_by_provider'})
@@ -158,7 +154,18 @@
                 if m and method=='PATCH':
                     b=self.body();st=str(b.get('status') or 'in_progress')
                     if st not in ('in_progress','completed','rejected'):return self.sendj(400,{'error':'invalid_status'})
-                    pid=int(m.group(1));r,pr,changed,err=update_privacy_request(pid,st,b.get('admin_note'))
+                    pid=int(m.group(1));pr0=q('select request_type from privacy_requests where id=%s',(pid,),'one')
+                    if not pr0:return self.sendj(404,{'error':'privacy_request_not_found'})
+                    if pr0.get('request_type')=='delete' and st=='completed':
+                        r,pr,changed,blockers,err=execute_account_deletion(pid,u['id'],b.get('admin_note'))
+                        if err=='account_deletion_blocked':return self.sendj(409,{'error':err,'blockers':blockers})
+                        if err=='admin_deletion_requires_security_review':return self.sendj(409,{'error':err})
+                        if err=='privacy_request_not_deletion':return self.sendj(400,{'error':err})
+                        if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
+                        if err:return self.sendj(409,{'error':err})
+                        if changed:admin_audit(u['id'],'account_deletion_executed','privacy_request',pid,{'user_id':pr.get('user_id')})
+                        return self.sendj(200,{**r,'idempotent_replay':not changed,'account_deleted':True})
+                    r,pr,changed,err=update_privacy_request(pid,st,b.get('admin_note'))
                     if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
                     if changed:admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})

@@ -1,55 +1,4 @@
-                            where id=%s returning *""",
-                            (refund,note,int(admin_id),int(cid)))
-                row=dict(cur.fetchone());c.commit()
-                out={k:as_json(v) for k,v in row.items()};out['idempotent_replay']=False
-                return out,dict(cr),refund,None
-            c.rollback();return None,dict(cr),None,'invalid_status'
-    except Exception:
-        c.rollback();raise
-    finally:
-        c.close()
-
-def account_request_fingerprint(kind,payload):
-    normalized={'kind':str(kind),'payload':payload or {}}
-    return hashlib.sha256(json.dumps(normalized,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
-
-def claim_account_request_idempotency(cur,user_id,idempotency_key,request_kind,request_fingerprint):
-    cur.execute("""insert into account_request_idempotency_keys(user_id,idempotency_key,request_kind,request_fingerprint)
-                   values(%s,%s,%s,%s) on conflict(user_id,idempotency_key) do nothing
-                   returning user_id""",(int(user_id),idempotency_key,request_kind,request_fingerprint))
-    if cur.fetchone():
-        return None,None
-    cur.execute('select request_kind,request_fingerprint,result_id from account_request_idempotency_keys where user_id=%s and idempotency_key=%s',(int(user_id),idempotency_key))
-    row=cur.fetchone()
-    if not row:return None,'idempotency_conflict'
-    if str(row.get('request_kind') or '')!=str(request_kind) or str(row.get('request_fingerprint') or '')!=str(request_fingerprint or ''):
-        return None,'idempotency_key_reused'
-    if not row.get('result_id'):return None,'idempotency_conflict'
-    return dict(row),None
-
-def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempotency_fingerprint=None):
-    c=db_connect()
-    try:
-        c.autocommit=False
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if idempotency_key:
-                replay,idem_err=claim_account_request_idempotency(cur,user_id,idempotency_key,'saved_search',idempotency_fingerprint)
-                if idem_err:
-                    c.rollback();return None,False,idem_err
-                if replay:
-                    cur.execute('select id,name,filters,created_at,updated_at from saved_task_searches where id=%s and freelancer_id=%s',(replay['result_id'],int(user_id)))
-                    row=cur.fetchone()
-                    if not row:
-                        c.rollback();return None,False,'idempotency_conflict'
-                    c.rollback();return {k:as_json(v) for k,v in dict(row).items()},True,None
-            cur.execute('select pg_advisory_xact_lock(hashtext(%s))',(f'saved-search-create:{int(user_id)}',))
-            cur.execute('select count(*)::int n from saved_task_searches where freelancer_id=%s',(int(user_id),))
-            if int((cur.fetchone() or {}).get('n') or 0)>=20:
-                c.rollback();return None,False,'saved_search_limit'
-            cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
-                           values(%s,%s,%s::jsonb)
-                           returning id,name,filters,created_at,updated_at""",
-                        (int(user_id),name,json.dumps(filters or {},ensure_ascii=False)))
+(filters or {},ensure_ascii=False)))
             row=dict(cur.fetchone())
             if idempotency_key:
                 cur.execute('update account_request_idempotency_keys set result_id=%s where user_id=%s and idempotency_key=%s',(row['id'],int(user_id),idempotency_key))
@@ -187,6 +136,112 @@ def update_support_ticket(tid,status,admin_reply=None):
     finally:
         c.close()
 
+
+def execute_account_deletion(pid,admin_id,admin_note=None):
+    c=db_connect(); storage_keys=[]
+    try:
+        c.autocommit=False
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""select pr.*,u.role,u.deleted_at
+                           from privacy_requests pr join users u on u.id=pr.user_id
+                           where pr.id=%s for update""",(int(pid),))
+            pr=cur.fetchone()
+            if not pr:
+                c.rollback();return None,None,False,{},'privacy_request_not_found'
+            if str(pr.get('request_type') or '')!='delete':
+                c.rollback();return None,dict(pr),False,{},'privacy_request_not_deletion'
+            if pr.get('role')=='admin':
+                c.rollback();return None,dict(pr),False,{},'admin_deletion_requires_security_review'
+            if pr.get('deletion_executed_at') or pr.get('deleted_at'):
+                row=dict(pr);row['status']='completed';row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
+                c.rollback();return {k:as_json(v) for k,v in row.items()},dict(pr),False,{},None
+
+            uid=int(pr['user_id'])
+            blockers={}
+            checks=[
+                ('active_orders',"""select count(*)::int n from orders where (client_id=%s or freelancer_id=%s)
+                    and status in ('awaiting_payment','in_progress','revision_requested','delivered','disputed')""",(uid,uid)),
+                ('active_disputes',"""select count(*)::int n from order_disputes d join orders o on o.id=d.order_id
+                    where (o.client_id=%s or o.freelancer_id=%s) and d.status in ('open','in_review')""",(uid,uid)),
+                ('active_cancellations',"""select count(*)::int n from order_cancellation_requests cr join orders o on o.id=cr.order_id
+                    where (o.client_id=%s or o.freelancer_id=%s) and cr.status in ('pending','in_review')""",(uid,uid)),
+                ('active_payouts',"""select count(*)::int n from payout_requests
+                    where freelancer_id=%s and status in ('pending','processing')""",(uid,))
+            ]
+            for key,sql,params in checks:
+                cur.execute(sql,params); row=cur.fetchone() or {}; n=int(row.get('n') or 0)
+                if n:blockers[key]=n
+            if blockers:
+                c.rollback();return None,dict(pr),False,blockers,'account_deletion_blocked'
+
+            cur.execute("select storage_key from attachments where uploaded_by=%s and storage_key is not null",(uid,))
+            storage_keys=[str(x['storage_key']) for x in cur.fetchall() if x.get('storage_key')]
+
+            cur.execute("delete from attachments where uploaded_by=%s",(uid,))
+            cur.execute("delete from upload_intents where user_id=%s",(uid,))
+            cur.execute("delete from user_notifications_v2 where user_id=%s",(uid,))
+            cur.execute("delete from push_subscriptions where user_id=%s",(uid,))
+            cur.execute("delete from favorite_freelancers where client_id=%s or freelancer_id=%s",(uid,uid))
+            cur.execute("delete from favorite_tasks where freelancer_id=%s",(uid,))
+            cur.execute("delete from saved_task_searches where freelancer_id=%s",(uid,))
+            cur.execute("delete from freelancer_portfolio_items where freelancer_id=%s",(uid,))
+            cur.execute("delete from task_invitations where client_id=%s or freelancer_id=%s",(uid,uid))
+            cur.execute("delete from user_blocks where blocker_id=%s or blocked_id=%s",(uid,uid))
+            cur.execute("delete from user_preferences where user_id=%s",(uid,))
+            cur.execute("delete from account_activity where user_id=%s",(uid,))
+            cur.execute("delete from legal_acceptances where user_id=%s",(uid,))
+            cur.execute("delete from kyc_adapter_events where user_id=%s",(uid,))
+            cur.execute("delete from task_idempotency_keys where client_id=%s",(uid,))
+            cur.execute("delete from message_idempotency_keys where sender_id=%s",(uid,))
+            cur.execute("delete from order_action_idempotency_keys where actor_id=%s",(uid,))
+            cur.execute("delete from account_request_idempotency_keys where user_id=%s",(uid,))
+
+            cur.execute("""update tasks set title='مهمة لمستخدم محذوف',
+                           description='تم حذف محتوى المهمة بطلب صاحب الحساب.',
+                           status=case when status in ('draft','open') then 'cancelled' else status end,
+                           updated_at=now() where client_id=%s""",(uid,))
+            cur.execute("""update proposals set message=null,
+                           status=case when status='sent' then 'withdrawn' else status end
+                           where freelancer_id=%s""",(uid,))
+            cur.execute("update messages set body='تم حذف محتوى الرسالة بطلب صاحب الحساب.' where sender_id=%s",(uid,))
+            cur.execute("update deliveries set note='تم حذف ملاحظة التسليم بطلب صاحب الحساب.' where freelancer_id=%s",(uid,))
+            cur.execute("update reviews set comment=null where reviewer_id=%s or reviewee_id=%s",(uid,uid))
+            cur.execute("update order_revision_requests set note='تم حذف الملاحظة بطلب صاحب الحساب.' where requested_by=%s",(uid,))
+            cur.execute("update order_events set details=null,meta='{}'::jsonb where actor_id=%s",(uid,))
+            cur.execute("update payout_requests set note=null,admin_note=null where freelancer_id=%s",(uid,))
+            cur.execute("""update support_tickets set subject='طلب دعم لمستخدم محذوف',
+                           message='تم حذف محتوى التذكرة بطلب صاحب الحساب.',
+                           admin_reply=null,status='closed',updated_at=now() where user_id=%s""",(uid,))
+            cur.execute("update privacy_requests set details=null where user_id=%s and id<>%s",(uid,int(pid)))
+            cur.execute("update operational_events set user_id=null,meta='{}'::jsonb where user_id=%s",(uid,))
+            cur.execute("""update freelancer_profiles set bio=null,skills='{}'::text[],rating=0,completed_tasks=0,
+                           on_time_rate=100,avg_response_minutes=null,is_available=false,kyc_status='rejected',
+                           kyc_provider_reference=null,kyc_verification_url=null,kyc_started_at=null where user_id=%s""",(uid,))
+            cur.execute("""update client_profiles set company_name=null,bio=null,city=null,sector=null,updated_at=now()
+                           where user_id=%s""",(uid,))
+            cur.execute("delete from sessions where user_id=%s",(uid,))
+            cur.execute("delete from user_roles where user_id=%s",(uid,))
+            deleted_phone='deleted-user-'+str(uid)+'@minjaz.invalid'
+            cur.execute("""update users set phone=%s,name='مستخدم محذوف',is_verified=false,deleted_at=now()
+                           where id=%s""",(deleted_phone,uid))
+            note=str(admin_note or '').strip()[:1200] or 'تم تنفيذ حذف الحساب وإخفاء الهوية وفق سياسة الخصوصية.'
+            cur.execute("""update privacy_requests set status='completed',details=null,admin_note=%s,
+                           resolved_at=coalesce(resolved_at,now()),deletion_executed_at=coalesce(deletion_executed_at,now())
+                           where id=%s returning *""",(note,int(pid)))
+            result=dict(cur.fetchone())
+        c.commit()
+    except Exception:
+        c.rollback();raise
+    finally:
+        c.close()
+
+    if BUCKET_READY:
+        for key in storage_keys:
+            try:BUCKET_STORAGE.delete(key)
+            except Exception as exc:
+                operational_event('warning','privacy','storage_delete_failed',repr(exc),None,None,'privacy_request',pid,{'storage_key_hash':sha(key)[:16]})
+    return {k:as_json(v) for k,v in result.items()},dict(pr),True,{},None
+
 def update_privacy_request(pid,status,admin_note=None):
     c=db_connect()
     try:
@@ -274,54 +329,4 @@ def legal_action_precondition(user_id):
     status=legal_status(user_id)
     if status['complete']:return None
     missing=[k for k,x in status['documents'].items() if not x['accepted']]
-    return {'error':'legal_acceptance_required','missing_documents':missing,'documents':status['documents']}
-
-def onboarding_status(user_id,role):
-    legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
-    if role=='freelancer':
-        fp=q('select bio,skills,is_available from freelancer_profiles where user_id=%s',(user_id,),'one') or {}; portfolio=q('select count(*)::int n from freelancer_portfolio_items where freelancer_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إضافة نبذة مهنية','done':bool(str(fp.get('bio') or '').strip()),'required':True},{'key':'skills','label':'إضافة 3 مهارات على الأقل','done':len(fp.get('skills') or [])>=3,'required':True},{'key':'availability','label':'تحديد حالة التوفر','done':bool(fp.get('is_available')),'required':False},{'key':'portfolio','label':'إضافة نموذج عمل','done':int(portfolio.get('n') or 0)>0,'required':False}]
-    else:
-        cp=q('select company_name,city,sector,bio from client_profiles where user_id=%s',(user_id,),'one') or {}; tasks=q('select count(*)::int n from tasks where client_id=%s',(user_id,),'one') or {'n':0}
-        steps=[{'key':'legal','label':'موافقة الشروط والخصوصية','done':legal['complete'],'required':True},{'key':'profile','label':'إكمال الملف المهني','done':bool(any(str(cp.get(k) or '').strip() for k in ('company_name','city','sector','bio'))),'required':False},{'key':'first_task','label':'نشر أول مهمة','done':int(tasks.get('n') or 0)>0,'required':False}]
-    done=sum(1 for x in steps if x['done']); return {'role':role,'steps':steps,'completion_percent':round(100*done/max(1,len(steps))),'complete':all(x['done'] for x in steps if x['required']),'dismissed':bool(pref.get('onboarding_dismissed'))}
-
-def session_token_from_headers(headers):
-    h=str(headers.get('Authorization') or '').strip()
-    if h.startswith('Bearer '):
-        raw=h[7:].strip()
-        if raw:return raw,'bearer'
-    cookie=str(headers.get('Cookie') or '')
-    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
-    return (m.group(1),'cookie') if m else ('','')
-
-def auth(headers):
-    raw,transport=session_token_from_headers(headers)
-    if not raw:return None
-    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
-                    s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
-                    s.last_seen_at session_last_seen_at,s.device_label session_device_label
-             from sessions s join users u on u.id=s.user_id
-             where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() limit 1""",
-          (sha(raw+SECRET),), 'one')
-    if row:
-        row['_auth_transport']=transport
-        try:
-            q("update sessions set last_seen_at=now() where id=%s and (last_seen_at is null or last_seen_at<now()-interval '10 minutes')",(row['session_id'],),None)
-        except Exception:
-            pass
-    return row
-
-def refresh_freelancer(fid):
-    try:
-        q("""update freelancer_profiles fp set rating=coalesce((select round(avg((quality+timeliness+communication)/3.0)::numeric,2) from reviews where reviewee_id=%s),0), completed_tasks=(select count(*)::int from orders where freelancer_id=%s and status='completed'), on_time_rate=coalesce((select round(100.0*avg(case when t.due_at is null or o.completed_at<=t.due_at then 1 else 0 end)::numeric,2) from orders o join tasks t on t.id=o.task_id where o.freelancer_id=%s and o.status='completed'),100) where fp.user_id=%s""",(fid,fid,fid,fid),None)
-    except Exception:
-        pass
-
-
-def ensure_timeline_schema():
-    q("""create table if not exists order_events(
-        id bigserial primary key,
-        order_id bigint not null references orders(id) on delete cascade,
-        actor_id bigint references users(id),
-        event_type text not null
+    return {'error':'legal_acceptance_required','missing_documents':missi
