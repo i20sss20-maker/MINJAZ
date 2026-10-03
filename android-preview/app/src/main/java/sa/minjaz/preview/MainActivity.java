@@ -164,7 +164,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.8");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.9");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
@@ -207,7 +207,8 @@ public class MainActivity extends Activity {
 
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             Uri uri = Uri.parse(url);
-            if (isInternalUri(uri)) {
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            if ("https".equals(scheme)) {
                 enqueueDownload(url, userAgent, contentDisposition, mimeType);
             } else {
                 openExternal(uri);
@@ -368,7 +369,7 @@ public class MainActivity extends Activity {
             WebResourceRequest request,
             WebResourceResponse errorResponse
         ) {
-            if (request.isForMainFrame() && errorResponse.getStatusCode() >= 500) {
+            if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
                 showError();
             }
             super.onReceivedHttpError(view, request, errorResponse);
