@@ -4,6 +4,7 @@ import random
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 import hashlib
 import psycopg2
 from concurrent.futures import ThreadPoolExecutor
@@ -293,6 +294,7 @@ def run():
         client_token,
     )
     task_id = task["id"]
+    task_title = task["title"]
 
     client_after_task = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     first_task_step = next(x for x in client_after_task["steps"] if x.get("key") == "first_task")
@@ -397,6 +399,45 @@ def run():
         expected=(200,),
     ).get("items") or []
     assert any("رسالة اختبار" in (item.get("body") or "") for item in messages)
+
+    search_message = call(
+        "GET",
+        "/api/v1/search?q=%D8%B1%D8%B3%D8%A7%D9%84%D8%A9%20%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1&limit=8",
+        token=freelancer_token,
+        expected=(200,),
+    )
+    assert any(
+        int(item.get("order_id") or 0) == int(order_id)
+        for item in ((search_message.get("items") or {}).get("messages") or [])
+    ), search_message
+
+    task_search_term = quote(str(task_title)[:28])
+    search_task = call(
+        "GET",
+        f"/api/v1/search?q={task_search_term}&limit=8",
+        token=client_token,
+        expected=(200,),
+    )
+    assert any(
+        int(item.get("id") or 0) == int(task_id)
+        for item in ((search_task.get("items") or {}).get("tasks") or [])
+    ), search_task
+    assert any(
+        int(item.get("id") or 0) == int(order_id)
+        for item in ((search_task.get("items") or {}).get("orders") or [])
+    ), search_task
+
+    freelancer_search_term = quote(str(freelancer_me["user"]["name"])[:28])
+    search_freelancer = call(
+        "GET",
+        f"/api/v1/search?q={freelancer_search_term}&limit=8",
+        token=client_token,
+        expected=(200,),
+    )
+    assert any(
+        int(item.get("user_id") or 0) == int(freelancer_me["user"]["id"])
+        for item in ((search_freelancer.get("items") or {}).get("freelancers") or [])
+    ), search_freelancer
 
     delivery = call(
         "POST",
@@ -557,6 +598,7 @@ def run():
         "orders": True,
         "payment_mock": True,
         "messages": True,
+        "global_search": True,
         "delivery": True,
         "revision": True,
         "completion": True,
