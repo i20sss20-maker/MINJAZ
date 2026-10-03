@@ -10,6 +10,12 @@ on:
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-release-artifacts.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-preview/**'
+      - '.github/workflows/android-release-artifacts.yml'
   workflow_dispatch:
 
 permissions:
