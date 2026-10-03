@@ -18,7 +18,17 @@ GitHub Actions expects these repository secrets:
 - MINJAZ_ANDROID_KEY_ALIAS
 - MINJAZ_ANDROID_KEY_PASSWORD
 
-Do not commit the keystore or passwords to Git.
+Windows helper:
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore.ps1
+```
+
+If GitHub CLI is installed and authenticated, the helper can configure all four secrets directly:
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore.ps1 -ConfigureGitHub
+```
+
+The keystore is created only under `release-private/`, which is ignored by Git. Back up the JKS file and the two passwords in a secure password manager / offline backup. Do not commit them, upload them to project files, or paste them into chat.
 
 ## Play Console
 - App name and descriptions

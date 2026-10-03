@@ -10,6 +10,12 @@ on:
     paths:
       - 'android-preview/**'
       - '.github/workflows/android-release-artifacts.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-preview/**'
+      - '.github/workflows/android-release-artifacts.yml'
   workflow_dispatch:
 
 permissions:
@@ -109,11 +115,19 @@ jobs:
           SIGNED_APK=/tmp/MINJAZ-1.0.0-rc1-production-signed.apk
           SIGNED_AAB=/tmp/MINJAZ-1.0.0-rc1-production-signed.aab
           printf '%s' "$KS_B64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
           chmod 600 "$KEYSTORE"
+
+          # Fail early if the keystore password or alias is wrong.
+          keytool -list -keystore "$KEYSTORE" -storepass:env KS_PASS -alias "$KEY_ALIAS" >/dev/null
+
           cp android-preview/app/build/outputs/bundle/productionRelease/app-production-release.aab "$SIGNED_AAB"
-          apksigner sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$SIGNED_APK" android-preview/app/build/outputs/apk/production/release/app-production-release-unsigned.apk
-          jarsigner -keystore "$KEYSTORE" -storepass "$KS_PASS" -keypass "$KEY_PASS" "$SIGNED_AAB" "$KEY_ALIAS"
-          apksigner verify --verbose "$SIGNED_APK"
+
+          # Keep signing passwords out of command-line arguments.
+          apksigner sign --ks "$KEYSTORE" --ks-key-alias "$KEY_ALIAS" --ks-pass env:KS_PASS --key-pass env:KEY_PASS --out "$SIGNED_APK" android-preview/app/build/outputs/apk/production/release/app-production-release-unsigned.apk
+          jarsigner -keystore "$KEYSTORE" -storepass:env KS_PASS -keypass:env KEY_PASS "$SIGNED_AAB" "$KEY_ALIAS"
+
+          apksigner verify --verbose --print-certs "$SIGNED_APK" | tee /tmp/MINJAZ-production-apk-signature.txt
           jarsigner -verify "$SIGNED_AAB"
           sha256sum "$SIGNED_APK" "$SIGNED_AAB" | tee /tmp/MINJAZ-production-signed.sha256
           rm -f "$KEYSTORE"
