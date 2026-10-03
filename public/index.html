@@ -1928,6 +1928,40 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazTaskOfferV21">
+.taskReadinessV21{margin:10px 0 12px;border:1px solid #dce5ff;border-radius:17px;background:linear-gradient(135deg,#f8faff,#fff);padding:12px}
+.taskReadinessHeadV21{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.taskReadinessHeadV21 b{font:700 11px Alexandria}.taskReadinessHeadV21 p{font-size:8px;color:var(--muted);line-height:1.6;margin:4px 0 0}
+.taskReadinessGridV21{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:9px}
+.taskReadyItemV21{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px}
+.taskReadyItemV21 b{display:block;font:700 9px Alexandria}.taskReadyItemV21 small{font-size:7px;color:var(--muted)}
+.taskReadyItemV21.ok{border-color:#b7e2ca;background:#f7fcf9}.taskReadyItemV21.ok b{color:#067647}
+.taskCounterV21{display:flex;justify-content:flex-end;font-size:7px;color:var(--muted);margin-top:4px}
+.wizardStep[data-v21-back="1"]{cursor:pointer}.wizardStep[data-v21-back="1"]:hover{border-color:#9fb0ff}
+.offerCompareBarV21{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #dce5ff;border-radius:15px;background:linear-gradient(135deg,#f8faff,#fff);padding:10px 11px;margin:10px 0}
+.offerCompareBarV21 b{font:700 9px Alexandria}.offerCompareBarV21 small{display:block;font-size:7px;color:var(--muted);margin-top:3px}
+.offerCompareActionsV21{display:flex;gap:6px;flex-wrap:wrap}
+.shortlistBtnV21.on{background:#eef3ff;border-color:#9fb0ff;color:#294bd8}
+.offerCard.shortlistedV21{border-color:#9fb0ff;box-shadow:0 0 0 2px rgba(49,87,246,.07),0 14px 34px rgba(17,21,42,.06)}
+.shortlistTableV21{display:grid;gap:8px;margin-top:10px}
+.shortlistRowV21{display:grid;grid-template-columns:150px repeat(var(--compare-cols),minmax(150px,1fr));gap:7px;align-items:stretch}
+.shortlistRowV21>div{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:9px;min-width:0}
+.shortlistRowV21 .label{font:700 8px Alexandria;color:var(--muted);display:grid;align-items:center}
+.shortlistPersonV21 h3{font:700 11px Alexandria;margin:0 0 4px}.shortlistPersonV21 p{font-size:7px;color:var(--muted);margin:0;line-height:1.5}
+.shortlistPersonV21 .money{margin-top:8px}
+.shortlistTrustV21{font-size:7px;color:var(--muted);line-height:1.5;margin-top:5px}
+[data-theme="dark"] .taskReadinessV21,[data-theme="dark"] .offerCompareBarV21{background:linear-gradient(135deg,#141a30,#101526);border-color:#2b3a68}
+[data-theme="dark"] .taskReadyItemV21.ok{background:#10251c;border-color:#28543e}
+@media(max-width:760px){
+ .taskReadinessGridV21{grid-template-columns:1fr 1fr}
+ .offerCompareBarV21{position:sticky;top:58px;z-index:8;align-items:stretch;flex-direction:column}
+ .offerCompareActionsV21{display:grid;grid-template-columns:1fr 1fr}.offerCompareActionsV21 .btn{width:100%}
+ .shortlistTableV21{overflow:auto;padding-bottom:5px}
+ .shortlistRowV21{min-width:620px}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4695,7 +4729,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v20</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v21</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -5328,6 +5362,160 @@ body{font-size:14px;line-height:1.65}
       return out;
     };
   }
+})();
+</script>
+
+
+<script id="minjazTaskOfferRuntimeV21">
+(function(){
+  function langV21(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV21(ar,en){return langV21()==='en'?en:ar}
+  function budgetValidV21(){
+    var min=document.getElementById('ntMin'),max=document.getElementById('ntMax');
+    if(!min||!max)return true;
+    var a=min.value.trim(),b=max.value.trim();
+    if(!a&&!b)return true;
+    var av=a?Number(a):0,bv=b?Number(b):0;
+    return (!a||Number.isFinite(av))&&(!b||Number.isFinite(bv))&&(!av||av>=49)&&(!bv||bv>=49)&&(!av||!bv||bv>=av)&&av<=1000000&&bv<=1000000;
+  }
+  function readyStateV21(){
+    var cat=document.getElementById('ntCat'),title=document.getElementById('ntTitle'),desc=document.getElementById('ntDesc');
+    return [
+      {key:'category',label:tV21('القسم','Category'),ok:!!(cat&&cat.value),note:tV21('محدد','Selected')},
+      {key:'title',label:tV21('العنوان','Title'),ok:!!(title&&title.value.trim().length>=5),note:title?title.value.trim().length+'/180':'0/180'},
+      {key:'details',label:tV21('التفاصيل','Details'),ok:!!(desc&&desc.value.trim().length>=20),note:desc?desc.value.trim().length+'/6000':'0/6000'},
+      {key:'budget',label:tV21('الميزانية','Budget'),ok:budgetValidV21(),note:tV21('صالحة أو مرنة','Valid or flexible')}
+    ];
+  }
+  function paintTaskReadinessV21(){
+    var box=document.querySelector('[data-task-readiness-v21]');if(!box)return;
+    var state=readyStateV21(),done=state.filter(function(x){return x.ok}).length;
+    var count=box.querySelector('[data-ready-count-v21]');if(count)count.textContent=done+'/'+state.length;
+    var grid=box.querySelector('.taskReadinessGridV21');if(grid)grid.innerHTML=state.map(function(x){return '<div class="taskReadyItemV21 '+(x.ok?'ok':'')+'"><b>'+(x.ok?'✓ ':'○ ')+x.label+'</b><small>'+x.note+'</small></div>'}).join('');
+    var title=document.getElementById('ntTitle'),desc=document.getElementById('ntDesc');
+    var tc=document.querySelector('[data-title-counter-v21]'),dc=document.querySelector('[data-desc-counter-v21]');
+    if(tc&&title)tc.textContent=title.value.length+'/180';
+    if(dc&&desc)dc.textContent=desc.value.length+'/6000';
+  }
+  function attachCounterV21(input,key){
+    if(!input||input.dataset.v21Counter)return;input.dataset.v21Counter='1';
+    var c=document.createElement('div');c.className='taskCounterV21';c.dataset[key]='1';input.insertAdjacentElement('afterend',c);
+  }
+  function enhanceTaskWizardV21(){
+    var wizard=document.querySelector('.taskWizard');if(!wizard||wizard.querySelector('[data-task-readiness-v21]'))return;
+    var steps=wizard.querySelector('.wizardSteps');
+    var box=document.createElement('div');box.className='taskReadinessV21';box.dataset.taskReadinessV21='1';
+    box.innerHTML='<div class="taskReadinessHeadV21"><div><b>'+tV21('جاهزية المهمة','Task readiness')+'</b><p>'+tV21('نتأكد من الأساسيات قبل النشر. المرفقات والموعد النهائي اختياريان.','Checks the essentials before publishing. Attachments and deadline are optional.')+'</p></div><span class="pill blue" data-ready-count-v21>0/4</span></div><div class="taskReadinessGridV21"></div>';
+    if(steps)steps.insertAdjacentElement('afterend',box);
+    var title=document.getElementById('ntTitle'),desc=document.getElementById('ntDesc');
+    attachCounterV21(title,'titleCounterV21');attachCounterV21(desc,'descCounterV21');
+    ['ntService','ntCat','ntTitle','ntDesc','ntMin','ntMax','ntUrg','ntDue'].forEach(function(id){
+      var el=document.getElementById(id);if(!el||el.dataset.v21ReadyBound)return;el.dataset.v21ReadyBound='1';
+      el.addEventListener('input',paintTaskReadinessV21);el.addEventListener('change',paintTaskReadinessV21);
+    });
+    wizard.querySelectorAll('[data-wstep]').forEach(function(step){
+      var target=Number(step.dataset.wstep);step.setAttribute('tabindex','0');step.setAttribute('role','button');
+      var goBack=function(){var cur=Number(window.__taskWizardStep||1);if(target<cur){window.__taskWizardStep=cur;window.taskWizardGo(target-cur)}};
+      step.addEventListener('click',goBack);
+      step.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();goBack()}});
+    });
+    paintTaskReadinessV21();refreshWizardStepAccessV21();
+  }
+  function refreshWizardStepAccessV21(){
+    var cur=Number(window.__taskWizardStep||1);
+    document.querySelectorAll('.taskWizard [data-wstep]').forEach(function(step){
+      var back=Number(step.dataset.wstep)<cur;step.dataset.v21Back=back?'1':'0';step.setAttribute('aria-disabled',back?'false':'true');
+    });
+  }
+  var baseNewTaskV21=window.newTaskModal;
+  if(typeof baseNewTaskV21==='function')window.newTaskModal=async function(){
+    var out=await baseNewTaskV21.apply(this,arguments);enhanceTaskWizardV21();return out;
+  };
+  var baseTaskGoV21=window.taskWizardGo;
+  if(typeof baseTaskGoV21==='function')window.taskWizardGo=function(delta){
+    var out=baseTaskGoV21.apply(this,arguments);paintTaskReadinessV21();refreshWizardStepAccessV21();return out;
+  };
+  var baseTemplateV21=window.wizardApplyTemplate;
+  if(typeof baseTemplateV21==='function')window.wizardApplyTemplate=function(){
+    var out=baseTemplateV21.apply(this,arguments);paintTaskReadinessV21();return out;
+  };
+
+  function taskIdV21(){return Number(offerCompareState&&offerCompareState.task&&offerCompareState.task.id||0)}
+  function shortlistKeyV21(){return 'minjaz_offer_shortlist_v21_'+(me&&me.user?me.user.id:'guest')+'_'+taskIdV21()}
+  function loadShortlistV21(){
+    try{var a=JSON.parse(sessionStorage.getItem(shortlistKeyV21())||'[]');return new Set((Array.isArray(a)?a:[]).map(Number))}catch(e){return new Set()}
+  }
+  function saveShortlistV21(set){try{sessionStorage.setItem(shortlistKeyV21(),JSON.stringify(Array.from(set)))}catch(e){}}
+  var shortlistV21=new Set();
+  function ensureShortlistForTaskV21(){shortlistV21=loadShortlistV21();var valid=new Set((offerCompareState.items||[]).map(function(x){return Number(x.id)}));shortlistV21.forEach(function(id){if(!valid.has(id))shortlistV21.delete(id)});saveShortlistV21(shortlistV21)}
+  function refreshShortlistV21(){
+    var modal=document.getElementById('modal');if(!modal)return;
+    modal.querySelectorAll('.offerCard[data-v21-pid]').forEach(function(card){
+      var id=Number(card.dataset.v21Pid),on=shortlistV21.has(id),b=card.querySelector('.shortlistBtnV21');
+      card.classList.toggle('shortlistedV21',on);if(b){b.classList.toggle('on',on);b.textContent=on?tV21('✓ ضمن المقارنة','✓ Comparing'):tV21('+ قارن','+ Compare')}
+    });
+    var count=modal.querySelector('[data-shortlist-count-v21]');if(count)count.textContent=shortlistV21.size+'/3';
+    var compare=modal.querySelector('[data-open-shortlist-v21]');if(compare)compare.disabled=shortlistV21.size<2;
+  }
+  window.toggleOfferShortlistV21=function(pid){
+    pid=Number(pid);
+    if(shortlistV21.has(pid))shortlistV21.delete(pid);
+    else{if(shortlistV21.size>=3)return toast(tV21('تقدر تقارن 3 عروض كحد أقصى','You can compare up to 3 offers'));shortlistV21.add(pid)}
+    saveShortlistV21(shortlistV21);refreshShortlistV21();
+  };
+  window.clearOfferShortlistV21=function(){shortlistV21.clear();saveShortlistV21(shortlistV21);refreshShortlistV21()};
+  function decorateOfferCompareV21(){
+    var modal=document.getElementById('modal');if(!modal||!modal.querySelector('.offerGrid'))return;
+    ensureShortlistForTaskV21();
+    modal.querySelectorAll('.offerCard').forEach(function(card){
+      var choose=[].slice.call(card.querySelectorAll('button')).find(function(b){return String(b.getAttribute('onclick')||'').indexOf('confirmAcceptProposal')>=0});
+      if(!choose)return;var m=String(choose.getAttribute('onclick')||'').match(/\d+/),pid=m?Number(m[0]):0;if(!pid)return;
+      card.dataset.v21Pid=String(pid);
+      if(!card.querySelector('.shortlistBtnV21')){
+        var b=document.createElement('button');b.type='button';b.className='btn ghost shortlistBtnV21';b.onclick=function(){window.toggleOfferShortlistV21(pid)};
+        choose.parentElement.insertBefore(b,choose);
+      }
+    });
+    var toolbar=modal.querySelector('.offerToolbar');
+    if(toolbar&&!modal.querySelector('[data-offer-compare-bar-v21]')){
+      var bar=document.createElement('div');bar.className='offerCompareBarV21';bar.dataset.offerCompareBarV21='1';
+      bar.innerHTML='<div><b>'+tV21('مقارنة جانبية','Side-by-side comparison')+'</b><small>'+tV21('حدد عرضين أو ثلاثة. الاختيار النهائي يبقى لك.','Select 2 or 3 offers. The final choice remains yours.')+'</small></div><div class="offerCompareActionsV21"><span class="pill blue" data-shortlist-count-v21>0/3</span><button type="button" class="btn primary" data-open-shortlist-v21 onclick="openOfferShortlistV21()">'+tV21('قارن المحدد','Compare selected')+'</button><button type="button" class="btn ghost" onclick="clearOfferShortlistV21()">'+tV21('مسح','Clear')+'</button></div>';
+      toolbar.insertAdjacentElement('afterend',bar);
+    }
+    refreshShortlistV21();
+  }
+  window.openOfferShortlistV21=function(){
+    var selected=(offerCompareState.items||[]).filter(function(x){return shortlistV21.has(Number(x.id))});
+    if(selected.length<2)return toast(tV21('حدد عرضين على الأقل للمقارنة','Select at least two offers to compare'));
+    function cell(label,fn){return '<div class="shortlistRowV21" style="--compare-cols:'+selected.length+'"><div class="label">'+label+'</div>'+selected.map(function(p){return '<div>'+fn(p)+'</div>'}).join('')+'</div>'}
+    var rows=
+      cell(tV21('السعر','Price'),function(p){return '<b>'+money(p.price)+'</b>'})+
+      cell(tV21('مدة التسليم','Delivery'),function(p){return '<b>'+Number(p.delivery_hours||0)+' '+tV21('ساعة','h')+'</b>'})+
+      cell(tV21('التعديلات','Revisions'),function(p){return '<b>'+Number(p.revisions||0)+'</b>'})+
+      cell(tV21('التقييم','Rating'),function(p){return '<b>'+Number(p.rating||0).toFixed(1)+' ★</b>'})+
+      cell(tV21('السجل','History'),function(p){return '<b>'+Number(p.completed_tasks||0)+'</b><div class="shortlistTrustV21">'+tV21('طلبات مكتملة','completed orders')+'</div>'})+
+      cell(tV21('الالتزام','On-time'),function(p){return '<b>'+Number(p.on_time_rate||0)+'%</b>'})+
+      cell(tV21('التوثيق','Verification'),function(p){return '<b>'+(p.kyc_status==='approved'?tV21('✓ موثق','✓ Verified'):tV21('غير مكتمل','Incomplete'))+'</b>'});
+    openModal('<div class="modalHead"><div><h2>'+tV21('مقارنة العروض المحددة','Compare selected offers')+'</h2><div style="font-size:9px;color:#64748b">'+tV21('المقارنة تعرض البيانات فقط ولا تختار بدلًا عنك.','This view shows the data only and does not choose for you.')+'</div></div><button class="x" onclick="renderOfferCompare()">×</button></div><div class="shortlistTableV21"><div class="shortlistRowV21" style="--compare-cols:'+selected.length+'"><div class="label">'+tV21('المستقل','Freelancer')+'</div>'+selected.map(function(p){return '<div class="shortlistPersonV21"><h3>'+esc(p.name||tV21('مستقل','Freelancer'))+'</h3><p>'+esc(p.message||tV21('بدون رسالة إضافية','No additional message'))+'</p><div class="money">'+money(p.price)+'</div><button type="button" class="btn primary" style="margin-top:8px;width:100%" onclick="confirmAcceptProposal('+Number(p.id)+')">'+tV21('اختيار هذا العرض','Choose this offer')+'</button></div>'}).join('')+'</div>'+rows+'</div><div class="actions"><button class="btn ghost" onclick="renderOfferCompare()">'+tV21('رجوع لكل العروض','Back to all offers')+'</button></div>');
+  };
+  var baseRenderOffersV21=window.renderOfferCompare;
+  if(typeof baseRenderOffersV21==='function')window.renderOfferCompare=function(){
+    var out=baseRenderOffersV21.apply(this,arguments);decorateOfferCompareV21();return out;
+  };
+  var baseTaskOffersV21=window.taskOffers;
+  if(typeof baseTaskOffersV21==='function')window.taskOffers=async function(){
+    var out=await baseTaskOffersV21.apply(this,arguments);decorateOfferCompareV21();return out;
+  };
+
+  var baseAcceptV21=window.acceptProposal;
+  if(typeof baseAcceptV21==='function')window.acceptProposal=async function(pid){
+    if(window.__minjazAcceptingV21)return;
+    window.__minjazAcceptingV21=Number(pid)||true;
+    var btn=[].slice.call(document.querySelectorAll('#modal .btn.primary')).find(function(b){return String(b.getAttribute('onclick')||'').indexOf('acceptProposal')>=0});
+    var original=btn&&btn.textContent;if(btn){btn.disabled=true;btn.textContent=tV21('جاري إنشاء الطلب…','Creating order…')}
+    try{return await baseAcceptV21.apply(this,arguments)}
+    finally{window.__minjazAcceptingV21=null;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=original}}
+  };
 })();
 </script>
 
