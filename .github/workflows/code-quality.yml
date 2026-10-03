@@ -223,6 +223,9 @@ jobs:
           assert "reviewAvg.toFixed(1)" in ui
           assert "credentials:'same-origin'" in ui
           assert '/minjaz-push-v312.js' in ui
+          assert '/minjaz-admin-provider-v315.js' in ui
+          assert 'def provider_health_snapshot()' in server
+          assert "'providers':providers" in server
           assert "p=='/api/v1/push/config'" in server
           assert "p=='/api/v1/telemetry/client'" in server
           assert "if(DEMO_MODE){token=j.token;localStorage.setItem('minjaz_token',token)}else{token='';localStorage.removeItem('minjaz_token')}" in ui
@@ -248,6 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check public/minjaz-push-v312.js
+          node --check public/minjaz-admin-provider-v315.js
           node --check services/push/server.js
           node --check services/payments/server.js
           node --check services/integrations/server.js
