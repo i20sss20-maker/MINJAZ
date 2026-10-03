@@ -90,6 +90,8 @@ def run():
 
     sessions=call("GET","/api/v1/account/sessions",token=ct,expected=(200,))
     assert sessions.get("items") and any(x.get("current") for x in sessions["items"]),sessions
+    file_center=call("GET","/api/v1/files",token=ct,expected=(200,))
+    assert isinstance(file_center.get("items"),list),file_center
 
     # Completed order -> earnings -> KYC -> payout lifecycle.
     task1,order1=create_order(ct,ft,cat,"اختبار أرباح وسحب")
@@ -214,7 +216,7 @@ def run():
 
     return {
         "ok":True,"version":health.get("version"),
-        "admin_auth":True,"sessions":True,"payout_lifecycle":True,
+        "admin_auth":True,"sessions":True,"file_center":True,"payout_lifecycle":True,
         "cancellation_refund":True,"dispute_resume":True,
         "support_admin":True,"privacy_admin":True,"safety_admin":True,
         "safety_admin_retry_safe":True,

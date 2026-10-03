@@ -6888,5 +6888,64 @@ body{font-size:14px;line-height:1.65}
 })();
 </script>
 
+
+<style id="minjazFilesStyleV30">
+.filesBtnV30{width:38px;height:38px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);display:grid;place-items:center;font-size:17px;transition:.15s}
+.filesBtnV30:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.filesHeroV30{background:linear-gradient(135deg,var(--panel),#3157f60d);border:1px solid var(--line);border-radius:22px;padding:20px;margin-bottom:14px}
+.filesHeroV30 h2{font-family:Alexandria;font-size:18px;margin:0 0 5px}.filesHeroV30 p{margin:0;color:var(--muted);font-size:11px;line-height:1.8}
+.filesMetricsV30{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:16px}.filesMetricV30{border:1px solid var(--line);border-radius:15px;padding:12px;background:var(--panel)}.filesMetricV30 b{display:block;font-family:Alexandria;font-size:19px}.filesMetricV30 span{font-size:9px;color:var(--muted)}
+.filesToolbarV30{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}.filesToolbarV30 input{flex:1;min-width:220px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--ink);padding:10px 12px;outline:none}.filesToolbarV30 .btn.on{background:#3157f612;color:var(--blue);border-color:#3157f633}
+.filesGridV30{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.fileCardV30{display:grid;grid-template-columns:46px minmax(0,1fr);gap:12px;border:1px solid var(--line);border-radius:17px;background:var(--panel);padding:13px}.fileIconV30{width:46px;height:46px;border-radius:14px;background:#3157f60d;display:grid;place-items:center;font-size:22px}.fileCardV30 h3{font-size:12px;margin:1px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fileCardV30 p{font-size:9px;color:var(--muted);margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fileMetaV30{display:flex;gap:6px;flex-wrap:wrap}.fileActionsV30{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end;border-top:1px solid var(--line);padding-top:9px}.fileOpenV30{text-decoration:none}
+@media(max-width:760px){.filesGridV30{grid-template-columns:1fr}.filesBtnV30{width:34px;height:34px}.filesToolbarV30 input{min-width:100%;order:-1}}
+</style>
+<script id="minjazFilesRuntimeV30">
+(function(){
+  function lang(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function t(ar,en){return lang()==='en'?en:ar}
+  function locale(){return lang()==='en'?'en-US':'ar-SA'}
+  function page(){
+    if(document.getElementById('files'))return;
+    var x=document.createElement('section');x.id='files';x.className='page';
+    var inbox=document.getElementById('inbox');if(inbox)inbox.insertAdjacentElement('afterend',x);else document.querySelector('.content')?.appendChild(x);
+  }
+  function button(){
+    if(!me?.user||me.user.role==='admin')return;
+    var chip=document.querySelector('.userChip');if(!chip||document.getElementById('filesBtnV30'))return;
+    var b=document.createElement('button');b.id='filesBtnV30';b.type='button';b.className='filesBtnV30';b.title=t('مركز الملفات','File center');b.setAttribute('aria-label',t('الملفات','Files'));b.onclick=function(){window.go('files')};b.textContent='📁';
+    var inbox=document.getElementById('inboxBtnV29');if(inbox)inbox.insertAdjacentElement('afterend',b);else chip.insertBefore(b,chip.firstChild);
+  }
+  var state={items:[],q:'',filter:'all'};
+  function source(v){return {task:t('ملف المهمة','Task file'),order:t('ملف الطلب','Order file'),message:t('مرفق محادثة','Message attachment'),delivery:t('ملف تسليم','Delivery file')}[v]||t('ملف','File')}
+  function icon(x){var m=String(x.mime_type||'').toLowerCase(),n=String(x.file_name||'').toLowerCase();if(m.indexOf('image/')===0)return'🖼️';if(m.indexOf('video/')===0)return'🎬';if(m.indexOf('audio/')===0)return'🎧';if(n.endsWith('.pdf'))return'📕';if(/\.(xls|xlsx)$/.test(n))return'📊';if(/\.(ppt|pptx)$/.test(n))return'📙';if(/\.(doc|docx)$/.test(n))return'📘';if(n.endsWith('.zip'))return'🗜️';return'📄'}
+  function size(v){var n=Number(v||0);if(!n)return'—';if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB'}
+  function filtered(){
+    var q=state.q.trim().toLowerCase();
+    return state.items.filter(function(x){if(state.filter!=='all'&&x.source_type!==state.filter)return false;if(q&&[x.file_name,x.task_title,x.uploaded_by_name,x.mime_type].join(' ').toLowerCase().indexOf(q)<0)return false;return true});
+  }
+  function card(x){
+    var when='';try{when=x.created_at?new Date(x.created_at).toLocaleString(locale()):''}catch(e){}
+    var url=String(x.file_url||''),open=url?'<a class="btn soft fileOpenV30" href="'+esc(url)+'" target="_blank" rel="noopener">'+t('فتح الملف','Open file')+'</a>':'';
+    var order=x.order_id?'<button class="btn ghost" onclick="orderModal('+Number(x.order_id)+')">'+t('فتح الطلب','Open order')+'</button>':'';
+    return '<div class="fileCardV30"><div class="fileIconV30">'+icon(x)+'</div><div><h3 title="'+esc(x.file_name||'')+'">'+esc(x.file_name||t('ملف','File'))+'</h3><p>'+esc(x.task_title||t('بدون طلب مرتبط','No linked order'))+'</p><div class="fileMetaV30"><span class="pill blue">'+source(x.source_type)+'</span><span class="pill gray">'+esc(size(x.size_bytes))+'</span>'+(x.uploaded_by_name?'<span class="pill gray">'+esc(x.uploaded_by_name)+'</span>':'')+(when?'<span class="pill gray">'+esc(when)+'</span>':'')+'</div></div><div class="fileActionsV30">'+order+open+'</div></div>';
+  }
+  function paint(){
+    var host=document.getElementById('files');if(!host)return;
+    var all=state.items,rows=filtered(),deliveries=all.filter(function(x){return x.source_type==='delivery'}).length,chats=all.filter(function(x){return x.source_type==='message'}).length;
+    host.innerHTML='<div class="filesHeroV30"><div class="row space"><div><h2>'+t('مركز الملفات','File center')+'</h2><p>'+t('كل مرفقات مهامك وطلباتك ومحادثاتك وتسليماتك في مكان واحد وبصلاحيات حسابك فقط.','All task, order, chat and delivery attachments in one permission-scoped place.')+'</p></div><span class="pill blue">v30</span></div><div class="filesMetricsV30"><div class="filesMetricV30"><b>'+all.length+'</b><span>'+t('كل الملفات','All files')+'</span></div><div class="filesMetricV30"><b>'+deliveries+'</b><span>'+t('ملفات التسليم','Delivery files')+'</span></div><div class="filesMetricV30"><b>'+chats+'</b><span>'+t('مرفقات المحادثات','Chat attachments')+'</span></div></div></div>'+
+    '<div class="filesToolbarV30"><input type="search" value="'+esc(state.q)+'" placeholder="'+t('ابحث باسم الملف أو الطلب أو الرافع…','Search file, order, or uploader…')+'" oninput="minjazFilesSearchV30(this.value)">'+
+    [['all',t('الكل','All')],['task',t('المهام','Tasks')],['message',t('المحادثات','Chats')],['delivery',t('التسليمات','Deliveries')]].map(function(x){return'<button class="btn ghost '+(state.filter===x[0]?'on':'')+'" onclick="minjazFilesFilterV30(\''+x[0]+'\')">'+x[1]+'</button>'}).join('')+'</div>'+
+    '<div class="filesGridV30">'+(rows.map(card).join('')||'<div class="card empty"><b>'+t('ما فيه ملفات مطابقة','No matching files')+'</b><span>'+t('تظهر الملفات هنا بعد إرفاقها في مهمة أو محادثة أو تسليم.','Files appear here after being attached to a task, chat, or delivery.')+'</span></div>')+'</div>';
+  }
+  window.renderFilesV30=async function(){page();var host=document.getElementById('files');if(!host)return;host.innerHTML='<div class="card empty">'+t('جاري تحميل الملفات…','Loading files…')+'</div>';var x=await api('/api/v1/files');if(!x.r.ok){host.innerHTML='<div class="card empty">'+t('تعذر تحميل الملفات.','Could not load files.')+'</div>';return}state.items=x.j?.items||[];paint()};
+  window.minjazFilesSearchV30=function(v){state.q=v||'';paint();var i=document.querySelector('#files .filesToolbarV30 input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}};
+  window.minjazFilesFilterV30=function(v){state.filter=['all','task','message','delivery'].includes(v)?v:'all';paint()};
+  page();
+  var baseGo=window.go;if(typeof baseGo==='function')window.go=async function(id){var out=await baseGo.apply(this,arguments);if(id==='files'){var title=document.getElementById('pageTitle'),sub=document.getElementById('pageSub');if(title)title.textContent=t('الملفات','Files');if(sub)sub.textContent=t('كل مرفقات أعمالك في مكان واحد','All your work attachments in one place');await window.renderFilesV30()}return out};
+  var baseBoot=window.boot;if(typeof baseBoot==='function')window.boot=async function(){var out=await baseBoot.apply(this,arguments);page();button();return out};
+  setTimeout(function(){page();button()},220);
+})();
+</script>
+
 </body>
 </html>

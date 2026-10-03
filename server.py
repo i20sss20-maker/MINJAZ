@@ -3096,6 +3096,45 @@ class H(BaseHTTPRequestHandler):
                         rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
                     return self.sendj(200 if replayed else 201,msg)
 
+            if p=='/api/v1/files' and method=='GET':
+                u=self.require();
+                if not u:return
+                uid=int(u['id'])
+                items=q("""select a.id,a.uploaded_by,a.task_id,a.order_id,a.message_id,a.delivery_id,
+                                  a.file_name,a.file_url,a.storage_key,a.mime_type,a.size_bytes,a.storage_mode,a.created_at,
+                                  us.name uploaded_by_name,
+                                  ao.order_id resolved_order_id,
+                                  coalesce(ao.task_id,a.task_id) resolved_task_id,
+                                  coalesce(ao.task_title,own_task.title) task_title,
+                                  case when a.delivery_id is not null then 'delivery'
+                                       when a.message_id is not null then 'message'
+                                       when a.order_id is not null then 'order'
+                                       else 'task' end source_type
+                           from attachments a
+                           join users us on us.id=a.uploaded_by
+                           left join messages m on m.id=a.message_id
+                           left join deliveries d on d.id=a.delivery_id
+                           left join tasks own_task on own_task.id=a.task_id
+                           left join lateral (
+                               select o.id order_id,o.task_id,t.title task_title
+                               from orders o join tasks t on t.id=o.task_id
+                               where (o.client_id=%s or o.freelancer_id=%s)
+                                 and (
+                                   o.id=coalesce(a.order_id,m.order_id,d.order_id)
+                                   or (a.task_id is not null and o.task_id=a.task_id)
+                                 )
+                               order by o.created_at desc,o.id desc
+                               limit 1
+                           ) ao on true
+                           where ao.order_id is not null
+                              or (a.task_id is not null and own_task.client_id=%s)
+                           order by a.created_at desc,a.id desc
+                           limit 500""",(uid,uid,uid))
+                for item in items:
+                    item['order_id']=item.pop('resolved_order_id',None)
+                    item['task_id']=item.pop('resolved_task_id',None)
+                return self.sendj(200,{'items':public_attachments(items)})
+
             if p=='/api/v1/conversations' and method=='GET':
                 u=self.require();
                 if not u:return
