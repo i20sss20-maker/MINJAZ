@@ -1821,6 +1821,47 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazWorkspaceV18">
+.workspaceV18{display:grid;gap:12px;margin:14px 0 18px}
+.workSummaryV18{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.workMetricV18{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:16px;padding:12px;text-align:start;display:grid;gap:3px;min-width:0;box-shadow:0 8px 24px rgba(15,23,42,.035);transition:.15s}
+.workMetricV18:hover{transform:translateY(-1px);border-color:#aebcf7}
+.workMetricV18.on{border-color:#91a5ff;background:#eef3ff;box-shadow:0 0 0 3px #3157f60b}
+.workMetricV18 b{font-family:Alexandria;font-size:19px;line-height:1.2}
+.workMetricV18 span{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workToolsV18{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:9px;box-shadow:0 8px 24px rgba(15,23,42,.03)}
+.workSearchV18{position:relative;flex:1;min-width:150px}
+.workSearchV18 input{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0 38px 0 11px;outline:none}
+[dir="ltr"] .workSearchV18 input{padding:0 11px 0 38px}
+.workSearchV18 input:focus{border-color:#8fa4ff;box-shadow:0 0 0 4px #3157f612}
+.workSearchV18 svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:2;pointer-events:none}
+[dir="ltr"] .workSearchV18 svg{right:auto;left:12px}
+.workFilterV18{display:flex;gap:5px;flex-wrap:wrap}
+.filterChipV18{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:8px 10px;border-radius:11px;font-size:9px;font-weight:700;white-space:nowrap}
+.filterChipV18.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.workCountV18{font-size:9px;color:var(--muted);white-space:nowrap;padding-inline:4px}
+.v18NoResults{display:none;margin-top:8px}
+[data-theme="dark"] .workMetricV18.on{background:#172247;border-color:#496cff}
+[data-theme="dark"] .filterChipV18.on{background:#e8edff;color:#10162a;border-color:#e8edff}
+[data-theme="dark"] .workMetricV18,[data-theme="dark"] .workToolsV18{box-shadow:none}
+@media(max-width:860px){
+ .workSummaryV18{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workToolsV18{align-items:stretch;flex-direction:column}
+ .workFilterV18{width:100%;overflow:auto;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none}
+ .workFilterV18::-webkit-scrollbar{display:none}
+ .filterChipV18{flex:0 0 auto}
+ .workCountV18{align-self:flex-end}
+}
+@media(max-width:520px){
+ .workspaceV18{margin-top:10px}
+ .workSummaryV18{gap:7px}
+ .workMetricV18{padding:10px;border-radius:14px}
+ .workMetricV18 b{font-size:17px}
+ .workToolsV18{border-radius:14px;padding:8px}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -2224,7 +2265,7 @@ async function renderFreelancerHome(){
  ${recent}`;
 }
 async function toggleAvailability(v){const {r,j}=await api('/api/v1/freelancer/profile',{method:'PATCH',body:JSON.stringify({is_available:v})});if(!r.ok)return toast('تعذر تحديث الحالة');me.freelancer_profile=j;toast(v?'صرت متاح الآن':'تم إيقاف التوفر');renderFreelancerHome()}
-function taskRowClient(x){return `<div class="rowCard"><div><h3>${esc(x.title)}</h3><p>${esc(x.description).slice(0,130)}</p><div class="rowMeta"><span class="pill ${statusClass(x.status)}">${statusMap[x.status]||x.status}</span><span class="pill gray">${x.category_name||'بدون تصنيف'}</span><span class="pill blue">${x.proposal_count||0} عرض</span></div></div><div><div class="money">${x.budget_min||x.budget_max?money(x.budget_min||x.budget_max):'ميزانية مفتوحة'}</div><button class="btn ghost" style="margin-top:7px" onclick="taskOffers(${x.id})">التفاصيل</button></div></div>`}
+function taskRowClient(x){return `<div class="rowCard" data-minjaz-kind="task" data-minjaz-status="${esc(x.status||'')}"><div><h3>${esc(x.title)}</h3><p>${esc(x.description).slice(0,130)}</p><div class="rowMeta"><span class="pill ${statusClass(x.status)}">${statusMap[x.status]||x.status}</span><span class="pill gray">${x.category_name||'بدون تصنيف'}</span><span class="pill blue">${x.proposal_count||0} عرض</span></div></div><div><div class="money">${x.budget_min||x.budget_max?money(x.budget_min||x.budget_max):'ميزانية مفتوحة'}</div><button class="btn ghost" style="margin-top:7px" onclick="taskOffers(${x.id})">التفاصيل</button></div></div>`}
 function taskRowFreelancer(x){const score=Number(x.match_score||0),match=score?`<span class="pill ${score>=70?'green':score>=45?'blue':'gray'}">ملاءمة ${score}%</span>`:'',matched=(x.matched_skills||[]).length?`<div class="matchHint">مهارات متوافقة: <b>${(x.matched_skills||[]).map(esc).join(' · ')}</b></div>`:'';return `<div class="rowCard"><div><h3>${esc(x.title)}</h3><p>${esc(x.description).slice(0,150)}</p><div class="rowMeta">${match}<span class="pill gray">${x.category_name||'عام'}</span><span class="pill ${x.urgency==='urgent'?'red':'blue'}">${x.urgency==='urgent'?'عاجل':'عادي'}</span>${x.has_proposal?'<span class="pill green">أرسلت عرض</span>':''}</div>${matched}</div><div><div class="money">${x.budget_min&&x.budget_max?`${money(x.budget_min)} – ${money(x.budget_max)}`:x.budget_min||x.budget_max?money(x.budget_min||x.budget_max):'مرن'}</div><button class="btn primary" style="margin-top:7px" onclick="proposalModal(${x.id},'${esc(x.title).replace(/'/g,"&#39;")}')">${x.has_proposal?'تحديث العرض':'إرسال عرض'}</button></div></div>`}
 function opportunityQuery(limit){const p=new URLSearchParams();Object.entries(opportunityFilters).forEach(([k,v])=>{if(String(v||'').trim())p.set(k,v)});if(limit)p.set('limit',String(limit));return p.toString()}
 function applyOpportunityFilters(){opportunityFilters={q:$('oppQ')?.value?.trim()||'',category_id:$('oppCat')?.value||'',urgency:$('oppUrg')?.value||'',proposal:$('oppProposal')?.value||'',min_budget:$('oppMin')?.value||'',sort:$('oppSort')?.value||'match'};renderTasks()}
@@ -2262,7 +2303,7 @@ function orderProgressHtml(o){
  return `<div class="orderStepper">${stages.map((x,i)=>{const n=i+1,cls=n<=done?'done':n===current+1?'current':'';return `<div class="orderStep ${cls}"><b>${n<=done?'✓ ':''}${x[0]}</b><small>${x[1]}</small></div>`}).join('')}</div>`
 }
 function orderStateAlert(o){if(o.status==='disputed')return '<div class="orderAlert disputed"><b>الطلب تحت المراجعة</b><br>تم تجميد مسار الطلب مؤقتًا إلى أن تُحسم حالة النزاع.</div>';if(o.status==='cancelled')return '<div class="orderAlert cancelled"><b>الطلب ملغى</b><br>لا توجد إجراءات تنفيذ إضافية على هذا الطلب.</div>';return ''}
-async function renderOrders(){const {j}=await api('/api/v1/orders');const a=j?.items||[];$('orders').innerHTML=`<div class="sectionHead"><div><h2>${me.user.role==='freelancer'?'أعمالي':'طلباتي'}</h2><p>الدفع والتنفيذ والتسليم</p></div></div><div class="list">${a.map(o=>`<div class="rowCard"><div><h3>${esc(o.title)}</h3><p>${me.user.role==='client'?'المستقل: '+esc(o.freelancer_name):'العميل: '+esc(o.client_name)}</p><div class="rowMeta"><span class="pill ${statusClass(o.status)}">${statusMap[o.status]||o.status}</span><span class="pill ${statusClass(o.payment_status)}">${statusMap[o.payment_status]||o.payment_status}</span></div></div><div><div class="money">${money(o.amount)}</div><button class="btn ghost" style="margin-top:7px" onclick="orderModal(${o.id})">فتح الطلب</button></div></div>`).join('')||'<div class="card empty">ما عندك طلبات حتى الآن.</div>'}</div>`}
+async function renderOrders(){const {j}=await api('/api/v1/orders');const a=j?.items||[];$('orders').innerHTML=`<div class="sectionHead"><div><h2>${me.user.role==='freelancer'?'أعمالي':'طلباتي'}</h2><p>الدفع والتنفيذ والتسليم</p></div></div><div class="list">${a.map(o=>`<div class="rowCard" data-minjaz-kind="order" data-minjaz-status="${esc(o.status||'')}" data-minjaz-payment="${esc(o.payment_status||'')}"><div><h3>${esc(o.title)}</h3><p>${me.user.role==='client'?'المستقل: '+esc(o.freelancer_name):'العميل: '+esc(o.client_name)}</p><div class="rowMeta"><span class="pill ${statusClass(o.status)}">${statusMap[o.status]||o.status}</span><span class="pill ${statusClass(o.payment_status)}">${statusMap[o.payment_status]||o.payment_status}</span></div></div><div><div class="money">${money(o.amount)}</div><button class="btn ghost" style="margin-top:7px" onclick="orderModal(${o.id})">فتح الطلب</button></div></div>`).join('')||'<div class="card empty">ما عندك طلبات حتى الآن.</div>'}</div>`}
 async function orderModal(id){const [{j:o},{j:m}]=await Promise.all([api(`/api/v1/orders/${id}`),api(`/api/v1/orders/${id}/messages`)]);if(!o)return toast('تعذر فتح الطلب');let actions='';const reviewAvg=o.review_id?((Number(o.review_quality||0)+Number(o.review_timeliness||0)+Number(o.review_communication||0))/3):0;const reviewSummary=o.review_id?`<div class="card" style="margin-top:12px"><div class="sectionHead" style="margin-top:0"><div><h2>${me.user.role==='client'?'تقييمك للمستقل':'تقييم العميل'}</h2><p>${reviewAvg.toFixed(1)} من 5 · ${o.review_created_at?new Date(o.review_created_at).toLocaleDateString('ar-SA'):''}</p></div><span class="pill green">★ ${reviewAvg.toFixed(1)}</span></div><div class="rowMeta"><span class="pill gray">الجودة ${o.review_quality}/5</span><span class="pill gray">الالتزام ${o.review_timeliness}/5</span><span class="pill gray">التواصل ${o.review_communication}/5</span></div>${o.review_comment?`<p style="font-size:10px;color:#475569;line-height:1.8;margin:10px 0 0">${esc(o.review_comment)}</p>`:''}</div>`:'';if(me.user.role==='client'&&o.status==='awaiting_payment'&&o.payment_status==='unpaid')actions+=`<button class="btn primary" onclick="payOrder(${id})">${DEMO_MODE?'دفع تجريبي':'إكمال الدفع'} ${money(o.amount)}</button>`;if(me.user.role==='freelancer'&&['in_progress','revision_requested'].includes(o.status))actions+=`<button class="btn primary" onclick="deliveryModal(${id})">تسليم العمل</button>`;if(me.user.role==='client'&&o.status==='delivered')actions+=`<button class="btn green" onclick="completeOrder(${id})">اعتماد التسليم</button><button class="btn ghost" onclick="revisionModal(${id})">طلب تعديل</button>`;if(me.user.role==='client'&&o.status==='completed'&&!o.review_id)actions+=`<button class="btn primary" onclick="reviewModal(${id})">★ إضافة التقييم</button>`;if(me.user.role==='client'&&o.status==='completed'&&o.review_id)actions+=`<button class="btn ghost" onclick="editReview(${id})">تعديل التقييم</button>`;if(me.user.role==='client')actions+=`<button class="btn ghost" onclick="saveTeam(${o.freelancer_id})">☆ إضافة لفريقي</button>`;
  openModal(`<div class="modalHead"><div><h2>${esc(o.title)}</h2><div style="font-size:9px;color:#64748b">طلب #${o.id} · ${statusMap[o.status]||o.status}</div></div><button class="x" onclick="closeModal()">×</button></div>${orderStateAlert(o)}${orderProgressHtml(o)}<div class="grid two"><div class="card"><div class="metric"><div class="label">القيمة</div><b>${money(o.amount)}</b><small>${o.payment_status==='paid'?'تم تأكيد الدفع':'لن يبدأ التنفيذ قبل الدفع'}</small></div></div><div class="card"><div class="metric"><div class="label">الطرف الآخر</div><b style="font-size:16px">${esc(me.user.role==='client'?o.freelancer_name:o.client_name)}</b><small>${o.payment_status==='paid'?'تم الدفع':'بانتظار الدفع'}</small></div></div></div><div class="orderFacts"><div class="orderFact"><b>${o.promised_hours?o.promised_hours+' ساعة':'—'}</b><small>مدة التسليم المتفق عليها</small></div><div class="orderFact"><b>${Number(o.revisions_remaining??o.revisions_allowed??0)}</b><small>تعديلات متبقية من ${Number(o.revisions_allowed||0)}</small></div><div class="orderFact"><b>${o.created_at?new Date(o.created_at).toLocaleDateString('ar-SA'):'—'}</b><small>تاريخ إنشاء الطلب</small></div></div><div class="sectionHead"><h2>المحادثة</h2></div><div id="chatBox" class="chat">${(m?.items||[]).map(x=>`<div class="bubble ${sameId(x.sender_id,me.user.id)?'me':''}"><b>${esc(x.sender_name)}</b><div>${esc(x.body)}</div><small>${new Date(x.created_at).toLocaleString('ar-SA')}</small></div>`).join('')||'<div class="empty">ابدأ المحادثة.</div>'}</div><div class="chatSend"><input id="chatMsg" maxlength="4000" placeholder="اكتب رسالة"><button class="btn primary" onclick="sendMessage(${id})">إرسال</button></div><div class="actions">${actions}</div>${reviewSummary}`) }
 async function sendMessage(id){const v=$('chatMsg').value.trim();if(!v)return;const {r}=await api(`/api/v1/orders/${id}/messages`,{method:'POST',body:JSON.stringify({body:v})});if(!r.ok)return toast('تعذر إرسال الرسالة');orderModal(id)}
@@ -4588,7 +4629,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v17</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v18</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -4774,6 +4815,180 @@ body{font-size:14px;line-height:1.65}
   observer.observe(document.body,{childList:true,subtree:true});
 
   setTimeout(()=>{syncTitle();syncNotifA11y()},80);
+})();
+</script>
+
+
+<script id="minjazWorkspaceRuntimeV18">
+(function(){
+  function lang18(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function t18(ar,en){return lang18()==='en'?en:ar}
+  function currentRole18(){try{return me&&me.user&&me.user.role||''}catch(e){return''}}
+  function rows18(host,kind){return Array.from(host.querySelectorAll('.rowCard[data-minjaz-kind="'+kind+'"]'))}
+  function normalize18(v){return String(v||'').toLocaleLowerCase(lang18()==='en'?'en':'ar').trim()}
+  function searchIcon18(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>'}
+  function countBy18(rows,status){return rows.filter(function(r){return r.dataset.minjazStatus===status}).length}
+  function setPressed18(host,selector,value){
+    host.querySelectorAll(selector).forEach(function(b){
+      var on=b.dataset.v18Filter===value;
+      b.classList.toggle('on',on);
+      b.setAttribute('aria-pressed',on?'true':'false');
+    });
+  }
+  function noResults18(list,show,text){
+    var empty=list.querySelector('.v18NoResults');
+    if(!empty){
+      empty=document.createElement('div');
+      empty.className='card empty v18NoResults';
+      list.appendChild(empty);
+    }
+    empty.textContent=text;
+    empty.style.display=show?'':'none';
+  }
+
+  var taskFilter18='all';
+  function applyTaskFilter18(){
+    var host=document.getElementById('tasks'); if(!host)return;
+    var list=host.querySelector('.list'); if(!list)return;
+    var rows=rows18(host,'task');
+    var input=host.querySelector('#taskSearchV18');
+    var q=normalize18(input&&input.value);
+    var shown=0;
+    rows.forEach(function(row){
+      var status=row.dataset.minjazStatus||'';
+      var statusOk=taskFilter18==='all'||status===taskFilter18;
+      var searchOk=!q||normalize18(row.textContent).includes(q);
+      var on=statusOk&&searchOk;
+      row.hidden=!on;
+      if(on)shown++;
+    });
+    var count=host.querySelector('#taskVisibleCountV18');
+    if(count)count.textContent=t18('ظاهر '+shown+' من '+rows.length,'Showing '+shown+' of '+rows.length);
+    setPressed18(host,'[data-v18-task-filter]',taskFilter18);
+    noResults18(list,rows.length>0&&shown===0,t18('ما فيه مهام مطابقة للبحث أو الفلتر.','No tasks match this search or filter.'));
+    try{sessionStorage.setItem('minjaz_task_filter_v18',taskFilter18)}catch(e){}
+  }
+  window.minjazSetTaskFilterV18=function(value){taskFilter18=value||'all';applyTaskFilter18()};
+
+  function enhanceTasks18(){
+    if(currentRole18()!=='client')return;
+    var host=document.getElementById('tasks'); if(!host||host.querySelector('.workspaceV18[data-kind="tasks"]'))return;
+    var list=host.querySelector('.list'), head=host.querySelector('.sectionHead'); if(!list||!head)return;
+    var rows=rows18(host,'task'); if(!rows.length)return;
+    try{taskFilter18=sessionStorage.getItem('minjaz_task_filter_v18')||'all'}catch(e){taskFilter18='all'}
+    var open=countBy18(rows,'open'),matched=countBy18(rows,'matched'),completed=countBy18(rows,'completed'),cancelled=countBy18(rows,'cancelled');
+    var box=document.createElement('div');
+    box.className='workspaceV18'; box.dataset.kind='tasks';
+    box.innerHTML=
+      '<div class="workSummaryV18">'+
+        '<button class="workMetricV18" type="button" data-v18-task-filter data-v18-filter="all"><b>'+rows.length+'</b><span>'+t18('كل المهام','All tasks')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-task-filter data-v18-filter="open"><b>'+open+'</b><span>'+t18('تستقبل عروض','Receiving offers')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-task-filter data-v18-filter="matched"><b>'+matched+'</b><span>'+t18('تم الاختيار','Matched')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-task-filter data-v18-filter="completed"><b>'+completed+'</b><span>'+t18('مكتملة','Completed')+'</span></button>'+
+      '</div>'+
+      '<div class="workToolsV18" role="search" aria-label="'+t18('بحث وفلترة المهام','Search and filter tasks')+'">'+
+        '<div class="workSearchV18">'+searchIcon18()+'<input id="taskSearchV18" type="search" autocomplete="off" placeholder="'+t18('ابحث بعنوان المهمة أو تفاصيلها','Search task title or details')+'" aria-label="'+t18('بحث في المهام','Search tasks')+'"></div>'+
+        '<div class="workFilterV18" aria-label="'+t18('حالة المهمة','Task status')+'">'+
+          '<button class="filterChipV18" type="button" data-v18-task-filter data-v18-filter="all">'+t18('الكل','All')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-task-filter data-v18-filter="open">'+t18('مفتوحة','Open')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-task-filter data-v18-filter="matched">'+t18('تم الاختيار','Matched')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-task-filter data-v18-filter="completed">'+t18('مكتملة','Completed')+'</button>'+
+          (cancelled?'<button class="filterChipV18" type="button" data-v18-task-filter data-v18-filter="cancelled">'+t18('ملغاة','Cancelled')+'</button>':'')+
+        '</div>'+
+        '<span class="workCountV18" id="taskVisibleCountV18" aria-live="polite"></span>'+
+      '</div>';
+    head.insertAdjacentElement('afterend',box);
+    box.querySelectorAll('[data-v18-task-filter]').forEach(function(b){b.addEventListener('click',function(){window.minjazSetTaskFilterV18(b.dataset.v18Filter)})});
+    var input=box.querySelector('#taskSearchV18');
+    input.addEventListener('input',applyTaskFilter18);
+    input.addEventListener('keydown',function(e){if(e.key==='Escape'){input.value='';applyTaskFilter18();input.blur()}});
+    applyTaskFilter18();
+  }
+
+  var orderFilter18='all';
+  function orderActionStatuses18(){
+    return currentRole18()==='freelancer'?['revision_requested']:['awaiting_payment','delivered'];
+  }
+  function orderActiveStatuses18(){return ['awaiting_payment','in_progress','revision_requested','delivered']}
+  function orderStatusOk18(status){
+    if(orderFilter18==='all')return true;
+    if(orderFilter18==='action')return orderActionStatuses18().includes(status);
+    if(orderFilter18==='active')return orderActiveStatuses18().includes(status);
+    if(orderFilter18==='completed')return status==='completed';
+    return status===orderFilter18;
+  }
+  function applyOrderFilter18(){
+    var host=document.getElementById('orders'); if(!host)return;
+    var list=host.querySelector('.list'); if(!list)return;
+    var rows=rows18(host,'order');
+    var input=host.querySelector('#orderSearchV18');
+    var q=normalize18(input&&input.value);
+    var shown=0;
+    rows.forEach(function(row){
+      var on=orderStatusOk18(row.dataset.minjazStatus||'')&&(!q||normalize18(row.textContent).includes(q));
+      row.hidden=!on;
+      if(on)shown++;
+    });
+    var count=host.querySelector('#orderVisibleCountV18');
+    if(count)count.textContent=t18('ظاهر '+shown+' من '+rows.length,'Showing '+shown+' of '+rows.length);
+    setPressed18(host,'[data-v18-order-filter]',orderFilter18);
+    noResults18(list,rows.length>0&&shown===0,t18('ما فيه طلبات مطابقة للبحث أو الفلتر.','No orders match this search or filter.'));
+    try{sessionStorage.setItem('minjaz_order_filter_v18',orderFilter18)}catch(e){}
+  }
+  window.minjazSetOrderFilterV18=function(value){orderFilter18=value||'all';applyOrderFilter18()};
+
+  function enhanceOrders18(){
+    var host=document.getElementById('orders'); if(!host||host.querySelector('.workspaceV18[data-kind="orders"]'))return;
+    var list=host.querySelector('.list'), head=host.querySelector('.sectionHead'); if(!list||!head)return;
+    var rows=rows18(host,'order'); if(!rows.length)return;
+    try{orderFilter18=sessionStorage.getItem('minjaz_order_filter_v18')||'all'}catch(e){orderFilter18='all'}
+    var actionSet=orderActionStatuses18(),activeSet=orderActiveStatuses18();
+    var action=rows.filter(function(r){return actionSet.includes(r.dataset.minjazStatus)}).length;
+    var active=rows.filter(function(r){return activeSet.includes(r.dataset.minjazStatus)}).length;
+    var completed=countBy18(rows,'completed');
+    var box=document.createElement('div');
+    box.className='workspaceV18'; box.dataset.kind='orders';
+    box.innerHTML=
+      '<div class="workSummaryV18">'+
+        '<button class="workMetricV18" type="button" data-v18-order-filter data-v18-filter="all"><b>'+rows.length+'</b><span>'+t18('كل الطلبات','All orders')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-order-filter data-v18-filter="action"><b>'+action+'</b><span>'+t18('تحتاج إجراء','Need action')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-order-filter data-v18-filter="active"><b>'+active+'</b><span>'+t18('نشطة','Active')+'</span></button>'+
+        '<button class="workMetricV18" type="button" data-v18-order-filter data-v18-filter="completed"><b>'+completed+'</b><span>'+t18('مكتملة','Completed')+'</span></button>'+
+      '</div>'+
+      '<div class="workToolsV18" role="search" aria-label="'+t18('بحث وفلترة الطلبات','Search and filter orders')+'">'+
+        '<div class="workSearchV18">'+searchIcon18()+'<input id="orderSearchV18" type="search" autocomplete="off" placeholder="'+t18('ابحث باسم المهمة أو الطرف الآخر','Search task or person')+'" aria-label="'+t18('بحث في الطلبات','Search orders')+'"></div>'+
+        '<div class="workFilterV18">'+
+          '<button class="filterChipV18" type="button" data-v18-order-filter data-v18-filter="all">'+t18('الكل','All')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-order-filter data-v18-filter="action">'+t18('يحتاج إجراء','Need action')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-order-filter data-v18-filter="active">'+t18('نشطة','Active')+'</button>'+
+          '<button class="filterChipV18" type="button" data-v18-order-filter data-v18-filter="completed">'+t18('مكتملة','Completed')+'</button>'+
+        '</div>'+
+        '<span class="workCountV18" id="orderVisibleCountV18" aria-live="polite"></span>'+
+      '</div>';
+    head.insertAdjacentElement('afterend',box);
+    box.querySelectorAll('[data-v18-order-filter]').forEach(function(b){b.addEventListener('click',function(){window.minjazSetOrderFilterV18(b.dataset.v18Filter)})});
+    var input=box.querySelector('#orderSearchV18');
+    input.addEventListener('input',applyOrderFilter18);
+    input.addEventListener('keydown',function(e){if(e.key==='Escape'){input.value='';applyOrderFilter18();input.blur()}});
+    applyOrderFilter18();
+  }
+
+  var baseTasks18=window.renderTasks;
+  if(typeof baseTasks18==='function'){
+    window.renderTasks=async function(){var out=await baseTasks18.apply(this,arguments);enhanceTasks18();return out}
+  }
+  var baseOrders18=window.renderOrders;
+  if(typeof baseOrders18==='function'){
+    window.renderOrders=async function(){var out=await baseOrders18.apply(this,arguments);enhanceOrders18();return out}
+  }
+  window.minjazEnhanceTasksV18=enhanceTasks18;
+  window.minjazEnhanceOrdersV18=enhanceOrders18;
+  setTimeout(function(){
+    try{
+      if(typeof currentPage!=='undefined'&&currentPage==='tasks')enhanceTasks18();
+      if(typeof currentPage!=='undefined'&&currentPage==='orders')enhanceOrders18();
+    }catch(e){}
+  },120);
 })();
 </script>
 
