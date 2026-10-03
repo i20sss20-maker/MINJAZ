@@ -6947,5 +6947,80 @@ body{font-size:14px;line-height:1.65}
 })();
 </script>
 
-<script src="/minjaz-files-demo-v302.js"></script>\n<script src="/minjaz-work-center-v31.js"></script>\n</body>
+<script src="/minjaz-files-demo-v302.js"></script>\n<script src="/minjaz-work-center-v31.js"></script>\n
+
+<script id="minjazFilesDemoParityV30_2">
+(function(){
+  if(typeof demoApi!=='function'||typeof demoLoad!=='function')return;
+  var baseDemoFilesV302=demoApi;
+  function arr(v){return Array.isArray(v)?v:[]}
+  function ownOrderV302(d,u,o){return o&&(Number(o.client_id)===Number(u.id)||Number(o.freelancer_id)===Number(u.id))}
+  function normalizeAttV302(a,meta,idx){
+    a=a||{};meta=meta||{};
+    return {
+      id:String(meta.source_type||'file')+'-'+String(meta.parent_id||0)+'-'+String(a.id||idx||0),
+      uploaded_by:Number(a.uploaded_by||meta.uploaded_by||0)||null,
+      task_id:Number(meta.task_id||a.task_id||0)||null,
+      order_id:Number(meta.order_id||a.order_id||0)||null,
+      message_id:Number(meta.message_id||a.message_id||0)||null,
+      delivery_id:Number(meta.delivery_id||a.delivery_id||0)||null,
+      file_name:String(a.file_name||a.name||'ملف'),
+      file_url:String(a.file_url||a.url||''),
+      mime_type:String(a.mime_type||''),
+      size_bytes:Number(a.size_bytes||0)||0,
+      storage_mode:String(a.storage_mode||'demo'),
+      created_at:a.created_at||meta.created_at||new Date().toISOString(),
+      uploaded_by_name:meta.uploaded_by_name||'',
+      task_title:meta.task_title||'',
+      source_type:meta.source_type||'task'
+    };
+  }
+  function demoFilesV302(d,u){
+    var out=[],seen=new Set(),orders=arr(d.orders).filter(function(o){return ownOrderV302(d,u,o)}),orderIds=new Set(orders.map(function(o){return Number(o.id)})),sharedTaskIds=new Set(orders.map(function(o){return Number(o.task_id)}));
+    function add(a,meta){
+      arr(a).forEach(function(x,i){
+        var item=normalizeAttV302(x,meta,i),key=[item.source_type,item.order_id,item.task_id,item.message_id,item.delivery_id,item.file_name,item.file_url].join('|');
+        if(seen.has(key))return;seen.add(key);out.push(item);
+      });
+    }
+    arr(d.tasks).forEach(function(t){
+      if(Number(t.client_id)!==Number(u.id)&&!sharedTaskIds.has(Number(t.id)))return;
+      add(t.attachments,{task_id:t.id,order_id:(orders.find(function(o){return Number(o.task_id)===Number(t.id)})||{}).id||null,parent_id:t.id,uploaded_by:t.client_id,uploaded_by_name:(demoUser(d,t.client_id)||{}).name||'',task_title:t.title||'',created_at:t.created_at,source_type:'task'});
+    });
+    arr(d.messages).forEach(function(m){
+      if(!orderIds.has(Number(m.order_id)))return;
+      var o=orders.find(function(x){return Number(x.id)===Number(m.order_id)})||{},t=arr(d.tasks).find(function(x){return Number(x.id)===Number(o.task_id)})||{};
+      add(m.attachments,{order_id:m.order_id,task_id:o.task_id,message_id:m.id,parent_id:m.id,uploaded_by:m.sender_id,uploaded_by_name:(demoUser(d,m.sender_id)||{}).name||'',task_title:t.title||'',created_at:m.created_at,source_type:'message'});
+    });
+    arr(d.deliveries).forEach(function(del){
+      if(!orderIds.has(Number(del.order_id)))return;
+      var o=orders.find(function(x){return Number(x.id)===Number(del.order_id)})||{},t=arr(d.tasks).find(function(x){return Number(x.id)===Number(o.task_id)})||{};
+      add(del.attachments,{order_id:del.order_id,task_id:o.task_id,delivery_id:del.id,parent_id:del.id,uploaded_by:del.freelancer_id,uploaded_by_name:(demoUser(d,del.freelancer_id)||{}).name||'',task_title:t.title||'',created_at:del.created_at,source_type:'delivery'});
+    });
+    return out.sort(function(a,b){return String(b.created_at||'').localeCompare(String(a.created_at||''))});
+  }
+  demoApi=async function(path,opt={}){
+    var raw=String(path||''),clean=raw.split('?')[0],method=String(opt.method||'GET').toUpperCase(),d=demoLoad(),u=demoAuth(d),b=demoBody(opt);
+    if(clean==='/api/v1/files'&&method==='GET'){
+      if(!u)return demoResp(401,{error:'unauthorized'});
+      return demoResp(200,{items:demoFilesV302(d,u)});
+    }
+    var taskPost=clean==='/api/v1/tasks'&&method==='POST';
+    var msgMatch=clean.match(/^\/api\/v1\/orders\/(\d+)\/messages$/);
+    var deliverMatch=clean.match(/^\/api\/v1\/orders\/(\d+)\/deliver$/);
+    var res=await baseDemoFilesV302(path,opt);
+    if(!res?.r?.ok||!u)return res;
+    if(taskPost&&arr(b.attachments).length){
+      d=demoLoad();var task=arr(d.tasks).find(function(x){return Number(x.id)===Number(res.j?.id)});if(task){task.attachments=arr(b.attachments).map(function(x){return Object.assign({},x,{uploaded_by:u.id,created_at:x.created_at||new Date().toISOString()})});demoSave(d)}
+    }else if(msgMatch&&method==='POST'&&arr(b.attachments).length){
+      d=demoLoad();var msg=arr(d.messages).find(function(x){return Number(x.id)===Number(res.j?.id)});if(msg){msg.attachments=arr(b.attachments).map(function(x){return Object.assign({},x,{uploaded_by:u.id,created_at:x.created_at||new Date().toISOString()})});demoSave(d)}
+    }else if(deliverMatch&&method==='POST'&&arr(b.attachments).length){
+      d=demoLoad();var oid=Number(deliverMatch[1]),del=arr(d.deliveries).filter(function(x){return Number(x.order_id)===oid}).sort(function(x,y){return Number(y.id||0)-Number(x.id||0)})[0];if(del){del.attachments=arr(b.attachments).map(function(x){return Object.assign({},x,{uploaded_by:u.id,created_at:x.created_at||new Date().toISOString()})});demoSave(d)}
+    }
+    return res;
+  };
+})();
+</script>
+
+</body>
 </html>
