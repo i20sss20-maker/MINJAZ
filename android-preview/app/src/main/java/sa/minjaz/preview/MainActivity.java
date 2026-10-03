@@ -10,8 +10,11 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Environment;
 import android.view.Gravity;
 import android.view.View;
@@ -24,7 +27,6 @@ import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.RenderProcessGoneDetail;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.URLUtil;
@@ -39,6 +41,7 @@ public class MainActivity extends Activity {
     private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
     private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
     private static final int FILE_CHOOSER_REQUEST = 7001;
+    private static final long PAGE_LOAD_TIMEOUT_MS = 20000L;
 
     private FrameLayout root;
     private WebView webView;
@@ -46,6 +49,11 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable pageLoadTimeout;
+    private int pageLoadGeneration = 0;
+    private String lastGoodUrl;
+    private boolean backHandling = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -130,14 +138,7 @@ public class MainActivity extends Activity {
 
         Button retry = new Button(this);
         retry.setText(getString(R.string.retry));
-        retry.setOnClickListener(v -> {
-            hideError();
-            if (webView.getUrl() == null || webView.getUrl().trim().isEmpty()) {
-                webView.loadUrl(appUrlWithLocale());
-            } else {
-                webView.reload();
-            }
-        });
+        retry.setOnClickListener(v -> retryCurrentPage());
         LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             dp(48)
@@ -164,7 +165,7 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.9");
+        settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/0.10");
 
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
@@ -238,6 +239,9 @@ public class MainActivity extends Activity {
         if (isInternalUri(uri)) return false;
 
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        if ("about".equals(scheme) || "data".equals(scheme) || "blob".equals(scheme)) {
+            return false;
+        }
 
         if ("intent".equals(scheme)) {
             try {
@@ -348,9 +352,33 @@ public class MainActivity extends Activity {
         }
 
         @Override
+        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+            if (url != null && isInternalUri(Uri.parse(url))) {
+                schedulePageLoadTimeout(url);
+            } else {
+                cancelPageLoadTimeout();
+            }
+        }
+
+        @Override
         public void onPageCommitVisible(WebView view, String url) {
+            cancelPageLoadTimeout();
+            if (url != null) {
+                try {
+                    Uri uri = Uri.parse(url);
+                    if (isInternalUri(uri)) lastGoodUrl = localizedInternalUrl(uri);
+                } catch (Exception ignored) {
+                }
+            }
             hideError();
             super.onPageCommitVisible(view, url);
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            cancelPageLoadTimeout();
+            super.onPageFinished(view, url);
         }
 
         @Override
@@ -359,7 +387,10 @@ public class MainActivity extends Activity {
             WebResourceRequest request,
             WebResourceError error
         ) {
-            if (request.isForMainFrame()) showError();
+            if (request.isForMainFrame()) {
+                cancelPageLoadTimeout();
+                showError();
+            }
             super.onReceivedError(view, request, error);
         }
 
@@ -370,6 +401,7 @@ public class MainActivity extends Activity {
             WebResourceResponse errorResponse
         ) {
             if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
+                cancelPageLoadTimeout();
                 showError();
             }
             super.onReceivedHttpError(view, request, errorResponse);
@@ -395,13 +427,12 @@ public class MainActivity extends Activity {
         networkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(Network network) {
-                runOnUiThread(() -> {
+                runOnUiThread(() -> mainHandler.postDelayed(() -> {
                     if (webView != null && errorView != null
                         && errorView.getVisibility() == View.VISIBLE) {
-                        hideError();
-                        webView.reload();
+                        retryCurrentPage();
                     }
-                });
+                }, 500));
             }
         };
 
@@ -413,8 +444,11 @@ public class MainActivity extends Activity {
     }
 
     private void recoverWebView() {
-        final String lastUrl =
-            webView != null && webView.getUrl() != null ? webView.getUrl() : appUrlWithLocale();
+        cancelPageLoadTimeout();
+        String current = webView != null ? webView.getUrl() : null;
+        final String lastUrl = safeInternalUrl(current)
+            ? localizedInternalUrl(Uri.parse(current))
+            : (safeInternalUrl(lastGoodUrl) ? lastGoodUrl : appUrlWithLocale());
 
         if (webView != null) {
             root.removeView(webView);
@@ -443,12 +477,93 @@ public class MainActivity extends Activity {
         if (errorView != null) errorView.setVisibility(View.GONE);
     }
 
-    private void handleBack() {
+    private boolean safeInternalUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return false;
+        try {
+            return isInternalUri(Uri.parse(url));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void retryCurrentPage() {
+        if (webView == null) return;
+        hideError();
+        cancelPageLoadTimeout();
+        String current = webView.getUrl();
+        String target = safeInternalUrl(current)
+            ? localizedInternalUrl(Uri.parse(current))
+            : (safeInternalUrl(lastGoodUrl) ? lastGoodUrl : appUrlWithLocale());
+        webView.stopLoading();
+        webView.loadUrl(target);
+    }
+
+    private void schedulePageLoadTimeout(String url) {
+        cancelPageLoadTimeout();
+        final int generation = ++pageLoadGeneration;
+        pageLoadTimeout = () -> {
+            if (generation != pageLoadGeneration || webView == null) return;
+            String current = webView.getUrl();
+            if (safeInternalUrl(current) || safeInternalUrl(url)) {
+                showError();
+            }
+        };
+        mainHandler.postDelayed(pageLoadTimeout, PAGE_LOAD_TIMEOUT_MS);
+    }
+
+    private void cancelPageLoadTimeout() {
+        pageLoadGeneration++;
+        if (pageLoadTimeout != null) {
+            mainHandler.removeCallbacks(pageLoadTimeout);
+            pageLoadTimeout = null;
+        }
+    }
+
+    private boolean isNetworkReady() {
+        if (connectivityManager == null) return true;
+        try {
+            Network network = connectivityManager.getActiveNetwork();
+            if (network == null) return false;
+            NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(network);
+            return caps != null
+                && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Exception ignored) {
+            return true;
+        }
+    }
+
+    private void nativeBackFallback() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
         } else {
             finish();
         }
+    }
+
+    private void handleBack() {
+        if (backHandling) return;
+        if (errorView != null && errorView.getVisibility() == View.VISIBLE) {
+            hideError();
+            return;
+        }
+        if (webView == null) {
+            finish();
+            return;
+        }
+        backHandling = true;
+        String script = "(function(){try{"
+            + "var g=document.getElementById('globalSearchOverlayV28');"
+            + "if(g&&g.classList.contains('on')&&window.closeGlobalSearchV28){window.closeGlobalSearchV28();return true;}"
+            + "var o=document.getElementById('modalOverlay');"
+            + "if(o&&o.classList.contains('on')&&window.closeModal){window.closeModal();return true;}"
+            + "var p=document.querySelector('.page.on');"
+            + "if(p&&p.id&&p.id!=='home'&&window.go){window.go('home');return true;}"
+            + "return false;}catch(e){return false;}})();";
+        webView.evaluateJavascript(script, value -> {
+            backHandling = false;
+            if (!"true".equals(value)) nativeBackFallback();
+        });
     }
 
     @Override
@@ -479,6 +594,10 @@ public class MainActivity extends Activity {
         applySystemChrome();
         if (webView != null) {
             webView.onResume();
+            if (errorView != null && errorView.getVisibility() == View.VISIBLE && isNetworkReady()) {
+                mainHandler.postDelayed(this::retryCurrentPage, 350);
+                return;
+            }
             String current = webView.getUrl();
             if (current == null && webView.copyBackForwardList().getSize() == 0) {
                 loadLaunchDestination(getIntent());
@@ -525,6 +644,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelPageLoadTimeout();
+        mainHandler.removeCallbacksAndMessages(null);
         if (connectivityManager != null && networkCallback != null) {
             try {
                 connectivityManager.unregisterNetworkCallback(networkCallback);
