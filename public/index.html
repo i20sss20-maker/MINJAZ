@@ -1862,6 +1862,32 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazOrderActionV19">
+.orderActionPanelV19{margin:10px 0 14px;border:1px solid #d8e2ff;background:linear-gradient(135deg,#f7f9ff,#fff);border-radius:18px;padding:13px;display:grid;gap:10px;box-shadow:0 10px 30px rgba(49,87,246,.055)}
+.orderActionTopV19{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.orderActionCopyV19{min-width:0}.orderActionCopyV19 b{display:block;font:700 12px Alexandria;line-height:1.55}.orderActionCopyV19 p{margin:4px 0 0;color:var(--muted);font-size:9px;line-height:1.65}
+.orderActionBtnsV19{display:flex;gap:7px;flex-wrap:wrap}.orderActionBtnsV19 .btn{min-height:38px}
+.orderActionStatusV19{flex:0 0 auto}
+.chatHeadV19{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.chatMetaV19{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chatSendV19{position:relative}.chatSendV19 input{padding-inline-end:72px}
+.chatCountV19{position:absolute;inset-inline-end:86px;top:50%;transform:translateY(-50%);font-size:7px;color:var(--muted);pointer-events:none;background:var(--panel);padding:2px 4px;border-radius:6px}
+.chatHintV19{font-size:8px;color:var(--muted);margin-top:5px}
+.chatSendV19 .btn:disabled{opacity:.5;cursor:not-allowed}
+.chat .bubble{max-width:min(78%,620px)}
+.chat .bubble.me{margin-inline-start:auto}
+[data-theme="dark"] .orderActionPanelV19{background:linear-gradient(135deg,#141a30,#101526);border-color:#2d3d70;box-shadow:none}
+[data-theme="dark"] .chatCountV19{background:var(--panel)}
+@media(max-width:640px){
+ .orderActionTopV19{display:grid;grid-template-columns:1fr auto}
+ .orderActionBtnsV19{display:grid;grid-template-columns:1fr}
+ .orderActionBtnsV19 .btn{width:100%}
+ .chat .bubble{max-width:90%}
+ .chatCountV19{inset-inline-end:80px}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4629,7 +4655,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v18</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v19</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -4989,6 +5015,127 @@ body{font-size:14px;line-height:1.65}
       if(typeof currentPage!=='undefined'&&currentPage==='orders')enhanceOrders18();
     }catch(e){}
   },120);
+})();
+</script>
+
+
+<script id="minjazOrderActionRuntimeV19">
+(function(){
+  function langV19(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV19(ar,en){return langV19()==='en'?en:ar}
+  function roleV19(){try{return me&&me.user&&me.user.role||''}catch(e){return''}}
+  function statusTextV19(o){
+    if(!o)return'';
+    try{return statusMap[o.status]||o.status||''}catch(e){return o.status||''}
+  }
+  function actionSpecV19(o){
+    var role=roleV19();
+    if(!o)return null;
+    if(o.status==='disputed')return {title:tV19('الطلب تحت المراجعة','Order is under review'),body:tV19('الإجراءات المالية والتنفيذية متوقفة مؤقتًا إلى أن تُحسم حالة النزاع.','Payment and fulfillment actions are paused until the dispute is resolved.'),tone:'amber',buttons:[['chat',tV19('فتح المحادثة','Open chat'),'ghost']]};
+    if(o.status==='cancelled')return {title:tV19('الطلب ملغى','Order cancelled'),body:tV19('لا توجد إجراءات تنفيذ إضافية على هذا الطلب. تبقى المحادثة متاحة للرجوع إليها.','No more fulfillment actions are available. The conversation remains accessible for reference.'),tone:'gray',buttons:[['chat',tV19('عرض المحادثة','View chat'),'ghost']]};
+    if(role==='client'&&o.status==='awaiting_payment'&&o.payment_status==='unpaid')return {title:tV19('الخطوة التالية: إكمال الدفع','Next step: Complete payment'),body:tV19('بعد تأكيد الدفع يبدأ التنفيذ ويصل إشعار للمستقل مباشرة.','Once payment is confirmed, work can begin and the freelancer is notified.'),tone:'blue',buttons:[['pay',tV19('إكمال الدفع','Complete payment'),'primary'],['chat',tV19('مراسلة المستقل','Message freelancer'),'ghost']]};
+    if(role==='freelancer'&&o.status==='awaiting_payment'&&o.payment_status==='unpaid')return {title:tV19('بانتظار دفع العميل','Waiting for client payment'),body:tV19('لا تبدأ التنفيذ المالي قبل تأكيد الدفع داخل مِنجاز. تقدر تستخدم المحادثة لتأكيد التفاصيل فقط.','Do not begin paid fulfillment until MINJAZ confirms payment. You can still use chat to confirm details.'),tone:'amber',buttons:[['chat',tV19('فتح المحادثة','Open chat'),'ghost']]};
+    if(role==='freelancer'&&(o.status==='in_progress'||o.status==='revision_requested'))return {title:o.status==='revision_requested'?tV19('الخطوة التالية: تنفيذ التعديل','Next step: Complete the revision'):tV19('الخطوة التالية: تسليم العمل','Next step: Deliver the work'),body:o.status==='revision_requested'?tV19('راجع ملاحظات العميل في المحادثة ثم أعد التسليم بعد تنفيذ المطلوب.','Review the client notes in chat, make the requested changes, then deliver again.'):tV19('أرسل التسليم من داخل الطلب مع ملاحظات واضحة تساعد العميل على المراجعة.','Submit the delivery inside the order with clear notes for the client to review.'),tone:'blue',buttons:[['deliver',tV19('تسليم العمل','Deliver work'),'primary'],['chat',tV19('فتح المحادثة','Open chat'),'ghost']]};
+    if(role==='client'&&o.status==='in_progress')return {title:tV19('التنفيذ جاري','Work is in progress'),body:tV19('تابع التحديثات من المحادثة، ولا تعتمد أي تسليم قبل وصوله رسميًا داخل الطلب.','Follow updates in chat, and only approve work after an official delivery appears in the order.'),tone:'green',buttons:[['chat',tV19('فتح المحادثة','Open chat'),'primary']]};
+    if(role==='client'&&o.status==='delivered')return {title:tV19('الخطوة التالية: مراجعة التسليم','Next step: Review the delivery'),body:tV19('راجع ما تم تسليمه، ثم اعتمده إذا اكتمل أو اطلب تعديلًا ضمن الرصيد المتبقي.','Review the delivery, then approve it if complete or request a revision within the remaining allowance.'),tone:'green',buttons:[['complete',tV19('اعتماد التسليم','Approve delivery'),'green'],['revision',tV19('طلب تعديل','Request revision'),'ghost'],['chat',tV19('المحادثة','Chat'),'ghost']]};
+    if(role==='freelancer'&&o.status==='delivered')return {title:tV19('بانتظار مراجعة العميل','Waiting for client review'),body:tV19('تم تسجيل التسليم. تابع المحادثة لأي سؤال أو طلب تعديل.','The delivery is recorded. Watch the conversation for questions or revision requests.'),tone:'green',buttons:[['chat',tV19('فتح المحادثة','Open chat'),'primary']]};
+    if(role==='client'&&o.status==='completed'&&!o.review_id&&!o.reviewed)return {title:tV19('الطلب مكتمل — قيّم التجربة','Order completed — Rate the experience'),body:tV19('تقييمك يساعد على تحسين سجل المستقل وجودة الاختيارات لاحقًا.','Your rating improves the freelancer record and helps future decisions.'),tone:'green',buttons:[['review',tV19('إضافة التقييم','Add rating'),'primary'],['chat',tV19('عرض المحادثة','View chat'),'ghost']]};
+    if(role==='client'&&o.status==='completed'&&(o.review_id||o.reviewed))return {title:tV19('الطلب مكتمل','Order completed'),body:tV19('تم إنهاء الطلب وتسجيل التقييم. تقدر ترجع للتفاصيل والمحادثة في أي وقت.','The order and rating are complete. You can revisit the details and conversation anytime.'),tone:'green',buttons:[['editReview',tV19('تعديل التقييم','Edit rating'),'ghost'],['chat',tV19('عرض المحادثة','View chat'),'ghost']]};
+    if(o.status==='completed')return {title:tV19('الطلب مكتمل','Order completed'),body:tV19('تم إنهاء مسار التنفيذ بنجاح.','The fulfillment flow has been completed.'),tone:'green',buttons:[['chat',tV19('عرض المحادثة','View chat'),'ghost']]};
+    return {title:tV19('تابع الطلب من هنا','Manage the order here'),body:tV19('استخدم المحادثة لمتابعة التفاصيل وحالة التنفيذ.','Use the conversation to follow details and fulfillment status.'),tone:'blue',buttons:[['chat',tV19('فتح المحادثة','Open chat'),'primary']]};
+  }
+  function actionButtonV19(kind,label,cls,id){
+    var fn='';
+    if(kind==='pay')fn='payOrder('+id+')';
+    else if(kind==='deliver')fn='deliveryModal('+id+')';
+    else if(kind==='complete')fn='completeOrder('+id+')';
+    else if(kind==='revision')fn='revisionModal('+id+')';
+    else if(kind==='review')fn='reviewModal('+id+')';
+    else if(kind==='editReview')fn='editReview('+id+')';
+    else fn='minjazFocusChatV19()';
+    return '<button type="button" class="btn '+cls+'" onclick="'+fn+'">'+label+'</button>';
+  }
+  window.minjazFocusChatV19=function(){
+    var box=document.getElementById('chatBox'),input=document.getElementById('chatMsg');
+    if(box)box.scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(function(){if(input)input.focus()},180);
+  };
+  function decorateOrderV19(o){
+    var modal=document.getElementById('modal');if(!modal||!o)return;
+    if(!modal.querySelector('[data-order-action-v19]')){
+      var spec=actionSpecV19(o),panel=document.createElement('div');
+      panel.className='orderActionPanelV19';panel.dataset.orderActionV19='1';
+      panel.innerHTML='<div class="orderActionTopV19"><div class="orderActionCopyV19"><b>'+esc(spec.title)+'</b><p>'+esc(spec.body)+'</p></div><span class="pill '+(spec.tone||'blue')+' orderActionStatusV19">'+esc(statusTextV19(o))+'</span></div><div class="orderActionBtnsV19">'+spec.buttons.map(function(x){return actionButtonV19(x[0],x[1],x[2],o.id)}).join('')+'</div>';
+      var focus=modal.querySelector('[data-order-focus-rc5]');
+      if(focus)focus.insertAdjacentElement('afterend',panel);
+      else{
+        var step=modal.querySelector('.orderStepper');
+        if(step)step.insertAdjacentElement('afterend',panel);
+        else modal.querySelector('.modalHead')&&modal.querySelector('.modalHead').insertAdjacentElement('afterend',panel);
+      }
+    }
+    var chat=document.getElementById('chatBox'),input=document.getElementById('chatMsg');
+    if(chat){
+      var messages=chat.querySelectorAll('.bubble').length;
+      var section=chat.previousElementSibling;
+      if(section&&section.classList.contains('sectionHead')&&!section.querySelector('[data-chat-meta-v19]')){
+        var meta=document.createElement('div');meta.className='chatMetaV19';meta.dataset.chatMetaV19='1';
+        meta.innerHTML='<span class="pill gray">'+messages+' '+tV19('رسالة','messages')+'</span>';
+        section.appendChild(meta);
+      }
+      requestAnimationFrame(function(){chat.scrollTop=chat.scrollHeight});
+    }
+    var send=input&&input.closest('.chatSend');
+    if(input&&send){
+      send.classList.add('chatSendV19');
+      var btn=send.querySelector('button');
+      if(!send.querySelector('[data-chat-count-v19]')){
+        var count=document.createElement('span');count.className='chatCountV19';count.dataset.chatCountV19='1';count.setAttribute('aria-live','polite');send.appendChild(count);
+        var hint=document.createElement('div');hint.className='chatHintV19';hint.dataset.chatHintV19='1';hint.textContent=tV19('Enter للإرسال · Esc للخروج من الحقل','Enter to send · Esc to leave the field');send.insertAdjacentElement('afterend',hint);
+      }
+      var sync=function(){
+        var count=send.querySelector('[data-chat-count-v19]');if(count)count.textContent=String(input.value.length)+'/4000';
+        if(btn)btn.disabled=!input.value.trim()||window.__minjazChatSendingV19===o.id;
+      };
+      if(!input.dataset.v19Bound){
+        input.dataset.v19Bound='1';
+        input.addEventListener('input',sync);
+        input.addEventListener('keydown',function(e){
+          if(e.key==='Enter'&&!e.shiftKey){
+            e.preventDefault();
+            if(input.value.trim()&&window.__minjazChatSendingV19!==o.id)window.sendMessage(o.id);
+          }else if(e.key==='Escape'){input.blur()}
+        });
+      }
+      sync();
+    }
+  }
+  var baseOrderV19=window.orderModal;
+  if(typeof baseOrderV19==='function'){
+    window.orderModal=async function(id){
+      var detailPromise=api('/api/v1/orders/'+id);
+      var out=await baseOrderV19.apply(this,arguments);
+      try{var detail=await detailPromise;if(detail&&detail.r&&detail.r.ok)decorateOrderV19(detail.j)}catch(e){}
+      return out;
+    };
+  }
+  var baseSendV19=window.sendMessage;
+  if(typeof baseSendV19==='function'){
+    window.sendMessage=async function(id){
+      if(window.__minjazChatSendingV19===id)return;
+      var input=document.getElementById('chatMsg'),v=input&&input.value&&input.value.trim();
+      if(!v)return;
+      window.__minjazChatSendingV19=id;
+      var btn=input&&input.closest('.chatSend')&&input.closest('.chatSend').querySelector('button');
+      if(btn){btn.disabled=true;btn.dataset.originalTextV19=btn.textContent;btn.textContent=tV19('جاري الإرسال…','Sending…')}
+      try{return await baseSendV19.apply(this,arguments)}
+      finally{
+        window.__minjazChatSendingV19=null;
+        var current=document.getElementById('chatMsg'),currentBtn=current&&current.closest('.chatSend')&&current.closest('.chatSend').querySelector('button');
+        if(currentBtn){currentBtn.disabled=!current.value.trim();if(currentBtn.dataset.originalTextV19){currentBtn.textContent=currentBtn.dataset.originalTextV19;delete currentBtn.dataset.originalTextV19}}
+      }
+    };
+  }
 })();
 </script>
 
