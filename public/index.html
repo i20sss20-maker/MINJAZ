@@ -2043,6 +2043,43 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazClientProjectV24">
+.clientProjectsV24{margin-bottom:16px}
+.clientProjectsHeadV24{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.clientProjectsHeadV24 h2{font:700 16px Alexandria;margin:0 0 4px}.clientProjectsHeadV24 p{font-size:10px;color:var(--muted);margin:0;line-height:1.6}
+.clientProjectMetricsV24{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.clientProjectMetricV24{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--panel) 95%,#eef3ff 5%));padding:11px 12px}
+.clientProjectMetricV24 b{display:block;font:700 18px Alexandria;margin-bottom:2px}.clientProjectMetricV24 span{font-size:8px;color:var(--muted)}
+.clientProjectBoardV24{display:grid;gap:8px}
+.clientProjectCardV24{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:13px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.clientProjectCardV24.action{border-color:#b9c8ff;background:linear-gradient(135deg,#f7f9ff,var(--panel))}
+.clientProjectCardV24.overdue{border-color:#f0b8b8;background:linear-gradient(135deg,#fff8f8,var(--panel))}
+.clientProjectCardV24.soon{border-color:#f3d39a;background:linear-gradient(135deg,#fffbf2,var(--panel))}
+.clientProjectCardV24 h3{font:700 12px Alexandria;margin:0 0 4px}.clientProjectCardV24 p{font-size:9px;color:var(--muted);line-height:1.6;margin:3px 0}
+.clientProjectMetaV24{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.clientProjectSideV24{text-align:end;min-width:155px}
+.clientDeadlineV24{font:700 9px Alexandria;margin-bottom:7px}.clientDeadlineV24 small{display:block;font:400 7px system-ui;color:var(--muted);margin-top:3px}
+.clientMonitorV24{margin:11px 0 14px;border:1px solid #dce5ff;border-radius:18px;background:linear-gradient(135deg,#f8faff,#fff);padding:13px}
+.clientMonitorTopV24{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.clientMonitorTopV24 h3{font:700 12px Alexandria;margin:0 0 4px}.clientMonitorTopV24 p{font-size:8px;color:var(--muted);line-height:1.6;margin:0}
+.clientMonitorGridV24{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}
+.clientMonitorFactV24{border:1px solid var(--line);border-radius:13px;background:var(--panel);padding:9px}.clientMonitorFactV24 b{display:block;font:700 11px Alexandria}.clientMonitorFactV24 small{font-size:7px;color:var(--muted)}
+.latestDeliveryV24{margin-top:10px;border:1px solid #cde6d7;border-radius:16px;background:#f8fdf9;padding:11px}
+.latestDeliveryV24 h4{font:700 10px Alexandria;margin:0 0 4px}.latestDeliveryV24 p{font-size:9px;color:var(--muted);line-height:1.7;margin:4px 0}.latestDeliveryV24 small{font-size:7px;color:var(--muted)}
+.deliveryDecisionV24{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.deliveryDecisionV24 .btn{flex:1 1 150px}
+.revisionContextV24{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:10px}
+.revisionContextV24 b{font:700 9px Alexandria}.revisionContextV24 p{font-size:8px;color:var(--muted);line-height:1.6;margin:4px 0}.revisionContextV24 small{font-size:7px;color:var(--muted)}
+[data-theme="dark"] .clientProjectCardV24.action,[data-theme="dark"] .clientMonitorV24{background:linear-gradient(135deg,#141a30,#101526);border-color:#2b3a68}
+[data-theme="dark"] .clientProjectCardV24.overdue{background:linear-gradient(135deg,#2a171b,var(--panel));border-color:#6f343d}
+[data-theme="dark"] .clientProjectCardV24.soon{background:linear-gradient(135deg,#2a2315,var(--panel));border-color:#725c2c}
+[data-theme="dark"] .latestDeliveryV24{background:#10251c;border-color:#28543e}
+@media(max-width:760px){
+ .clientProjectMetricsV24{grid-template-columns:1fr 1fr}
+ .clientProjectCardV24{grid-template-columns:1fr}.clientProjectSideV24{text-align:start;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+ .clientMonitorGridV24{grid-template-columns:1fr 1fr}
+ .deliveryDecisionV24{position:sticky;bottom:8px;z-index:8;background:var(--panel);padding:8px;border:1px solid var(--line);border-radius:14px}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4815,7 +4852,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v23</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v24</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -5885,6 +5922,130 @@ body{font-size:14px;line-height:1.65}
   if(typeof baseDeliverV23==='function')window.deliver=async function(id){
     var out=await baseDeliverV23.apply(this,arguments);
     if(!document.getElementById('delNote')){try{localStorage.removeItem(deliveryDraftKeyV23(id))}catch(e){}}
+    return out;
+  };
+})();
+</script>
+
+
+<script id="minjazClientProjectRuntimeV24">
+(function(){
+  function langV24(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV24(ar,en){return langV24()==='en'?en:ar}
+  function roleV24(){try{return me&&me.user&&me.user.role||''}catch(e){return''}}
+  function parseDateV24(v){var d=v?new Date(v):null;return d&&!isNaN(d.getTime())?d:null}
+  function localeV24(){return langV24()==='en'?'en-US':'ar-SA'}
+  function fmtDateV24(d){return d?d.toLocaleString(localeV24(),{dateStyle:'medium',timeStyle:'short'}):'—'}
+  function remainingV24(d){
+    if(!d)return null;
+    var ms=d.getTime()-Date.now(),abs=Math.abs(ms),h=Math.floor(abs/3600000),m=Math.floor((abs%3600000)/60000);
+    if(ms<0)return {ms:ms,kind:'overdue',label:tV24('متأخر '+h+' س '+m+' د','Overdue '+h+'h '+m+'m')};
+    if(ms<=86400000)return {ms:ms,kind:'soon',label:tV24('باقي '+h+' س '+m+' د','Due in '+h+'h '+m+'m')};
+    var days=Math.floor(ms/86400000),hrs=Math.floor((ms%86400000)/3600000);
+    return {ms:ms,kind:'upcoming',label:tV24('باقي '+days+' يوم '+hrs+' س','Due in '+days+'d '+hrs+'h')};
+  }
+  function paymentEventV24(timeline){return (timeline||[]).find(function(x){return x.type==='payment'})||null}
+  function deadlineFromV24(o,timeline){
+    var explicit=parseDateV24(o&&o.due_at);
+    if(explicit)return {date:explicit,source:tV24('الموعد المحدد في المهمة','Task deadline')};
+    if(o&&o.payment_status==='paid'&&Number(o.promised_hours||0)>0){
+      var pay=paymentEventV24(timeline),pd=parseDateV24(pay&&pay.created_at);
+      if(pd)return {date:new Date(pd.getTime()+Number(o.promised_hours)*3600000),source:tV24('تأكيد الدفع + مدة العرض','Payment confirmation + proposal duration')};
+    }
+    return {date:null,source:tV24('لا يوجد موعد محسوب بعد','No calculated deadline yet')};
+  }
+  async function enrichClientDeadlineV24(o){
+    if(o.due_at)return Object.assign({},o,{_v24Timeline:[],_v24Deadline:deadlineFromV24(o,[])});
+    if(o.payment_status!=='paid'||!Number(o.promised_hours||0))return Object.assign({},o,{_v24Timeline:[],_v24Deadline:deadlineFromV24(o,[])});
+    try{var x=await api('/api/v1/orders/'+o.id+'/timeline');var tl=x.j?.items||[];return Object.assign({},o,{_v24Timeline:tl,_v24Deadline:deadlineFromV24(o,tl)})}catch(e){return Object.assign({},o,{_v24Timeline:[],_v24Deadline:deadlineFromV24(o,[])})}
+  }
+  function clientNextV24(o){
+    if(o.status==='awaiting_payment'&&o.payment_status==='unpaid')return tV24('أكمل الدفع لبدء التنفيذ','Complete payment to start work');
+    if(o.status==='in_progress')return tV24('التنفيذ عند المستقل — تابع الموعد والمحادثة','Freelancer is working — track deadline and chat');
+    if(o.status==='revision_requested')return tV24('بانتظار إعادة التسليم بعد التعديل','Waiting for revised delivery');
+    if(o.status==='delivered')return tV24('راجع آخر تسليم واعتمده أو اطلب تعديلًا','Review delivery: approve or request revision');
+    if(o.status==='disputed')return tV24('الطلب تحت المراجعة','Order under review');
+    return tV24('تابع حالة الطلب','Follow order status');
+  }
+  function priorityV24(o){
+    if(o.status==='delivered')return 0;
+    if(o.status==='awaiting_payment'&&o.payment_status==='unpaid')return 1;
+    var rem=o._v24Deadline&&remainingV24(o._v24Deadline.date);
+    if(rem&&rem.kind==='overdue')return 2;
+    if(rem&&rem.kind==='soon')return 3;
+    if(o.status==='revision_requested')return 4;
+    if(o.status==='in_progress')return 5;
+    return 6;
+  }
+  function clientProjectCardV24(o){
+    var d=o._v24Deadline||{date:null,source:''},rem=remainingV24(d.date);
+    var action=o.status==='delivered'||(o.status==='awaiting_payment'&&o.payment_status==='unpaid');
+    var cls=action?'action':rem&&rem.kind==='overdue'?'overdue':rem&&rem.kind==='soon'?'soon':'';
+    var deadline=d.date?'<div class="clientDeadlineV24">'+(rem?rem.label:fmtDateV24(d.date))+'<small>'+fmtDateV24(d.date)+' · '+esc(d.source)+'</small></div>':'<div class="clientDeadlineV24">'+tV24('بدون موعد محسوب','No calculated deadline')+'<small>'+esc(d.source||'')+'</small></div>';
+    var quick=o.status==='delivered'?'<button class="btn green" onclick="orderModal('+Number(o.id)+')">'+tV24('مراجعة التسليم','Review delivery')+'</button>':(o.status==='awaiting_payment'&&o.payment_status==='unpaid'?'<button class="btn primary" onclick="orderModal('+Number(o.id)+')">'+tV24('إكمال الدفع','Complete payment')+'</button>':'');
+    return '<div class="clientProjectCardV24 '+cls+'"><div><h3>'+esc(o.title||tV24('طلب','Order'))+'</h3><p>'+esc(clientNextV24(o))+'</p><div class="clientProjectMetaV24"><span class="pill '+statusClass(o.status)+'">'+esc(statusMap[o.status]||o.status)+'</span><span class="pill gray">'+tV24('المستقل: ','Freelancer: ')+esc(o.freelancer_name||'—')+'</span><span class="pill gray">'+Number(o.revisions_remaining||0)+' '+tV24('تعديلات متبقية','revisions left')+'</span></div></div><div class="clientProjectSideV24">'+deadline+'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" onclick="orderModal('+Number(o.id)+')">'+tV24('فتح الطلب','Open order')+'</button>'+quick+'</div></div></div>';
+  }
+  async function enhanceClientOrdersV24(){
+    if(roleV24()!=='client')return;
+    var host=document.getElementById('orders');if(!host||host.querySelector('[data-client-projects-v24]'))return;
+    var x=await api('/api/v1/orders');if(!x.r.ok)return;
+    var all=x.j?.items||[],active=all.filter(function(o){return ['awaiting_payment','in_progress','revision_requested','delivered','disputed'].indexOf(o.status)>=0});
+    var enriched=await Promise.all(active.slice(0,30).map(enrichClientDeadlineV24));
+    enriched.sort(function(a,b){var pa=priorityV24(a),pb=priorityV24(b);if(pa!==pb)return pa-pb;var ad=a._v24Deadline?.date?.getTime()||Number.MAX_SAFE_INTEGER,bd=b._v24Deadline?.date?.getTime()||Number.MAX_SAFE_INTEGER;return ad-bd});
+    var action=enriched.filter(function(o){return o.status==='delivered'||(o.status==='awaiting_payment'&&o.payment_status==='unpaid')}).length;
+    var overdue=enriched.filter(function(o){var r=o._v24Deadline&&remainingV24(o._v24Deadline.date);return ['in_progress','revision_requested'].includes(o.status)&&r&&r.kind==='overdue'}).length;
+    var soon=enriched.filter(function(o){var r=o._v24Deadline&&remainingV24(o._v24Deadline.date);return ['in_progress','revision_requested'].includes(o.status)&&r&&r.kind==='soon'}).length;
+    var delivered=enriched.filter(function(o){return o.status==='delivered'}).length;
+    var sec=document.createElement('section');sec.className='clientProjectsV24';sec.dataset.clientProjectsV24='1';
+    sec.innerHTML='<div class="clientProjectsHeadV24"><div><h2>'+tV24('متابعة المشاريع','Project tracking')+'</h2><p>'+tV24('شوف وش يحتاج قرار منك، المواعيد، والتسليمات من مكان واحد.','See what needs your decision, deadlines and deliveries in one place.')+'</p></div><span class="pill blue">v24</span></div>'+
+      '<div class="clientProjectMetricsV24"><div class="clientProjectMetricV24"><b>'+action+'</b><span>'+tV24('يحتاج قرار منك','Needs your action')+'</span></div><div class="clientProjectMetricV24"><b>'+delivered+'</b><span>'+tV24('تسليمات تنتظر مراجعة','Deliveries to review')+'</span></div><div class="clientProjectMetricV24"><b>'+overdue+'</b><span>'+tV24('متأخر عن الموعد','Overdue')+'</span></div><div class="clientProjectMetricV24"><b>'+soon+'</b><span>'+tV24('خلال 24 ساعة','Due within 24h')+'</span></div></div>'+
+      '<div class="clientProjectBoardV24">'+(enriched.map(clientProjectCardV24).join('')||'<div class="card empty">'+tV24('ما عندك مشاريع نشطة تحتاج متابعة الآن.','No active projects need follow-up right now.')+'</div>')+'</div>';
+    host.prepend(sec);
+  }
+  var baseRenderOrdersV24=window.renderOrders;
+  if(typeof baseRenderOrdersV24==='function')window.renderOrders=async function(){
+    var out=await baseRenderOrdersV24.apply(this,arguments);
+    try{await enhanceClientOrdersV24()}catch(e){}
+    return out;
+  };
+
+  async function decorateClientProjectV24(id){
+    if(roleV24()!=='client')return;
+    var modal=document.getElementById('modal');if(!modal||modal.querySelector('[data-client-monitor-v24]'))return;
+    var rs=await Promise.all([api('/api/v1/orders/'+id),api('/api/v1/orders/'+id+'/timeline'),api('/api/v1/orders/'+id+'/deliveries'),api('/api/v1/orders/'+id+'/revisions')]);
+    var o=rs[0].j||{},timeline=rs[1].j?.items||[],deliveries=rs[2].j?.items||[],revisions=rs[3].j?.items||[];
+    var deadline=deadlineFromV24(o,timeline),rem=remainingV24(deadline.date),latest=deliveries[0]||null,openRevision=[].concat(revisions).reverse().find(function(r){return r.status!=='satisfied'});
+    var statusLabel=rem?rem.label:(deadline.date?fmtDateV24(deadline.date):tV24('بدون موعد محسوب','No calculated deadline'));
+    var sec=document.createElement('div');sec.className='clientMonitorV24';sec.dataset.clientMonitorV24='1';
+    var decision='';
+    if(o.status==='delivered'){
+      decision='<div class="deliveryDecisionV24"><button class="btn green" onclick="completeOrder('+Number(id)+')">'+tV24('✓ اعتماد التسليم','✓ Approve delivery')+'</button>'+(Number(o.revisions_remaining||0)>0?'<button class="btn ghost" onclick="revisionModal('+Number(id)+')">'+tV24('↺ طلب تعديل','↺ Request revision')+'</button>':'<button class="btn ghost" disabled>'+tV24('لا توجد تعديلات متبقية','No revisions remaining')+'</button>')+'</div>';
+    } else if(o.status==='awaiting_payment'&&o.payment_status==='unpaid'){
+      decision='<div class="deliveryDecisionV24"><button class="btn primary" onclick="payOrder('+Number(id)+')">'+tV24('إكمال الدفع وبدء التنفيذ','Complete payment and start')+'</button></div>';
+    }
+    sec.innerHTML='<div class="clientMonitorTopV24"><div><h3>'+tV24('لوحة متابعة المشروع','Project monitor')+'</h3><p>'+esc(clientNextV24(o))+'</p></div><span class="pill '+(rem&&rem.kind==='overdue'?'red':rem&&rem.kind==='soon'?'amber':o.status==='delivered'?'green':'gray')+'">'+esc(statusLabel)+'</span></div>'+
+      '<div class="clientMonitorGridV24">'+
+        '<div class="clientMonitorFactV24"><b>'+Number(o.promised_hours||0)+' '+tV24('ساعة','h')+'</b><small>'+tV24('مدة التسليم المتفق عليها','Agreed delivery time')+'</small></div>'+
+        '<div class="clientMonitorFactV24"><b>'+Number(o.revisions_remaining||0)+' / '+Number(o.revisions_allowed||0)+'</b><small>'+tV24('التعديلات المتبقية','Revisions remaining')+'</small></div>'+
+        '<div class="clientMonitorFactV24"><b>'+deliveries.length+'</b><small>'+tV24('عدد التسليمات','Deliveries received')+'</small></div>'+
+        '<div class="clientMonitorFactV24"><b>'+(deadline.date?fmtDateV24(deadline.date):'—')+'</b><small>'+esc(deadline.source)+'</small></div>'+
+      '</div>'+
+      (latest?'<div class="latestDeliveryV24"><h4>'+tV24('آخر تسليم من المستقل','Latest freelancer delivery')+'</h4><p>'+esc(latest.note||tV24('بدون ملاحظات إضافية','No additional notes'))+'</p><small>'+fmtDateV24(parseDateV24(latest.created_at))+' · '+Number(latest.attachments?.length||0)+' '+tV24('مرفق','attachments')+'</small>'+decision+'</div>':decision)+
+      (openRevision?'<div class="revisionContextV24"><b>'+tV24('آخر تعديل طلبته','Latest revision request')+'</b><p>'+esc(openRevision.note||'')+'</p><small>'+fmtDateV24(parseDateV24(openRevision.created_at))+'</small></div>':'');
+    var focus=modal.querySelector('[data-order-focus-rc5]');
+    if(focus)focus.insertAdjacentElement('afterend',sec);else{var step=modal.querySelector('.orderStepper');if(step)step.insertAdjacentElement('afterend',sec);else modal.prepend(sec)}
+    if(o.status==='delivered'){
+      var actions=modal.querySelector('.actions');
+      if(actions)actions.querySelectorAll('button').forEach(function(b){
+        var oc=b.getAttribute('onclick')||'';
+        if(oc.indexOf('completeOrder(')>=0||oc.indexOf('revisionModal(')>=0)b.style.display='none';
+      });
+    }
+  }
+  var baseOrderV24=window.orderModal;
+  if(typeof baseOrderV24==='function')window.orderModal=async function(id){
+    var out=await baseOrderV24.apply(this,arguments);
+    try{await decorateClientProjectV24(id)}catch(e){}
     return out;
   };
 })();
