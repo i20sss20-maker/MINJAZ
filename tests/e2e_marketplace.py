@@ -294,6 +294,7 @@ def run():
         client_token,
     )
     task_id = task["id"]
+    task_title = task["title"]
 
     client_after_task = call("GET", "/api/v1/onboarding", token=client_token, expected=(200,))
     first_task_step = next(x for x in client_after_task["steps"] if x.get("key") == "first_task")
