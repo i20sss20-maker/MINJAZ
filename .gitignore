@@ -3,3 +3,8 @@
 .env
 __pycache__/
 *.pyc
+
+# Android production signing material (never commit)
+*.jks
+*.keystore
+release-private/
