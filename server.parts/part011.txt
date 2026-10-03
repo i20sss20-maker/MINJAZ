@@ -1,4 +1,4 @@
- users c on c.id=o.client_id join users f on f.id=o.freelancer_id left join proposals p on p.id=o.proposal_id left join reviews rv on rv.order_id=o.id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)",(int(m.group(1)),u['id'],u['id']),'one');return self.sendj(404,{'error':'order_not_found'}) if not o else self.sendj(200,o)
+rom orders o join tasks t on t.id=o.task_id join users c on c.id=o.client_id join users f on f.id=o.freelancer_id left join proposals p on p.id=o.proposal_id left join reviews rv on rv.order_id=o.id where o.id=%s and (o.client_id=%s or o.freelancer_id=%s)",(int(m.group(1)),u['id'],u['id']),'one');return self.sendj(404,{'error':'order_not_found'}) if not o else self.sendj(200,o)
             m=re.fullmatch(r'/api/v1/orders/(\d+)/(pay|deliver|revision|complete|review)',p)
             if m and method=='POST':
                 oid=int(m.group(1)); action=m.group(2); u=self.require();
@@ -193,5 +193,4 @@
                     msg,replayed,err=create_message_atomic(oid,u['id'],txt,atts,idempotency_key or None,fingerprint)
                     if err=='idempotency_key_reused':return self.sendj(409,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s order by created_at',(msg['id'],)))
-    
+                    msg['attachments']=public_attachments(q('select id,file_name,file_url,storage_key,mime_type,size_bytes,storage_mode,created_at from attachments where message_id=%s orde

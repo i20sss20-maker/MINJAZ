@@ -1800,7 +1800,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select pr.*,u.role,u.deleted_at
+            cur.execute("""select pr.*,u.role,u.deleted_at,u.phone original_phone
                            from privacy_requests pr join users u on u.id=pr.user_id
                            where pr.id=%s for update""",(int(pid),))
             pr=cur.fetchone()
@@ -1814,7 +1814,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                 row=dict(pr);row['status']='completed';row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
                 c.rollback();return {k:as_json(v) for k,v in row.items()},dict(pr),False,{},None
 
-            uid=int(pr['user_id'])
+            uid=int(pr['user_id']); original_phone=str(pr.get('original_phone') or '')
             blockers={}
             checks=[
                 ('active_orders',"""select count(*)::int n from orders where (client_id=%s or freelancer_id=%s)
@@ -1877,6 +1877,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                            kyc_provider_reference=null,kyc_verification_url=null,kyc_started_at=null where user_id=%s""",(uid,))
             cur.execute("""update client_profiles set company_name=null,bio=null,city=null,sector=null,updated_at=now()
                            where user_id=%s""",(uid,))
+            if original_phone:cur.execute("delete from otp_challenges where phone=%s",(original_phone,))
             cur.execute("delete from sessions where user_id=%s",(uid,))
             cur.execute("delete from user_roles where user_id=%s",(uid,))
             deleted_phone='deleted-user-'+str(uid)+'@minjaz.invalid'

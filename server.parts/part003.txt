@@ -1,4 +1,4 @@
-          cur.execute("select id from order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
+m order_cancellation_requests where order_id=%s and status in ('pending','in_review') order by created_at desc limit 1",(int(oid),))
             active=cur.fetchone()
             if active:
                 c.rollback();x=dict(o);x['active_id']=active['id'];return None,x,False,'active_cancellation_exists'
@@ -327,4 +327,5 @@ def update_safety_report_admin(rid,admin_id,status,admin_note=None,task_action='
                 desired=ta=='hide'
                 cur.execute('select * from task_moderation where task_id=%s for update',(sr['task_id'],))
                 tm=cur.fetchone()
-                current=bool(tm.get('hidden')) if t
+                current=bool(tm.get('hidden')) if tm else False
+                current_reason=(tm.

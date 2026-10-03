@@ -1,4 +1,5 @@
-ng,'documents':status['documents']}
+ts'].items() if not x['accepted']]
+    return {'error':'legal_acceptance_required','missing_documents':missing,'documents':status['documents']}
 
 def onboarding_status(user_id,role):
     legal=legal_status(user_id); pref=q('select onboarding_dismissed from user_preferences where user_id=%s',(user_id,),'one') or {}
@@ -276,5 +277,4 @@ class H(BaseHTTPRequestHandler):
         secure='; Secure' if (IS_PROD or PUBLIC_BASE_URL.startswith('https://')) else ''
         self._queue_cookie(f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{secure}")
     def _headers(self,status=200,ctype='application/json; charset=utf-8'):
-        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
-        self.sen
+        self.send_response(status); self.send_header('Content-Type',ctype); self.send_header('Cache-Control','no-store'); self.send_header('X-Conte

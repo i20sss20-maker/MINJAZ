@@ -323,4 +323,5 @@ def insert_attachments_tx(cur,uploaded_by,cleaned_attachments,task_id=None,order
 
 def insert_attachments(uploaded_by,attachments,task_id=None,order_id=None,message_id=None,delivery_id=None):
     cleaned=clean_attachments(attachments,uploaded_by=uploaded_by)
-    if not cleaned:return
+    if not cleaned:return 0
+    c=db_

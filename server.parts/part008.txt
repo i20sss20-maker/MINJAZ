@@ -1,4 +1,4 @@
-,'freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
+','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
                 ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
                 if not ch:return self.sendj(404,{'error':'challenge_not_found'})
                 if ch.get('verified_at'):return self.sendj(409,{'error':'already_verified'})
@@ -210,5 +210,4 @@
                           returning user_id,company_name,bio,city,sector,updated_at""",(u['id'],company,bio,city,sector),'one')
                     return self.sendj(200,r)
             if method=='GET' and p=='/api/v1/freelancers':
-                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
-   
+                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at

@@ -1,4 +1,4 @@
-task_id=%s',(x['task_id'],))
+],))
             if cur.fetchone():
                 c.rollback();return None,dict(x),'order_exists'
             fee=money_decimal(Decimal(str(x['price']))*FEE/Decimal('100'))
@@ -322,4 +322,4 @@ def open_cancellation_atomic(oid,user_id,reason,details=None,idempotency_key=Non
                 c.rollback();return None,None,False,'order_not_found'
             if o.get('status') in ('completed','cancelled','disputed'):
                 c.rollback();return None,dict(o),False,'invalid_order_state'
-  
+            cur.execute("select id fro

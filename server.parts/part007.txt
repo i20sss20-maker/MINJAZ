@@ -1,4 +1,5 @@
-d_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
+nt-Type-Options','nosniff'); self.send_header('X-Request-ID',self.request_id())
+        self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-origin-when-cross-origin'); self.send_header('Permissions-Policy','geolocation=(), camera=(), microphone=()'); self.send_header('Strict-Transport-Security','max-age=31536000; includeSubDomains'); self.send_header('Cross-Origin-Opener-Policy','same-origin'); self.send_header('X-Permitted-Cross-Domain-Policies','none')
         csp=f"default-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'{STORAGE_CSP_CONNECT}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         if IS_PROD: csp+='; upgrade-insecure-requests'
         self.send_header('Content-Security-Policy',csp)
@@ -176,4 +177,4 @@ d_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','strict-o
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
-                b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client'
+                b=self.body(); cid=str(b.get('challenge_id

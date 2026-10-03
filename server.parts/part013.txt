@@ -1,4 +1,4 @@
-'error':err})
+:return self.sendj(409,{'error':err})
                     req['idempotent_replay']=bool(replayed)
                     return self.sendj(200 if replayed else 201,req)
             if p.startswith('/api/admin'):

@@ -1,4 +1,5 @@
-                msg['idempotent_replay']=bool(replayed)
+r by created_at',(msg['id'],)))
+                    msg['idempotent_replay']=bool(replayed)
                     if not replayed:
                         rec=q('select client_id,freelancer_id from orders where id=%s',(oid,),'one');other=rec['freelancer_id'] if int(u['id'])==int(rec['client_id']) else rec['client_id'];notify(other,'رسالة جديدة',txt[:220] or 'مرفق جديد','message',oid)
                     return self.sendj(200 if replayed else 201,msg)
@@ -251,4 +252,4 @@
                     req,replayed,err=create_privacy_request_atomic(u['id'],typ,details,idempotency_key or None,fingerprint)
                     if err=='active_request_exists':return self.sendj(409,{'error':err})
                     if err=='privacy_rate_limited':return self.sendj(429,{'error':err,'retry_after_seconds':86400})
-                    if err:return self.sendj(409,{
+                    if err

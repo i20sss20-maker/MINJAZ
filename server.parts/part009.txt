@@ -1,4 +1,5 @@
-             viewer=auth(self.headers)
+ is null order by fp.rating desc,fp.completed_tasks desc limit 300")
+                viewer=auth(self.headers)
                 if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
                 qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
                 if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
@@ -222,5 +223,4 @@
                 elif u['role']=='freelancer':
                     a=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,
                                  exists(select 1 from proposals p where p.task_id=t.id and p.freelancer_id=%s) has_proposal,
-                                 exists(select 1 from task_invitations ti where ti.task_id=t.id and ti.freelancer_id=%s and ti.status in ('sent','viewed')) invited,
-                             
+                                 exists(select 1 from task_invitations ti where ti.task_id=t.id and ti.freelancer_id=%s and ti.status 

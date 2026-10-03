@@ -1,5 +1,4 @@
- 0
-    c=db_connect()
+connect()
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -359,4 +358,4 @@ def create_order_atomic(proposal_id,client_id):
             restricted=cur.fetchone()
             if hidden or restricted:
                 c.rollback();return None,dict(x),'interaction_restricted'
-            cur.execute('select id from orders where 
+            cur.execute('select id from orders where task_id=%s',(x['task_id'

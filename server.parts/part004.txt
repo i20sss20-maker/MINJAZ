@@ -1,5 +1,4 @@
-m else False
-                current_reason=(tm.get('reason') or None) if tm else None
+get('reason') or None) if tm else None
                 if current!=desired or current_reason!=note:
                     cur.execute("""insert into task_moderation(task_id,hidden,reason,updated_by)
                                    values(%s,%s,%s,%s)
@@ -317,4 +316,5 @@ def create_saved_search_atomic(user_id,name,filters,idempotency_key=None,idempot
             cur.execute("""insert into saved_task_searches(freelancer_id,name,filters)
                            values(%s,%s,%s::jsonb)
                            returning id,name,filters,created_at,updated_at""",
-                        (int(user_id),name,json.dumps
+                        (int(user_id),name,json.dumps(filters or {},ensure_ascii=False)))
+            row=dict(cu
