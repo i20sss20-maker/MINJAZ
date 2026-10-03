@@ -1,4 +1,4 @@
-const VERSION='web-v16';
+const VERSION='web-v17';
 const CACHE=`minjaz-shell-${VERSION}`;
 const SHELL=['/','/manifest.webmanifest','/icon.svg'];
 
