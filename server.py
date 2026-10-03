@@ -2575,6 +2575,23 @@ class H(BaseHTTPRequestHandler):
                 u=self.require('freelancer');
                 if not u:return
                 q('delete from saved_task_searches where id=%s and freelancer_id=%s',(int(m.group(1)),u['id']),None);return self.sendj(200,{'ok':True})
+            if p=='/api/v1/freelancer/proposals' and method=='GET':
+                u=self.require('freelancer');
+                if not u:return
+                a=q("""select p.id,p.task_id,p.price,p.delivery_hours,p.revisions,p.message,p.status proposal_status,p.created_at proposal_created_at,
+                              t.title,t.description,t.status task_status,t.urgency,t.budget_min,t.budget_max,t.due_at,t.created_at task_created_at,
+                              c.name_ar category_name,cu.name client_name,
+                              o.id order_id,o.status order_status,o.payment_status,o.amount order_amount,o.created_at order_created_at
+                       from proposals p
+                       join tasks t on t.id=p.task_id
+                       join users cu on cu.id=t.client_id
+                       left join categories c on c.id=t.category_id
+                       left join orders o on o.proposal_id=p.id
+                       where p.freelancer_id=%s
+                       order by p.created_at desc
+                       limit 200""",(u['id'],))
+                return self.sendj(200,{'items':a})
+
             if p=='/api/v1/tasks' and method=='GET':
                 u=self.require();
                 if not u:return

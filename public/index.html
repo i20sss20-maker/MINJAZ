@@ -1962,6 +1962,45 @@ html[dir="ltr"] input[type="tel"]{
 }
 </style>
 
+
+<style id="minjazFreelancerPipelineV22">
+.freelancerSwitchV22{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}
+.freelancerSwitchV22 .btn.on{background:#101b37;color:#fff;border-color:#101b37}
+.proposalSummaryV22{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 13px}
+.proposalMetricV22{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),color-mix(in srgb,var(--panel) 95%,#eef3ff 5%));padding:11px 12px}
+.proposalMetricV22 b{display:block;font:700 18px Alexandria;margin-bottom:3px}
+.proposalMetricV22 span{font-size:8px;color:var(--muted)}
+.proposalToolsV22{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:12px}
+.proposalToolsV22 .field{margin:0;min-width:180px;flex:1}
+.proposalHistoryV22{display:grid;gap:9px}
+.proposalCardV22{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:13px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.proposalCardV22.accepted{border-color:#b7e2ca;background:linear-gradient(135deg,#f8fdf9,var(--panel))}
+.proposalCardV22.rejected{opacity:.82}
+.proposalCardV22Head{display:flex;gap:9px;align-items:flex-start;justify-content:space-between}
+.proposalCardV22 h3{font:700 12px Alexandria;margin:0 0 4px}
+.proposalCardV22 p{font-size:9px;color:var(--muted);line-height:1.65;margin:3px 0}
+.proposalFactsV22{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.proposalMessageV22{margin-top:8px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--panel) 96%,#eef3ff 4%);font-size:8px;line-height:1.65;color:var(--muted)}
+.proposalSideV22{text-align:end;min-width:130px}.proposalSideV22 .money{margin-bottom:8px}
+.proposalOutcomeV22{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font:700 8px Alexandria}
+.proposalOutcomeV22.sent{background:#eef3ff;color:#294bd8}.proposalOutcomeV22.accepted{background:#ecfdf3;color:#067647}.proposalOutcomeV22.rejected{background:#f3f4f6;color:#667085}.proposalOutcomeV22.wait{background:#fff7ed;color:#b54708}
+.proposalPrepV22{border:1px solid #dce5ff;border-radius:16px;background:linear-gradient(135deg,#f8faff,#fff);padding:11px;margin:10px 0}
+.proposalPrepGridV22{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.proposalPrepItemV22{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px}
+.proposalPrepItemV22 b{display:block;font:700 10px Alexandria}.proposalPrepItemV22 small{font-size:7px;color:var(--muted)}
+.proposalPrepItemV22.ok{border-color:#b7e2ca;background:#f7fcf9}.proposalPrepItemV22.ok b{color:#067647}
+.proposalCharV22{font-size:7px;color:var(--muted);text-align:end;margin-top:4px}
+[data-theme="dark"] .proposalCardV22.accepted,[data-theme="dark"] .proposalPrepV22{background:linear-gradient(135deg,#14231b,#101526);border-color:#28543e}
+[data-theme="dark"] .proposalPrepItemV22.ok{background:#10251c;border-color:#28543e}
+@media(max-width:760px){
+ .proposalSummaryV22{grid-template-columns:1fr 1fr}
+ .proposalCardV22{grid-template-columns:1fr}
+ .proposalSideV22{text-align:start;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+ .proposalPrepGridV22{grid-template-columns:1fr 1fr}
+ .freelancerSwitchV22{position:sticky;top:58px;z-index:7;background:var(--panel);padding:8px;border:1px solid var(--line);border-radius:14px}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -2104,7 +2143,12 @@ async function demoApi(path,opt={}){
     if(b.bio!==undefined)p.bio=String(b.bio);if(Array.isArray(b.skills))p.skills=b.skills;if(b.is_available!==undefined)p.is_available=!!b.is_available;
     demoSave(d);return demoResp(200,p)
   }
-  if(path==='/api/v1/tasks'&&method==='GET'){
+  if(path==='/api/v1/freelancer/proposals'&&method==='GET'){
+  if(u.role!=='freelancer')return demoResp(403,{error:'freelancer_only'});
+  const items=d.proposals.filter(p=>p.freelancer_id===u.id).map(p=>{const t=d.tasks.find(x=>x.id===p.task_id)||{},o=d.orders.find(x=>x.proposal_id===p.id)||null;return {...p,proposal_status:p.status,proposal_created_at:p.created_at,title:t.title||'',description:t.description||'',task_status:t.status||'',urgency:t.urgency||'normal',budget_min:t.budget_min||null,budget_max:t.budget_max||null,due_at:t.due_at||null,task_created_at:t.created_at||null,category_name:demoCategory(d,t.category_id)?.name_ar||'',client_name:demoUser(d,t.client_id)?.name||'',order_id:o?.id||null,order_status:o?.status||null,payment_status:o?.payment_status||null,order_amount:o?.amount||null,order_created_at:o?.created_at||null}}).sort((a,z)=>String(z.proposal_created_at||'').localeCompare(String(a.proposal_created_at||'')));
+  return demoResp(200,{items})
+ }
+ if(path==='/api/v1/tasks'&&method==='GET'){
     let a=[];
     if(u.role==='client')a=d.tasks.filter(x=>x.client_id===u.id).map(x=>({...x,category_name:demoCategory(d,x.category_id)?.name_ar,proposal_count:d.proposals.filter(p=>p.task_id===x.id).length}));
     else if(u.role==='freelancer'){
@@ -4729,7 +4773,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v21</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v22</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -5515,6 +5559,136 @@ body{font-size:14px;line-height:1.65}
     var original=btn&&btn.textContent;if(btn){btn.disabled=true;btn.textContent=tV21('جاري إنشاء الطلب…','Creating order…')}
     try{return await baseAcceptV21.apply(this,arguments)}
     finally{window.__minjazAcceptingV21=null;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=original}}
+  };
+})();
+</script>
+
+
+<script id="minjazFreelancerPipelineRuntimeV22">
+(function(){
+  function langV22(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV22(ar,en){return langV22()==='en'?en:ar}
+  function roleV22(){try{return me&&me.user&&me.user.role||''}catch(e){return''}}
+  var freelancerViewV22='opportunities';
+  try{freelancerViewV22=sessionStorage.getItem('minjaz_freelancer_view_v22')||'opportunities'}catch(e){}
+  var proposalFilterV22='all',proposalSearchV22='',proposalCacheV22=[];
+  function proposalStateV22(p){
+    if(p.proposal_status==='accepted'){
+      if(p.order_id){
+        if(p.order_status==='awaiting_payment')return {key:'accepted',label:tV22('تم اختيارك · بانتظار الدفع','Selected · awaiting payment'),cls:'wait'};
+        if(p.order_status==='in_progress')return {key:'active',label:tV22('قيد التنفيذ','In progress'),cls:'accepted'};
+        if(p.order_status==='revision_requested')return {key:'active',label:tV22('تعديل مطلوب','Revision requested'),cls:'wait'};
+        if(p.order_status==='delivered')return {key:'active',label:tV22('تم التسليم · بانتظار العميل','Delivered · awaiting client'),cls:'accepted'};
+        if(p.order_status==='completed')return {key:'completed',label:tV22('مكتمل','Completed'),cls:'accepted'};
+        if(p.order_status==='disputed')return {key:'active',label:tV22('تحت المراجعة','Under review'),cls:'wait'};
+        if(p.order_status==='cancelled')return {key:'closed',label:tV22('الطلب ملغى','Order cancelled'),cls:'rejected'};
+      }
+      return {key:'accepted',label:tV22('تم اختيار عرضك','Proposal selected'),cls:'accepted'};
+    }
+    if(p.proposal_status==='rejected')return {key:'rejected',label:tV22('لم يتم اختيار العرض','Proposal not selected'),cls:'rejected'};
+    return {key:'sent',label:tV22('بانتظار قرار العميل','Awaiting client decision'),cls:'sent'};
+  }
+  function proposalRowsV22(){
+    var q=(proposalSearchV22||'').trim().toLowerCase();
+    return proposalCacheV22.filter(function(p){
+      var st=proposalStateV22(p);
+      if(proposalFilterV22!=='all'){
+        if(proposalFilterV22==='accepted'){if(p.proposal_status!=='accepted')return false}
+        else if(st.key!==proposalFilterV22)return false;
+      }
+      if(q&&([p.title,p.client_name,p.category_name,p.message,p.task_id].join(' ').toLowerCase().indexOf(q)<0))return false;
+      return true;
+    });
+  }
+  function renderProposalHistoryV22(){
+    var host=document.getElementById('tasks');if(!host)return;
+    var counts={all:proposalCacheV22.length,sent:0,accepted:0,rejected:0,active:0,completed:0};
+    proposalCacheV22.forEach(function(p){
+      var st=proposalStateV22(p);
+      if(p.proposal_status==='sent')counts.sent++;
+      if(p.proposal_status==='accepted')counts.accepted++;
+      if(p.proposal_status==='rejected')counts.rejected++;
+      if(st.key==='active')counts.active++;
+      if(st.key==='completed')counts.completed++;
+    });
+    var rows=proposalRowsV22();
+    host.innerHTML=
+      '<div class="sectionHead"><div><h2>'+tV22('الفرص والعروض','Opportunities & proposals')+'</h2><p>'+tV22('تابع كل عرض أرسلته حتى بعد انتهاء استقبال العروض.','Track every proposal even after the opportunity closes.')+'</p></div><span class="pill blue">'+proposalCacheV22.length+' '+tV22('عرض','proposals')+'</span></div>'+
+      switcherV22()+
+      '<div class="proposalSummaryV22">'+
+        '<button class="proposalMetricV22" type="button" onclick="minjazProposalFilterV22(\'all\')"><b>'+counts.all+'</b><span>'+tV22('كل العروض','All proposals')+'</span></button>'+
+        '<button class="proposalMetricV22" type="button" onclick="minjazProposalFilterV22(\'sent\')"><b>'+counts.sent+'</b><span>'+tV22('بانتظار قرار','Awaiting decision')+'</span></button>'+
+        '<button class="proposalMetricV22" type="button" onclick="minjazProposalFilterV22(\'accepted\')"><b>'+counts.accepted+'</b><span>'+tV22('تم اختيارها','Selected')+'</span></button>'+
+        '<button class="proposalMetricV22" type="button" onclick="minjazProposalFilterV22(\'rejected\')"><b>'+counts.rejected+'</b><span>'+tV22('غير مختارة','Not selected')+'</span></button>'+
+      '</div>'+
+      '<div class="proposalToolsV22"><div class="field"><label>'+tV22('بحث في عروضي','Search my proposals')+'</label><input id="proposalSearchV22" value="'+esc(proposalSearchV22)+'" placeholder="'+tV22('اسم المهمة أو العميل','Task or client')+'" oninput="minjazProposalSearchV22(this.value)"></div><div class="field"><label>'+tV22('الحالة','Status')+'</label><select onchange="minjazProposalFilterV22(this.value)"><option value="all" '+(proposalFilterV22==='all'?'selected':'')+'>'+tV22('الكل','All')+'</option><option value="sent" '+(proposalFilterV22==='sent'?'selected':'')+'>'+tV22('بانتظار قرار','Awaiting decision')+'</option><option value="accepted" '+(proposalFilterV22==='accepted'?'selected':'')+'>'+tV22('تم اختيارها','Selected')+'</option><option value="active" '+(proposalFilterV22==='active'?'selected':'')+'>'+tV22('قيد التنفيذ','Active work')+'</option><option value="completed" '+(proposalFilterV22==='completed'?'selected':'')+'>'+tV22('مكتملة','Completed')+'</option><option value="rejected" '+(proposalFilterV22==='rejected'?'selected':'')+'>'+tV22('غير مختارة','Not selected')+'</option></select></div></div>'+
+      '<div class="proposalHistoryV22">'+(rows.map(proposalCardV22).join('')||'<div class="card empty">'+tV22('ما فيه عروض مطابقة للبحث أو الفلتر.','No proposals match this search or filter.')+'</div>')+'</div>';
+  }
+  function proposalCardV22(p){
+    var st=proposalStateV22(p),date=p.proposal_created_at?new Date(p.proposal_created_at).toLocaleString(langV22()==='en'?'en-US':'ar-SA'):'—';
+    var action='';
+    if(p.order_id)action='<button class="btn primary" onclick="orderModal('+Number(p.order_id)+')">'+tV22('فتح الطلب','Open order')+'</button>';
+    else if(p.proposal_status==='sent'&&p.task_status==='open')action='<button class="btn primary" onclick="taskDetailModal('+Number(p.task_id)+')">'+tV22('فتح / تحديث العرض','Open / update proposal')+'</button>';
+    var budget=(p.budget_min&&p.budget_max)?money(p.budget_min)+' – '+money(p.budget_max):(p.budget_min||p.budget_max)?money(p.budget_min||p.budget_max):tV22('مرنة','Flexible');
+    return '<div class="proposalCardV22 '+(p.proposal_status==='accepted'?'accepted':p.proposal_status==='rejected'?'rejected':'')+'"><div><div class="proposalCardV22Head"><div><h3>'+esc(p.title||tV22('مهمة','Task'))+'</h3><p>'+tV22('العميل: ','Client: ')+esc(p.client_name||'—')+' · '+esc(p.category_name||tV22('عام','General'))+'</p></div><span class="proposalOutcomeV22 '+st.cls+'">'+st.label+'</span></div><div class="proposalFactsV22"><span class="pill blue">'+tV22('عرضك ','Your price ')+money(p.price)+'</span><span class="pill gray">'+Number(p.delivery_hours||0)+' '+tV22('ساعة','h')+'</span><span class="pill gray">'+Number(p.revisions||0)+' '+tV22('تعديلات','revisions')+'</span><span class="pill gray">'+tV22('ميزانية العميل ','Client budget ')+budget+'</span></div>'+(p.message?'<div class="proposalMessageV22">'+esc(p.message)+'</div>':'')+'<p>'+tV22('أُرسل ','Sent ')+date+'</p></div><div class="proposalSideV22"><div class="money">'+money(p.price)+'</div>'+action+'</div></div>';
+  }
+  function switcherV22(){
+    return '<div class="freelancerSwitchV22"><button type="button" class="btn '+(freelancerViewV22==='opportunities'?'on':'ghost')+'" onclick="minjazFreelancerViewV22(\'opportunities\')">'+tV22('الفرص المفتوحة','Open opportunities')+'</button><button type="button" class="btn '+(freelancerViewV22==='proposals'?'on':'ghost')+'" onclick="minjazFreelancerViewV22(\'proposals\')">'+tV22('عروضي','My proposals')+'</button></div>';
+  }
+  function enhanceOpportunityV22(){
+    var host=document.getElementById('tasks');if(!host||host.querySelector('.freelancerSwitchV22'))return;
+    var head=host.querySelector('.sectionHead');if(head)head.insertAdjacentHTML('afterend',switcherV22());
+  }
+  window.minjazFreelancerViewV22=function(v){
+    freelancerViewV22=v==='proposals'?'proposals':'opportunities';
+    try{sessionStorage.setItem('minjaz_freelancer_view_v22',freelancerViewV22)}catch(e){}
+    window.renderTasks();
+  };
+  window.minjazProposalFilterV22=function(v){proposalFilterV22=v||'all';renderProposalHistoryV22()};
+  window.minjazProposalSearchV22=function(v){proposalSearchV22=v||'';renderProposalHistoryV22();var i=document.getElementById('proposalSearchV22');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}};
+  var baseRenderTasksV22=window.renderTasks;
+  if(typeof baseRenderTasksV22==='function')window.renderTasks=async function(){
+    if(roleV22()!=='freelancer')return baseRenderTasksV22.apply(this,arguments);
+    if(freelancerViewV22==='proposals'){
+      var x=await api('/api/v1/freelancer/proposals');
+      if(!x.r.ok){document.getElementById('tasks').innerHTML='<div class="card empty">'+tV22('تعذر تحميل عروضك.','Could not load your proposals.')+'</div>';return}
+      proposalCacheV22=x.j?.items||[];renderProposalHistoryV22();return;
+    }
+    var out=await baseRenderTasksV22.apply(this,arguments);enhanceOpportunityV22();return out;
+  };
+
+  function paintProposalPrepV22(){
+    var box=document.querySelector('[data-proposal-prep-v22]');if(!box)return;
+    var price=document.getElementById('pp'),hours=document.getElementById('ph'),rev=document.getElementById('pr'),msg=document.getElementById('pm'),t=window.__taskDetail421||{};
+    var p=Number(price&&price.value),h=Number(hours&&hours.value),r=Number(rev&&rev.value),m=(msg&&msg.value||'');
+    var budgetOk=true,budgetText=tV22('لا يوجد نطاق محدد','No set range');
+    if(t.budget_min||t.budget_max){
+      var min=Number(t.budget_min||0),max=Number(t.budget_max||0);
+      budgetOk=(!min||p>=min)&&(!max||p<=max);
+      budgetText=budgetOk?tV22('ضمن النطاق المعلن','Within posted range'):tV22('خارج النطاق المعلن','Outside posted range');
+    }
+    var grid=box.querySelector('.proposalPrepGridV22');if(grid)grid.innerHTML=
+      '<div class="proposalPrepItemV22 '+(p>0?'ok':'')+'"><b>'+(p>0?'✓ ':'○ ')+tV22('السعر','Price')+'</b><small>'+(p>0?money(p):tV22('أدخل السعر','Enter price'))+'</small></div>'+
+      '<div class="proposalPrepItemV22 '+(Number.isInteger(h)&&h>=1?'ok':'')+'"><b>'+(Number.isInteger(h)&&h>=1?'✓ ':'○ ')+tV22('التسليم','Delivery')+'</b><small>'+((h||0)+' '+tV22('ساعة','h'))+'</small></div>'+
+      '<div class="proposalPrepItemV22 '+(Number.isInteger(r)&&r>=0?'ok':'')+'"><b>'+(Number.isInteger(r)&&r>=0?'✓ ':'○ ')+tV22('التعديلات','Revisions')+'</b><small>'+String(Number.isFinite(r)?r:0)+'</small></div>'+
+      '<div class="proposalPrepItemV22 '+(budgetOk?'ok':'')+'"><b>'+(budgetOk?'✓ ':'○ ')+tV22('مقارنة الميزانية','Budget check')+'</b><small>'+budgetText+'</small></div>';
+    var c=document.querySelector('[data-proposal-char-v22]');if(c)c.textContent=m.length+'/1200';
+  }
+  function enhanceProposalModalV22(){
+    var modal=document.getElementById('modal'),form=document.getElementById('pp')?.closest('.form2');
+    if(!modal||!form||modal.querySelector('[data-proposal-prep-v22]'))return;
+    var box=document.createElement('div');box.className='proposalPrepV22';box.dataset.proposalPrepV22='1';
+    box.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;align-items:start;margin-bottom:8px"><div><b style="font:700 10px Alexandria">'+tV22('جاهزية العرض','Proposal readiness')+'</b><div style="font-size:8px;color:var(--muted);margin-top:3px">'+tV22('راجع السعر والمدة والتعديلات قبل الإرسال.','Review price, delivery time and revisions before sending.')+'</div></div></div><div class="proposalPrepGridV22"></div>';
+    form.insertAdjacentElement('afterend',box);
+    var msg=document.getElementById('pm');
+    if(msg&&!modal.querySelector('[data-proposal-char-v22]')){var c=document.createElement('div');c.className='proposalCharV22';c.dataset.proposalCharV22='1';msg.insertAdjacentElement('afterend',c)}
+    ['pp','ph','pr','pm'].forEach(function(id){var el=document.getElementById(id);if(el&&!el.dataset.v22Bound){el.dataset.v22Bound='1';el.addEventListener('input',paintProposalPrepV22);el.addEventListener('change',paintProposalPrepV22)}});
+    if(msg)msg.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();var id=window.__taskDetail421&&window.__taskDetail421.id;if(id)window.sendProposal421(id)}});
+    paintProposalPrepV22();
+  }
+  var baseProposalModalV22=window.proposalModal421;
+  if(typeof baseProposalModalV22==='function')window.proposalModal421=function(){
+    var out=baseProposalModalV22.apply(this,arguments);enhanceProposalModalV22();return out;
   };
 })();
 </script>
