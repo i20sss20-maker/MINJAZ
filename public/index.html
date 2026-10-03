@@ -2236,6 +2236,35 @@ linear-gradient(135deg,#fbfcff,#fff);padding:15px}
 }
 </style>
 
+
+<style id="minjazInboxV29">
+.inboxBtnV29{position:relative;width:38px;height:38px;border:1px solid var(--line);background:var(--panel);border-radius:13px;display:grid;place-items:center;color:var(--ink);font-size:16px}
+.inboxBtnV29:hover{border-color:#cfc9ff;background:var(--surface-2)}
+.inboxBadgeV29{position:absolute;top:-5px;left:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#3157f6;color:#fff;font-size:7px;display:grid;place-items:center;border:2px solid var(--panel)}
+.inboxHeroV29{border:1px solid #dce5ff;border-radius:20px;background:linear-gradient(135deg,#f8faff,#fff);padding:13px;margin-bottom:10px}
+.inboxHeroV29 h2{font:700 14px Alexandria;margin:0 0 4px}.inboxHeroV29 p{font-size:9px;color:var(--muted);line-height:1.65;margin:0}
+.inboxMetricsV29{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.inboxMetricV29{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:9px}.inboxMetricV29 b{display:block;font:700 16px Alexandria}.inboxMetricV29 span{font-size:7px;color:var(--muted)}
+.inboxToolbarV29{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 0}.inboxToolbarV29 input{flex:1;min-width:220px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:9px 10px;color:var(--ink)}
+.inboxToolbarV29 .btn.on{background:#101b37;color:#fff;border-color:#101b37}
+.inboxListV29{display:grid;gap:8px}
+.inboxCardV29{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:12px;display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;cursor:pointer;text-align:start;color:var(--ink);width:100%}
+.inboxCardV29:hover{border-color:#cbd5ff;transform:translateY(-1px)}.inboxCardV29.unread{border-color:#bfcaff;background:linear-gradient(135deg,#f8faff,var(--panel));box-shadow:inset -3px 0 #3157f6}
+.inboxAvatarV29{width:43px;height:43px;border-radius:14px;background:linear-gradient(145deg,#eef2ff,#ecfdf5);display:grid;place-items:center;font:700 14px Alexandria;color:#3949ab}
+.inboxCardV29 h3{font:700 11px Alexandria;margin:0 0 4px}.inboxCardV29 p{font-size:8px;color:var(--muted);line-height:1.55;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:650px}
+.inboxMetaV29{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.inboxSideV29{text-align:end}.inboxSideV29 small{display:block;font-size:7px;color:var(--muted);margin-bottom:6px}
+.inboxUnreadV29{display:inline-flex;min-width:22px;height:22px;border-radius:999px;background:#3157f6;color:#fff;align-items:center;justify-content:center;font:700 8px Alexandria;padding:0 6px}
+[data-theme="dark"] .inboxHeroV29{background:linear-gradient(135deg,#141a30,#101526);border-color:#2b3a68}
+[data-theme="dark"] .inboxCardV29.unread{background:linear-gradient(135deg,#151d38,var(--panel));border-color:#344c91}
+[data-theme="dark"] .inboxAvatarV29{background:linear-gradient(145deg,#1d2746,#14312c);color:#aab8ff}
+@media(max-width:700px){
+ .inboxMetricsV29{grid-template-columns:1fr 1fr 1fr}
+ .inboxToolbarV29{display:grid;grid-template-columns:1fr 1fr}.inboxToolbarV29 input{grid-column:1/-1;min-width:0}
+ .inboxCardV29{grid-template-columns:auto 1fr}.inboxSideV29{grid-column:2;text-align:start;display:flex;gap:8px;align-items:center}
+ .inboxCardV29 p{max-width:65vw}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -5020,7 +5049,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v28.1</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v29</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -6738,6 +6767,124 @@ body{font-size:14px;line-height:1.65}
   var baseBootV28=window.boot;
   if(typeof baseBootV28==='function')window.boot=async function(){var out=await baseBootV28.apply(this,arguments);ensureUiV28();paintShortcutsV28();return out};
   setTimeout(ensureUiV28,100);
+})();
+</script>
+
+
+<script id="minjazInboxRuntimeV29">
+(function(){
+  function langV29(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV29(ar,en){return langV29()==='en'?en:ar}
+  function localeV29(){return langV29()==='en'?'en-US':'ar-SA'}
+  function relativeV29(v){
+    var d=v?new Date(v):null;if(!d||isNaN(d.getTime()))return'';
+    var sec=Math.round((d.getTime()-Date.now())/1000),abs=Math.abs(sec),unit='minute',n=Math.round(sec/60);
+    if(abs<60)return tV29('الآن','Now');
+    if(abs>=3600){unit='hour';n=Math.round(sec/3600)}
+    if(abs>=86400){unit='day';n=Math.round(sec/86400)}
+    try{return new Intl.RelativeTimeFormat(localeV29(),{numeric:'auto'}).format(n,unit)}catch(e){return d.toLocaleString(localeV29())}
+  }
+  function statusV29(v){return statusMap[v]||v||''}
+  function ensureInboxPageV29(){
+    if(document.getElementById('inbox'))return;
+    var sec=document.createElement('section');sec.id='inbox';sec.className='page';
+    var notifications=document.getElementById('notifications');
+    if(notifications)notifications.insertAdjacentElement('beforebegin',sec);else document.querySelector('.content')?.appendChild(sec);
+  }
+  function ensureInboxButtonV29(){
+    var chip=document.querySelector('.userChip');if(!chip||document.getElementById('inboxBtnV29'))return;
+    var b=document.createElement('button');b.id='inboxBtnV29';b.type='button';b.className='inboxBtnV29';b.setAttribute('aria-label',tV29('المحادثات','Conversations'));b.onclick=function(){window.go('inbox')};b.innerHTML='💬';
+    var notif=document.getElementById('notifBtn');if(notif)notif.insertAdjacentElement('afterend',b);else chip.insertBefore(b,chip.firstChild);
+  }
+  async function refreshInboxBadgeV29(){
+    if(!me?.user)return;ensureInboxPageV29();ensureInboxButtonV29();
+    try{
+      var x=await api('/api/v1/conversations');
+      if(!x.r.ok)return;
+      var unread=(x.j?.items||[]).reduce(function(n,c){return n+Number(c.unread_messages||0)},0),b=document.getElementById('inboxBtnV29');
+      if(b)b.innerHTML='💬'+(unread?'<span class="inboxBadgeV29">'+Math.min(unread,99)+'</span>':'');
+    }catch(e){}
+  }
+  var inboxStateV29={filter:'all',q:'',items:[]};
+  function filteredV29(){
+    var q=inboxStateV29.q.trim().toLowerCase();
+    return inboxStateV29.items.filter(function(x){
+      if(inboxStateV29.filter==='unread'&&!Number(x.unread_messages||0))return false;
+      if(inboxStateV29.filter==='active'&&['completed','cancelled'].includes(x.status))return false;
+      if(q&&[x.title,x.counterpart_name,x.last_message,x.status].join(' ').toLowerCase().indexOf(q)<0)return false;
+      return true;
+    });
+  }
+  function cardV29(x){
+    var unread=Number(x.unread_messages||0),body=String(x.last_message||'').trim()||tV29('مرفق جديد','New attachment');
+    return '<button type="button" class="inboxCardV29 '+(unread?'unread':'')+'" onclick="openConversationV29('+Number(x.order_id)+')"><span class="inboxAvatarV29">'+esc((x.counterpart_name||'م')[0]||'م')+'</span><span><h3>'+esc(x.title||tV29('محادثة طلب','Order conversation'))+'</h3><p><b>'+esc(x.counterpart_name||'—')+':</b> '+esc(body)+'</p><span class="inboxMetaV29"><span class="pill '+statusClass(x.status)+'">'+esc(statusV29(x.status))+'</span>'+(Number(x.attachment_count||0)>0?'<span class="pill gray">📎 '+Number(x.attachment_count)+'</span>':'')+(x.sender_id&&me?.user&&Number(x.sender_id)===Number(me.user.id)?'<span class="pill gray">'+tV29('أنت أرسلت','Sent by you')+'</span>':'')+'</span></span><span class="inboxSideV29"><small>'+esc(relativeV29(x.last_message_at))+'</small>'+(unread?'<span class="inboxUnreadV29">'+unread+'</span>':'')+'</span></button>';
+  }
+  function paintInboxV29(){
+    var host=document.getElementById('inbox');if(!host)return;
+    var all=inboxStateV29.items,rows=filteredV29(),unread=all.reduce(function(n,x){return n+Number(x.unread_messages||0)},0),active=all.filter(function(x){return !['completed','cancelled'].includes(x.status)}).length;
+    host.innerHTML='<div class="inboxHeroV29"><div class="row space"><div><h2>'+tV29('صندوق المحادثات','Conversation inbox')+'</h2><p>'+tV29('كل محادثات الطلبات في مكان واحد، مرتبة حسب آخر رسالة.','All order conversations in one place, sorted by latest message.')+'</p></div><span class="pill blue">v29</span></div><div class="inboxMetricsV29"><div class="inboxMetricV29"><b>'+all.length+'</b><span>'+tV29('محادثات','Conversations')+'</span></div><div class="inboxMetricV29"><b>'+unread+'</b><span>'+tV29('رسائل غير مقروءة','Unread messages')+'</span></div><div class="inboxMetricV29"><b>'+active+'</b><span>'+tV29('طلبات نشطة','Active orders')+'</span></div></div></div>'+
+      '<div class="inboxToolbarV29"><input type="search" value="'+esc(inboxStateV29.q)+'" placeholder="'+tV29('ابحث باسم الطلب أو الطرف الآخر أو الرسالة','Search task, person, or message')+'" oninput="minjazInboxSearchV29(this.value)"><button class="btn ghost '+(inboxStateV29.filter==='all'?'on':'')+'" onclick="minjazInboxFilterV29(\'all\')">'+tV29('الكل','All')+'</button><button class="btn ghost '+(inboxStateV29.filter==='unread'?'on':'')+'" onclick="minjazInboxFilterV29(\'unread\')">'+tV29('غير المقروء','Unread')+'</button><button class="btn ghost '+(inboxStateV29.filter==='active'?'on':'')+'" onclick="minjazInboxFilterV29(\'active\')">'+tV29('طلبات نشطة','Active')+'</button></div>'+
+      '<div class="inboxListV29">'+(rows.map(cardV29).join('')||'<div class="card empty"><b>'+tV29('ما فيه محادثات مطابقة','No matching conversations')+'</b><span>'+tV29('تظهر المحادثة هنا بعد أول رسالة داخل الطلب.','A conversation appears here after the first order message.')+'</span></div>')+'</div>';
+  }
+  window.renderInboxV29=async function(){
+    ensureInboxPageV29();var host=document.getElementById('inbox');if(!host)return;
+    host.innerHTML='<div class="card empty">'+tV29('جاري تحميل المحادثات…','Loading conversations…')+'</div>';
+    var x=await api('/api/v1/conversations');
+    if(!x.r.ok){host.innerHTML='<div class="card empty">'+tV29('تعذر تحميل المحادثات.','Could not load conversations.')+'</div>';return}
+    inboxStateV29.items=x.j?.items||[];paintInboxV29();refreshInboxBadgeV29();
+  };
+  window.minjazInboxSearchV29=function(v){inboxStateV29.q=v||'';paintInboxV29();var i=document.querySelector('#inbox .inboxToolbarV29 input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}};
+  window.minjazInboxFilterV29=function(v){inboxStateV29.filter=['all','unread','active'].includes(v)?v:'all';paintInboxV29()};
+  window.openConversationV29=async function(orderId){
+    try{await api('/api/v1/conversations/'+Number(orderId)+'/read',{method:'POST'})}catch(e){}
+    refreshInboxBadgeV29();await window.orderModal(Number(orderId));
+    if(typeof window.minjazChatModeV25==='function')window.minjazChatModeV25('messages');
+    var chat=document.querySelector('[data-chat-workspace-v25]');if(chat)chat.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+
+  ensureInboxPageV29();
+  var baseGoV29=window.go;
+  if(typeof baseGoV29==='function')window.go=async function(id){
+    var out=await baseGoV29.apply(this,arguments);
+    if(id==='inbox'){
+      var title=document.getElementById('pageTitle'),sub=document.getElementById('pageSub');
+      if(title)title.textContent=tV29('المحادثات','Conversations');
+      if(sub)sub.textContent=tV29('آخر الرسائل والطلبات المرتبطة بها','Latest messages and their orders');
+      await window.renderInboxV29();
+    }
+    return out;
+  };
+  var baseBootV29=window.boot;
+  if(typeof baseBootV29==='function')window.boot=async function(){
+    var out=await baseBootV29.apply(this,arguments);ensureInboxPageV29();ensureInboxButtonV29();setTimeout(refreshInboxBadgeV29,0);return out;
+  };
+  var baseSendV29=window.sendMessage;
+  if(typeof baseSendV29==='function')window.sendMessage=async function(){
+    var out=await baseSendV29.apply(this,arguments);setTimeout(refreshInboxBadgeV29,0);return out;
+  };
+
+  var baseDemoV29=typeof demoApi==='function'?demoApi:null;
+  if(baseDemoV29)demoApi=async function(path,opt={}){
+    var raw=String(path||''),clean=raw.split('?')[0],method=String(opt.method||'GET').toUpperCase();
+    if(clean==='/api/v1/conversations'&&method==='GET'){
+      var d=demoLoad(),u=demoAuth(d);if(!u)return baseDemoV29(path,opt);
+      d.notifications=d.notifications||[];
+      var items=(d.orders||[]).filter(function(o){return Number(o.client_id)===Number(u.id)||Number(o.freelancer_id)===Number(u.id)}).map(function(o){
+        var msgs=(d.messages||[]).filter(function(m){return Number(m.order_id)===Number(o.id)}).sort(function(a,b){return String(b.created_at||'').localeCompare(String(a.created_at||''))});if(!msgs.length)return null;
+        var m=msgs[0],t=(d.tasks||[]).find(function(x){return Number(x.id)===Number(o.task_id)})||{},otherId=Number(o.client_id)===Number(u.id)?o.freelancer_id:o.client_id,other=demoUser(d,otherId)||{};
+        return {order_id:o.id,task_id:o.task_id,status:o.status,payment_status:o.payment_status,title:t.title||'',counterpart_user_id:otherId,counterpart_name:other.name||'',last_message_id:m.id,last_message:m.body,last_message_at:m.created_at,sender_id:m.sender_id,sender_name:(demoUser(d,m.sender_id)||{}).name||'',attachment_count:(m.attachments||[]).length,unread_messages:d.notifications.filter(function(n){return n.user_id===u.id&&n.order_id===o.id&&n.kind==='message'&&!n.read_at}).length};
+      }).filter(Boolean).sort(function(a,b){return String(b.last_message_at||'').localeCompare(String(a.last_message_at||''))});
+      return demoResp(200,{items:items});
+    }
+    var match=clean.match(/^\/api\/v1\/conversations\/(\d+)\/read$/);
+    if(match&&method==='POST'){
+      var d=demoLoad(),u=demoAuth(d);if(!u)return baseDemoV29(path,opt);d.notifications=d.notifications||[];var oid=Number(match[1]),o=(d.orders||[]).find(function(x){return Number(x.id)===oid&&(Number(x.client_id)===Number(u.id)||Number(x.freelancer_id)===Number(u.id))});if(!o)return demoResp(404,{error:'order_not_found'});
+      var updated=0,now=new Date().toISOString();d.notifications.forEach(function(n){if(n.user_id===u.id&&n.order_id===oid&&n.kind==='message'&&!n.read_at){n.read_at=now;updated++}});demoSave(d);return demoResp(200,{ok:true,order_id:oid,updated:updated});
+    }
+    return baseDemoV29(path,opt);
+  };
+
+  setTimeout(function(){ensureInboxPageV29();ensureInboxButtonV29();refreshInboxBadgeV29()},180);
 })();
 </script>
 
