@@ -2163,6 +2163,39 @@ linear-gradient(135deg,#fbfcff,#fff);padding:15px}
 }
 </style>
 
+
+<style id="minjazNotificationGroupsV27">
+.notifResumeV27{border:1px solid #dce5ff;border-radius:20px;background:linear-gradient(135deg,#f8faff,#fff);padding:13px;margin:0 0 10px}
+.notifResumeV27Head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.notifResumeV27 h3{font:700 12px Alexandria;margin:0 0 4px}.notifResumeV27 p{font-size:8px;color:var(--muted);line-height:1.65;margin:0}
+.notifResumeV27 .btn{margin-top:9px}
+.notifDigestV27{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.notifDigestCardV27{border:1px solid var(--line);border-radius:15px;background:var(--panel);padding:10px}.notifDigestCardV27 b{display:block;font:700 17px Alexandria}.notifDigestCardV27 span{font-size:7px;color:var(--muted)}
+.notifGroupsV27{display:grid;gap:9px}
+.notifGroupV27{border:1px solid var(--line);border-radius:19px;background:var(--panel);overflow:hidden}
+.notifGroupV27.unread{border-color:#cfd8ff;box-shadow:inset -3px 0 #6558f5}
+.notifGroupMainV27{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:13px}
+.notifGroupIconV27{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,#f1efff,#eafaf7);font-size:18px}
+.notifGroupMainV27 h3{font:700 11px Alexandria;margin:0 0 4px}.notifGroupMainV27 p{font-size:8px;color:var(--muted);line-height:1.6;margin:0}
+.notifGroupMetaV27{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.notifGroupActionsV27{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.notifGroupUpdatesV27{border-top:1px solid var(--line);padding:8px 12px 11px;background:color-mix(in srgb,var(--panel) 97%,#eef3ff 3%)}
+.notifUpdateV27{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+.notifUpdateV27:last-child{border-bottom:0}.notifUpdateDotV27{width:8px;height:8px;border-radius:999px;background:#c3cada;margin-top:5px}.notifUpdateV27.unread .notifUpdateDotV27{background:#6558f5;box-shadow:0 0 0 4px rgba(101,88,245,.09)}
+.notifUpdateV27 b{font:700 8px Alexandria}.notifUpdateV27 p{font-size:7.5px;color:var(--muted);line-height:1.55;margin:3px 0}.notifUpdateV27 small{font-size:7px;color:var(--muted);white-space:nowrap}
+.notifViewBarV27{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:9px 0}.notifViewBarV27>div{display:flex;gap:6px;flex-wrap:wrap}
+.notifViewBarV27 .btn.on{background:#101b37;color:#fff;border-color:#101b37}
+.notifGroupHiddenV27{display:none}
+[data-theme="dark"] .notifResumeV27{background:linear-gradient(135deg,#141a30,#101526);border-color:#2b3a68}
+[data-theme="dark"] .notifGroupIconV27{background:linear-gradient(145deg,#1e2744,#16332e)}
+@media(max-width:700px){
+ .notifDigestV27{grid-template-columns:1fr 1fr}
+ .notifGroupMainV27{grid-template-columns:auto 1fr}
+ .notifGroupActionsV27{grid-column:1/-1;justify-content:stretch}.notifGroupActionsV27 .btn{flex:1}
+ .notifUpdateV27{grid-template-columns:auto 1fr}.notifUpdateV27 small{grid-column:2}
+}
+</style>
+
 </head>
 <body>
 <a class="skipLink" href="#mainContent">تجاوز إلى المحتوى</a>
@@ -4935,7 +4968,7 @@ body{font-size:14px;line-height:1.65}
           '<button class="preferenceChoice '+(langMode==='ar'?'on':'')+'" data-lang-choice="ar" onclick="minjazSetLangV15(\'ar\')">العربية</button>'+
           '<button class="preferenceChoice '+(langMode==='en'?'on':'')+'" data-lang-choice="en" onclick="minjazSetLangV15(\'en\')">English</button>'+
         '</div></div>'+
-        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v26</span></div>'+
+        '<div class="prefPreview"><div><b>'+(lang==='en'?'Preferences preview':'معاينة الإعدادات')+'</b><small style="display:block;margin-top:3px">'+themeLabel+' · '+languageLabel+'</small></div><span class="pill blue">v27</span></div>'+
       '</div>');
     refreshPreferenceUI();
   };
@@ -6382,6 +6415,124 @@ body{font-size:14px;line-height:1.65}
     }catch(e){}
     return out;
   };
+})();
+</script>
+
+
+<script id="minjazNotificationGroupsRuntimeV27">
+(function(){
+  function langV27(){return (window.minjazLangV15&&window.minjazLangV15())||document.documentElement.lang||'ar'}
+  function tV27(ar,en){return langV27()==='en'?en:ar}
+  function localeV27(){return langV27()==='en'?'en-US':'ar-SA'}
+  function kindMetaV27(k){
+    var m={
+      proposal:['📨',tV27('عرض جديد','New proposal')],
+      task_invite:['✉️',tV27('دعوة خاصة','Private invite')],
+      message:['💬',tV27('رسالة','Message')],
+      delivery:['✅',tV27('تسليم','Delivery')],
+      revision:['↺',tV27('تعديل','Revision')],
+      payment:['💳',tV27('دفع','Payment')],
+      order:['📋',tV27('طلب','Order')],
+      cancellation:['✕',tV27('إلغاء','Cancellation')],
+      payout:['↗',tV27('سحب','Payout')],
+      general:['•',tV27('عام','General')]
+    };return m[k]||m.general;
+  }
+  function actionableV27(k){return ['proposal','task_invite','delivery','revision','payment','cancellation'].includes(k)}
+  function relativeV27(v){
+    var d=v?new Date(v):null;if(!d||isNaN(d.getTime()))return'';
+    var sec=Math.round((d.getTime()-Date.now())/1000),abs=Math.abs(sec);
+    if(abs<60)return tV27('الآن','Now');
+    var unit='minute',n=Math.round(sec/60);
+    if(abs>=3600){unit='hour';n=Math.round(sec/3600)}
+    if(abs>=86400){unit='day';n=Math.round(sec/86400)}
+    try{return new Intl.RelativeTimeFormat(localeV27(),{numeric:'auto'}).format(n,unit)}catch(e){return d.toLocaleString(localeV27())}
+  }
+  function groupKeyV27(n){return n.order_id?'order:'+n.order_id:n.task_id?'task:'+n.task_id:'single:'+n.id}
+  function buildGroupsV27(items){
+    var map=new Map();
+    (items||[]).forEach(function(n){
+      var key=groupKeyV27(n),g=map.get(key);
+      if(!g){g={key:key,order_id:Number(n.order_id||0),task_id:Number(n.task_id||0),items:[]};map.set(key,g)}
+      g.items.push(n);
+    });
+    return Array.from(map.values()).map(function(g){
+      g.items.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at)});
+      g.latest=g.items[0];g.unread=g.items.filter(function(n){return !n.read_at}).length;
+      g.kinds=Array.from(new Set(g.items.map(function(n){return n.kind||'general'})));
+      g.action=g.items.some(function(n){return actionableV27(n.kind)});
+      return g;
+    }).sort(function(a,b){return new Date(b.latest.created_at)-new Date(a.latest.created_at)});
+  }
+  var stateV27={kind:'',unread:false,action:false,expanded:new Set(),groups:[],raw:[]};
+  try{stateV27.action=sessionStorage.getItem('minjaz_notif_action_v20')==='1'}catch(e){}
+  function queryV27(){
+    var p=new URLSearchParams();if(stateV27.kind)p.set('kind',stateV27.kind);if(stateV27.unread)p.set('unread','1');p.set('limit','200');return p.toString()
+  }
+  function filtersV27(j){
+    var kinds=['proposal','task_invite','message','delivery','revision','payment','order','cancellation','payout'];
+    return '<div class="notifToolbar"><button class="btn ghost '+(!stateV27.unread?'on':'')+'" onclick="setNotifUnread421(false)">'+tV27('الكل','All')+'</button><button class="btn ghost '+(stateV27.unread?'on':'')+'" onclick="setNotifUnread421(true)">'+tV27('غير المقروء','Unread')+'</button>'+kinds.filter(function(k){return Number(j.counts?.[k]||0)>0}).map(function(k){return '<button class="btn ghost '+(stateV27.kind===k?'on':'')+'" onclick="setNotifKind421(\''+k+'\')">'+kindMetaV27(k)[1]+' '+Number(j.counts[k])+'</button>'}).join('')+'</div>';
+  }
+  function groupHtmlV27(g){
+    var latest=g.latest,meta=kindMetaV27(latest.kind),expanded=stateV27.expanded.has(g.key),key=encodeURIComponent(g.key);
+    var kinds=g.kinds.slice(0,4).map(function(k){return '<span class="pill gray">'+kindMetaV27(k)[1]+'</span>'}).join('');
+    var updates=g.items.slice(0,8).map(function(n){return '<div class="notifUpdateV27 '+(!n.read_at?'unread':'')+'"><span class="notifUpdateDotV27"></span><div><b>'+esc(n.title||kindMetaV27(n.kind)[1])+'</b>'+(n.body?'<p>'+esc(n.body)+'</p>':'')+'</div><small>'+esc(relativeV27(n.created_at))+'</small></div>'}).join('');
+    return '<div class="notifGroupV27 '+(g.unread?'unread':'')+'"><div class="notifGroupMainV27"><div class="notifGroupIconV27">'+meta[0]+'</div><div><h3>'+esc(latest.title||meta[1])+'</h3>'+(latest.body?'<p>'+esc(latest.body)+'</p>':'')+'<div class="notifGroupMetaV27">'+(g.unread?'<span class="pill blue">'+g.unread+' '+tV27('غير مقروء','unread')+'</span>':'')+(g.items.length>1?'<span class="pill gray">'+g.items.length+' '+tV27('تحديثات','updates')+'</span>':'')+kinds+'<span class="pill gray">'+esc(relativeV27(latest.created_at))+'</span></div></div><div class="notifGroupActionsV27">'+(g.items.length>1?'<button class="btn ghost" onclick="toggleNotifGroupV27(\''+key+'\')">'+(expanded?tV27('إخفاء','Hide'):tV27('عرض التحديثات','Show updates'))+'</button>':'')+'<button class="btn '+(g.unread?'soft':'primary')+'" onclick="openNotificationGroupV27(\''+key+'\')">'+((g.order_id||g.task_id)?tV27('فتح المكان','Open'):tV27('تحديد كمقروء','Mark read'))+'</button></div></div>'+(g.items.length>1?'<div class="notifGroupUpdatesV27 '+(expanded?'':'notifGroupHiddenV27')+'">'+updates+'</div>':'')+'</div>';
+  }
+  function renderBodyV27(host,j){
+    var groups=buildGroupsV27(j.items||[]);
+    if(stateV27.action)groups=groups.filter(function(g){return g.action});
+    stateV27.groups=groups;
+    var unreadGroups=groups.filter(function(g){return g.unread>0}).length,actionGroups=groups.filter(function(g){return g.action}).length,latest=groups[0]||null;
+    var resume=latest?'<div class="notifResumeV27"><div class="notifResumeV27Head"><div><h3>'+tV27('آخر ما تغيّر','Latest change')+'</h3><p>'+esc(latest.latest.title||kindMetaV27(latest.latest.kind)[1])+(latest.latest.body?' — '+esc(latest.latest.body):'')+'</p></div><span class="pill '+(latest.unread?'blue':'gray')+'">'+esc(relativeV27(latest.latest.created_at))+'</span></div><button class="btn primary" onclick="openNotificationGroupV27(\''+encodeURIComponent(latest.key)+'\')">'+tV27('الرجوع للعمل','Resume work')+'</button></div>':'';
+    host.innerHTML='<div class="sectionHead"><div><h2>'+tV27('صندوق الإشعارات','Notifications')+'</h2><p>'+Number(j.unread||0)+' '+tV27('غير مقروء · التنبيهات المتكررة مجمعة حسب الطلب أو المهمة','unread · repeated updates are grouped by order or task')+'</p></div><button class="btn ghost" onclick="markAllNotifPage()">'+tV27('تحديد الكل كمقروء','Mark all read')+'</button></div>'+
+      resume+
+      '<div class="notifDigestV27"><div class="notifDigestCardV27"><b>'+groups.length+'</b><span>'+tV27('مجموعات ظاهرة','Visible groups')+'</span></div><div class="notifDigestCardV27"><b>'+unreadGroups+'</b><span>'+tV27('مجموعات غير مقروءة','Unread groups')+'</span></div><div class="notifDigestCardV27"><b>'+actionGroups+'</b><span>'+tV27('تحتاج إجراء','Need action')+'</span></div><div class="notifDigestCardV27"><b>'+((j.items||[]).length-groups.length)+'</b><span>'+tV27('تنبيهات تم تجميعها','Duplicates grouped')+'</span></div></div>'+
+      filtersV27(j)+
+      '<div class="notifViewBarV27"><div><button class="btn ghost '+(stateV27.action?'on':'')+'" onclick="minjazToggleNotifActionV20()">'+tV27('يحتاج إجراء','Needs action')+'</button></div><span class="pill gray">'+groups.length+' '+tV27('مجموعة','groups')+'</span></div>'+
+      '<div class="notifGroupsV27">'+(groups.map(groupHtmlV27).join('')||'<div class="card empty">'+tV27('ما عندك إشعارات ضمن هذا الفلتر.','No notifications match this filter.')+'</div>')+'</div>';
+  }
+  window.renderNotificationsPage=async function(){
+    var host=document.getElementById('notifications');if(!host)return;
+    var x=await api('/api/v1/notifications?'+queryV27());
+    if(!x.r.ok){host.innerHTML='<div class="card empty">'+tV27('تعذر تحميل الإشعارات.','Could not load notifications.')+'</div>';return}
+    stateV27.raw=x.j.items||[];renderBodyV27(host,x.j);window.refreshNotifBadge&&window.refreshNotifBadge();
+  };
+  window.setNotifUnread421=function(v){stateV27.unread=!!v;window.renderNotificationsPage()};
+  window.setNotifKind421=function(k){stateV27.kind=stateV27.kind===k?'':k;window.renderNotificationsPage()};
+  window.minjazToggleNotifActionV20=function(){stateV27.action=!stateV27.action;try{sessionStorage.setItem('minjaz_notif_action_v20',stateV27.action?'1':'0')}catch(e){}window.renderNotificationsPage()};
+  window.toggleNotifGroupV27=function(encoded){var key=decodeURIComponent(encoded);if(stateV27.expanded.has(key))stateV27.expanded.delete(key);else stateV27.expanded.add(key);var host=document.getElementById('notifications');if(host){var j={items:stateV27.raw,unread:stateV27.raw.filter(function(n){return !n.read_at}).length,counts:{}};stateV27.raw.forEach(function(n){j.counts[n.kind]=(j.counts[n.kind]||0)+1});renderBodyV27(host,j)}};
+  async function readGroupV27(g){
+    if(g.order_id||g.task_id){
+      var payload=g.order_id?{order_id:g.order_id}:{task_id:g.task_id};
+      var x=await api('/api/v1/notifications/read-group',{method:'POST',body:JSON.stringify(payload)});
+      if(x.r.ok)return true;
+    }
+    for(var i=0;i<g.items.length;i++){if(!g.items[i].read_at)await api('/api/v1/notifications/'+g.items[i].id+'/read',{method:'POST'})}
+    return true;
+  }
+  async function focusOrderV27(g){
+    await window.orderModal(g.order_id);
+    var k=g.latest.kind;
+    if(k==='message'){
+      if(typeof window.minjazChatModeV25==='function')window.minjazChatModeV25('messages');
+      var chat=document.querySelector('[data-chat-workspace-v25]');if(chat)chat.scrollIntoView({behavior:'smooth',block:'start'});
+      return;
+    }
+    var target=null;
+    if(k==='delivery'||k==='revision')target=document.querySelector('[data-client-monitor-v24],[data-execution-panel-v23],[data-order-action-v19]');
+    else target=document.querySelector('[data-order-action-v19],[data-order-focus-rc5]');
+    if(target)target.scrollIntoView({behavior:'smooth',block:'center'});
+  }
+  window.openNotificationGroupV27=async function(encoded){
+    var key=decodeURIComponent(encoded),g=stateV27.groups.find(function(x){return x.key===key})||buildGroupsV27(stateV27.raw).find(function(x){return x.key===key});
+    if(!g)return;
+    await readGroupV27(g);window.refreshNotifBadge&&window.refreshNotifBadge();
+    if(g.order_id)return focusOrderV27(g);
+    if(g.task_id)return me.user.role==='client'?window.taskOffers(g.task_id):window.taskDetailModal(g.task_id);
+    await window.renderNotificationsPage();
+  };
+  window.markAllNotifPage=async function(){await api('/api/v1/notifications/read-all',{method:'POST'});toast(tV27('تم تحديد الإشعارات كمقروءة','Notifications marked as read'));window.refreshNotifBadge&&window.refreshNotifBadge();window.renderNotificationsPage()};
 })();
 </script>
 
