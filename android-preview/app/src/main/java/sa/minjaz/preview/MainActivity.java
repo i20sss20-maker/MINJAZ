@@ -696,9 +696,9 @@ public class MainActivity extends Activity {
     }
 
     private boolean isSystemDark() {
-        int nightMode = getResources().getConfiguration().uiMode
-            & Configuration.UI_MODE_NIGHT_MASK;
-        return nightMode == Configuration.UI_MODE_NIGHT_YES;
+        // MINJAZ now starts in light mode by default. Theme selection lives
+        // inside the app UI, so Android system dark mode must not force it.
+        return false;
     }
 
     private boolean isEnglishDevice() {
