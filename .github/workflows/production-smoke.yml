@@ -11,6 +11,7 @@ on:
       - "public/**"
       - "Dockerfile"
       - ".dockerignore"
+      - ".github/workflows/production-smoke.yml"
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
@@ -26,16 +27,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected="${GITHUB_SHA:0:12}"
-          for i in $(seq 1 40); do
-            curl -fsS --max-time 12 "$BASE/health" -o health.json || true
-            current=$(jq -r '.release_commit // ""' health.json 2>/dev/null || true)
-            if [ "$current" = "$expected" ]; then
-              break
-            fi
-            sleep 3
-          done
-          test "$(jq -r '.release_commit // ""' health.json)" = "$expected"
+          # A push that changes deployable production source should converge to
+          # that exact commit. Scheduled/manual health probes must not require
+          # main HEAD, because Android/docs-only commits intentionally do not
+          # redeploy the Railway service.
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            expected="${GITHUB_SHA:0:12}"
+            for i in $(seq 1 40); do
+              curl -fsS --max-time 12 "$BASE/health" -o health.json || true
+              current=$(jq -r '.release_commit // ""' health.json 2>/dev/null || true)
+              if [ "$current" = "$expected" ]; then
+                break
+              fi
+              sleep 3
+            done
+            test "$(jq -r '.release_commit // ""' health.json)" = "$expected"
+          else
+            curl -fsS --retry 5 --retry-delay 2 --max-time 12 "$BASE/health" -o health.json
+            test -n "$(jq -r '.release_commit // ""' health.json)"
+          fi
 
           health=""
           for i in $(seq 1 25); do

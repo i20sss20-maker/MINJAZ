@@ -5,7 +5,6 @@ import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.net.ConnectivityManager;
@@ -165,6 +164,15 @@ public class MainActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setTextZoom(100);
+
+        // MINJAZ controls its own appearance. Never let Android/WebView force
+        // dark mode just because the device is using a dark system theme.
+        if (Build.VERSION.SDK_INT >= 33) {
+            settings.setAlgorithmicDarkeningAllowed(false);
+        } else if (Build.VERSION.SDK_INT >= 29) {
+            settings.setForceDark(WebSettings.FORCE_DARK_OFF);
+        }
+
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString() + " MINJAZ-Android/" + BuildConfig.VERSION_NAME);
 
@@ -696,9 +704,9 @@ public class MainActivity extends Activity {
     }
 
     private boolean isSystemDark() {
-        int nightMode = getResources().getConfiguration().uiMode
-            & Configuration.UI_MODE_NIGHT_MASK;
-        return nightMode == Configuration.UI_MODE_NIGHT_YES;
+        // Light is the product default. Dark mode is an explicit in-app choice,
+        // not something Android should impose from the device theme.
+        return false;
     }
 
     private boolean isEnglishDevice() {
