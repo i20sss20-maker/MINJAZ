@@ -11,7 +11,6 @@ on:
       - "public/**"
       - "Dockerfile"
       - ".dockerignore"
-      - ".github/workflows/production-smoke.yml"
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
@@ -19,7 +18,7 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 12
     steps:
       - name: Verify MINJAZ production candidate
         env:
@@ -33,11 +32,14 @@ jobs:
           # redeploy the Railway service.
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             expected="${GITHUB_SHA:0:12}"
-            for i in $(seq 1 40); do
+            for i in $(seq 1 100); do
               curl -fsS --max-time 12 "$BASE/health" -o health.json || true
               current=$(jq -r '.release_commit // ""' health.json 2>/dev/null || true)
               if [ "$current" = "$expected" ]; then
                 break
+              fi
+              if [ $((i % 10)) -eq 0 ]; then
+                echo "Waiting for Railway deployment: current=${current:-none} expected=$expected attempt=$i/100"
               fi
               sleep 3
             done
