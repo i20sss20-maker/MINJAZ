@@ -3,4 +3,5 @@
     <string name="connection_error_title">تعذر الاتصال بمِنجاز</string>
     <string name="connection_error_message">تحقق من اتصال الإنترنت ثم حاول مرة أخرى.</string>
     <string name="retry">إعادة المحاولة</string>
+    <string name="loading">جاري تجهيز مِنجاز…</string>
 </resources>
