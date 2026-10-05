@@ -27,7 +27,15 @@
     localStorage.setItem(LANG_MODE_KEY,langMode);
     localStorage.setItem(LEGACY_LANG_KEY,lang);
 
-    const mode=localStorage.getItem('minjaz_theme_mode')||'light';
+    const THEME_KEY='minjaz_theme_mode';
+    const LIGHT_DEFAULT_MIGRATION='minjaz_theme_light_default_v32';
+    let mode=localStorage.getItem(THEME_KEY);
+    if(localStorage.getItem(LIGHT_DEFAULT_MIGRATION)!=='1'){
+      if(!mode||mode==='system')mode='light';
+      localStorage.setItem(THEME_KEY,mode);
+      localStorage.setItem(LIGHT_DEFAULT_MIGRATION,'1');
+    }
+    mode=mode||'light';
     const dark=mode==='dark'||(mode==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.lang=lang;
     document.documentElement.dir=lang==='en'?'ltr':'rtl';
