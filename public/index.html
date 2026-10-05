@@ -27,7 +27,7 @@
     localStorage.setItem(LANG_MODE_KEY,langMode);
     localStorage.setItem(LEGACY_LANG_KEY,lang);
 
-    const mode=localStorage.getItem('minjaz_theme_mode')||'system';
+    const mode=localStorage.getItem('minjaz_theme_mode')||'light';
     const dark=mode==='dark'||(mode==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.lang=lang;
     document.documentElement.dir=lang==='en'?'ltr':'rtl';
@@ -2668,7 +2668,7 @@ async function renderClientHome(){
  const withOffers=tasks.filter(x=>x.status==='open'&&Number(x.proposal_count||0)>0),unpaid=orders.filter(x=>x.status==='awaiting_payment'&&x.payment_status==='unpaid'),delivered=orders.filter(x=>x.status==='delivered'),needsReview=orders.filter(x=>x.status==='completed'&&!x.reviewed);
  const attentionCount=withOffers.length+unpaid.length+delivered.length+needsReview.length;
  const attention=attentionCount?`<div class="sectionHead"><div><h2>يحتاج انتباهك</h2><p>خطوات لو خلصتها تتحرك مهامك أسرع</p></div><span class="pill amber">${attentionCount} إجراء</span></div><div class="attentionGrid">${withOffers.length?`<div class="attentionCard"><b>${withOffers.length} مهمة وصلها عروض</b><p>قارن المستقلين واختر الأنسب قبل ما تبدأ.</p><button class="btn soft" onclick="taskOffers(${withOffers[0].id})">مراجعة العروض</button></div>`:''}${unpaid.length?`<div class="attentionCard"><b>${unpaid.length} طلب بانتظار الدفع</b><p>الدفع يبدأ التنفيذ ويبلغ المستقل مباشرة.</p><button class="btn soft" onclick="orderModal(${unpaid[0].id})">فتح الطلب</button></div>`:''}${delivered.length?`<div class="attentionCard"><b>${delivered.length} تسليم بانتظارك</b><p>راجع العمل واعتمده أو اطلب تعديل ضمن الحد المتفق عليه.</p><button class="btn soft" onclick="orderModal(${delivered[0].id})">مراجعة التسليم</button></div>`:''}${needsReview.length?`<div class="attentionCard"><b>${needsReview.length} طلب مكتمل ينتظر تقييمك</b><p>قيّم جودة التنفيذ والالتزام والتواصل عشان يبقى سجل المستقل أدق للعملاء.</p><button class="btn soft" onclick="orderModal(${needsReview[0].id})">إضافة التقييم</button></div>`:''}</div>`:'';
- $('home').innerHTML=`<div class="hero"><div><span class="pill blue" style="background:#ffffff12;color:#dce5ff">MINJAZ BETA</span><h2>وش تحتاج ينجز اليوم؟</h2><p>اكتب المهمة، حدد ميزانيتك، وخلك على اطلاع من أول عرض إلى آخر تسليم.</p><div class="heroActions"><button class="btn primary" onclick="newTaskModal()">＋ أنشئ مهمة</button><button class="btn ghost" onclick="go('tasks')">شوف مهامي</button></div></div><div class="heroStats"><div class="heroStat"><b>${tasks.filter(x=>x.status==='open').length}</b><small>مهام تستقبل عروض</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='in_progress').length}</b><small>قيد التنفيذ</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='completed').length}</b><small>مكتملة</small></div><div class="heroStat"><b>${fav.length}</b><small>في فريقي</small></div></div></div>
+ $('home').innerHTML=`<div class="hero"><div><span class="pill blue" style="background:#ffffff12;color:#dce5ff">مِنجاز</span><h2>وش تحتاج ينجز اليوم؟</h2><p>اكتب المهمة، حدد ميزانيتك، وخلك على اطلاع من أول عرض إلى آخر تسليم.</p><div class="heroActions"><button class="btn primary" onclick="newTaskModal()">＋ أنشئ مهمة</button><button class="btn ghost" onclick="go('tasks')">شوف مهامي</button></div></div><div class="heroStats"><div class="heroStat"><b>${tasks.filter(x=>x.status==='open').length}</b><small>مهام تستقبل عروض</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='in_progress').length}</b><small>قيد التنفيذ</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='completed').length}</b><small>مكتملة</small></div><div class="heroStat"><b>${fav.length}</b><small>في فريقي</small></div></div></div>
  ${attention}<div class="sectionHead"><div><h2>الأقسام</h2><p>اختَر النوع الأقرب للمهمة</p></div></div><div class="categories">${categories.map(c=>`<div class="cat"><span>${c.icon||'•'}</span><b>${esc(c.name_ar)}</b></div>`).join('')}</div>
  <div class="sectionHead"><div><h2>آخر المهام</h2><p>متابعة سريعة</p></div><button class="btn ghost" onclick="go('tasks')">عرض الكل</button></div><div class="list">${tasks.slice(0,4).map(taskRowClient).join('')||'<div class="card empty"><b>ابدأ أول مهمة لك</b><span>اكتب المطلوب بوضوح وحدد ميزانيتك، وبعدها تبدأ تستقبل العروض.</span><button class="btn primary" onclick="newTaskModal()">＋ إنشاء أول مهمة</button></div>'}</div>`;
 }
@@ -4208,10 +4208,10 @@ body{font-size:14px;line-height:1.65}
   const supportedThemes=new Set(['system','light','dark']);
   let lang=localStorage.getItem(LANG_KEY)||'ar';
   let langMode=localStorage.getItem(LANG_MODE_KEY)||lang;
-  let themeMode=localStorage.getItem(THEME_KEY)||'system';
+  let themeMode=localStorage.getItem(THEME_KEY)||'light';
   if(!supportedLangs.has(lang))lang='ar';
   if(!supportedLangModes.has(langMode))langMode=lang;
-  if(!supportedThemes.has(themeMode))themeMode='system';
+  if(!supportedThemes.has(themeMode))themeMode='light';
 
   const originalText=new WeakMap();
   const originalAttrs=new WeakMap();
@@ -5171,7 +5171,7 @@ body{font-size:14px;line-height:1.65}
   const system='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
 
   function currentMode(){
-    try{return localStorage.getItem('minjaz_theme_mode')||'system'}catch{return'system'}
+    try{return localStorage.getItem('minjaz_theme_mode')||'light'}catch{return'light'}
   }
   function sync(){
     const mode=currentMode();
