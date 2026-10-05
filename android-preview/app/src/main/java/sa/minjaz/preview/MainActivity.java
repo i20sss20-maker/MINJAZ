@@ -33,6 +33,7 @@ import android.webkit.URLUtil;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.util.Locale;
@@ -45,6 +46,7 @@ public class MainActivity extends Activity {
 
     private FrameLayout root;
     private WebView webView;
+    private View loadingView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
     private ConnectivityManager connectivityManager;
@@ -88,6 +90,12 @@ public class MainActivity extends Activity {
         ));
         root.addView(webView);
 
+        loadingView = buildLoadingView();
+        root.addView(loadingView, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
         errorView = buildErrorView();
         errorView.setVisibility(View.GONE);
         root.addView(errorView, new FrameLayout.LayoutParams(
@@ -108,6 +116,44 @@ public class MainActivity extends Activity {
         }
 
         setContentView(root);
+    }
+
+    private View buildLoadingView() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(28), dp(28), dp(28), dp(28));
+        box.setBackgroundColor(surfaceColor());
+
+        TextView brand = new TextView(this);
+        brand.setText(getString(R.string.app_name));
+        brand.setTextSize(24);
+        brand.setTextColor(primaryTextColor());
+        brand.setGravity(Gravity.CENTER);
+        box.addView(brand);
+
+        ProgressBar progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+            dp(42),
+            dp(42)
+        );
+        progressParams.topMargin = dp(18);
+        box.addView(progress, progressParams);
+
+        TextView message = new TextView(this);
+        message.setText(getString(R.string.loading));
+        message.setTextSize(13);
+        message.setTextColor(secondaryTextColor());
+        message.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        messageParams.topMargin = dp(14);
+        box.addView(message, messageParams);
+
+        return box;
     }
 
     private View buildErrorView() {
@@ -364,8 +410,11 @@ public class MainActivity extends Activity {
         public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             if (url != null && isInternalUri(Uri.parse(url))) {
+                hideError();
+                showLoading();
                 schedulePageLoadTimeout(url);
             } else {
+                hideLoading();
                 cancelPageLoadTimeout();
             }
         }
@@ -381,12 +430,14 @@ public class MainActivity extends Activity {
                 }
             }
             hideError();
+            hideLoading();
             super.onPageCommitVisible(view, url);
         }
 
         @Override
         public void onPageFinished(WebView view, String url) {
             cancelPageLoadTimeout();
+            hideLoading();
             super.onPageFinished(view, url);
         }
 
@@ -398,6 +449,7 @@ public class MainActivity extends Activity {
         ) {
             if (request.isForMainFrame()) {
                 cancelPageLoadTimeout();
+                hideLoading();
                 showError();
             }
             super.onReceivedError(view, request, error);
@@ -411,6 +463,7 @@ public class MainActivity extends Activity {
         ) {
             if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
                 cancelPageLoadTimeout();
+                hideLoading();
                 showError();
             }
             super.onReceivedHttpError(view, request, errorResponse);
@@ -475,10 +528,20 @@ public class MainActivity extends Activity {
         root.addView(webView, 0);
         configureWebView();
         hideError();
+        showLoading();
         webView.loadUrl(lastUrl);
     }
 
+    private void showLoading() {
+        if (loadingView != null) loadingView.setVisibility(View.VISIBLE);
+    }
+
+    private void hideLoading() {
+        if (loadingView != null) loadingView.setVisibility(View.GONE);
+    }
+
     private void showError() {
+        hideLoading();
         if (errorView != null) errorView.setVisibility(View.VISIBLE);
     }
 
@@ -498,6 +561,7 @@ public class MainActivity extends Activity {
     private void retryCurrentPage() {
         if (webView == null) return;
         hideError();
+        showLoading();
         cancelPageLoadTimeout();
         String current = webView.getUrl();
         String target = safeInternalUrl(current)
@@ -514,6 +578,7 @@ public class MainActivity extends Activity {
             if (generation != pageLoadGeneration || webView == null) return;
             String current = webView.getUrl();
             if (safeInternalUrl(current) || safeInternalUrl(url)) {
+                hideLoading();
                 showError();
             }
         };
