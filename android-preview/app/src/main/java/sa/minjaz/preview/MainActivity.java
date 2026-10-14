@@ -513,14 +513,14 @@ public class MainActivity extends Activity {
             @Override
             public void onAvailable(Network network) {
                 // A network can be available before it has usable internet.
-                runOnUiThread(this::scheduleNetworkRetry);
+                runOnUiThread(MainActivity.this::scheduleNetworkRetry);
             }
 
             @Override
             public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                 if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                     && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
-                    runOnUiThread(this::scheduleNetworkRetry);
+                    runOnUiThread(MainActivity.this::scheduleNetworkRetry);
                 }
             }
         };
