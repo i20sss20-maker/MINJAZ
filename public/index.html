@@ -3383,7 +3383,7 @@ html{scroll-behavior:smooth}body{overscroll-behavior-y:none}.btn,.navBtn,.mobile
  });
  function connectionState(online,initial=false){const b=document.getElementById('connectionBanner');if(!b)return;if(online){if(initial)return;b.textContent='رجع الاتصال بالإنترنت';b.className='connectionBanner online';setTimeout(()=>b.classList.add('hidden'),1800)}else{b.textContent='أنت غير متصل الآن — بعض الإجراءات بتتوقف إلى أن يرجع الإنترنت';b.className='connectionBanner'}}
  window.addEventListener('offline',()=>connectionState(false));window.addEventListener('online',()=>connectionState(true));connectionState(navigator.onLine,true);
-  let pageBusyWatchdog=null;
+ let pageBusyWatchdog=null;
  function setPageBusy(on,label='نجهز الصفحة…'){
   const l=document.getElementById('pageLoading'),p=document.getElementById(currentPage);
   if(!l)return pageLoadSeq;
@@ -3409,7 +3409,7 @@ html{scroll-behavior:smooth}body{overscroll-behavior-y:none}.btn,.navBtn,.mobile
   try{await _goRC(id);try{history.replaceState(null,'','#'+id)}catch{}window.scrollTo({top:0,behavior:'smooth'})}
   finally{if(seq===pageLoadSeq)setPageBusy(false)}
  };
-// Keep desktop navigation complete, but cap the mobile bar at five primary destinations.
+ // Keep desktop navigation complete, but cap the mobile bar at five primary destinations.
  const _buildNavRC=window.buildNav;
  window.buildNav=function(){_buildNavRC();if(!me?.user)return;const nav=navByRole[me.user.role]||[];let mobile=nav;if(me.user.role==='client')mobile=nav.filter(x=>x[0]!=='team').slice(0,5);else mobile=nav.slice(0,5);const m=document.getElementById('mobileNav');if(m){m.style.gridTemplateColumns=`repeat(${Math.max(1,mobile.length)},1fr)`;m.innerHTML=mobile.map(x=>`<button class="${x[0]===currentPage?'on':''}" data-nav="${x[0]}" onclick="go('${x[0]}')"><span>${x[1]}</span>${x[2]}</button>`).join('')}};
  // Demo-only one tap personas, useful for QA without weakening production login.
