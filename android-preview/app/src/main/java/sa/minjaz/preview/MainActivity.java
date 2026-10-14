@@ -54,6 +54,7 @@ public class MainActivity extends Activity {
     private ConnectivityManager.NetworkCallback networkCallback;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable pageLoadTimeout;
+    private Runnable pendingNetworkRetry;
     private int pageLoadGeneration = 0;
     private String lastGoodUrl;
     private boolean backHandling = false;
@@ -425,6 +426,7 @@ public class MainActivity extends Activity {
 
         @Override
         public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            if (view != webView) return;
             super.onPageStarted(view, url, favicon);
             if (url != null && isInternalUri(Uri.parse(url))) {
                 hideError();
@@ -438,6 +440,7 @@ public class MainActivity extends Activity {
 
         @Override
         public void onPageCommitVisible(WebView view, String url) {
+            if (view != webView) return;
             cancelPageLoadTimeout();
             if (url != null) {
                 try {
@@ -453,6 +456,7 @@ public class MainActivity extends Activity {
 
         @Override
         public void onPageFinished(WebView view, String url) {
+            if (view != webView) return;
             cancelPageLoadTimeout();
             hideLoading();
             super.onPageFinished(view, url);
@@ -464,6 +468,7 @@ public class MainActivity extends Activity {
             WebResourceRequest request,
             WebResourceError error
         ) {
+            if (view != webView) return;
             if (request.isForMainFrame()) {
                 cancelPageLoadTimeout();
                 hideLoading();
@@ -478,6 +483,7 @@ public class MainActivity extends Activity {
             WebResourceRequest request,
             WebResourceResponse errorResponse
         ) {
+            if (view != webView) return;
             if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
                 cancelPageLoadTimeout();
                 hideLoading();
@@ -493,7 +499,7 @@ public class MainActivity extends Activity {
             WebView view,
             RenderProcessGoneDetail detail
         ) {
-            recoverWebView();
+            if (view == webView) recoverWebView();
             return true;
         }
     }
@@ -506,12 +512,16 @@ public class MainActivity extends Activity {
         networkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(Network network) {
-                runOnUiThread(() -> mainHandler.postDelayed(() -> {
-                    if (webView != null && errorView != null
-                        && errorView.getVisibility() == View.VISIBLE) {
-                        retryCurrentPage();
-                    }
-                }, 500));
+                // A network can be available before it has usable internet.
+                runOnUiThread(this::scheduleNetworkRetry);
+            }
+
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                    runOnUiThread(this::scheduleNetworkRetry);
+                }
             }
         };
 
@@ -520,6 +530,19 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
             networkCallback = null;
         }
+    }
+
+    private void scheduleNetworkRetry() {
+        // Coalesce Wi-Fi/mobile hand-offs into one validated retry.
+        if (pendingNetworkRetry != null) mainHandler.removeCallbacks(pendingNetworkRetry);
+        pendingNetworkRetry = () -> {
+            pendingNetworkRetry = null;
+            if (webView != null && errorView != null
+                && errorView.getVisibility() == View.VISIBLE && isNetworkReady()) {
+                retryCurrentPage();
+            }
+        };
+        mainHandler.postDelayed(pendingNetworkRetry, 650);
     }
 
     private void recoverWebView() {
@@ -688,7 +711,7 @@ public class MainActivity extends Activity {
         if (webView != null) {
             webView.onResume();
             if (errorView != null && errorView.getVisibility() == View.VISIBLE && isNetworkReady()) {
-                mainHandler.postDelayed(this::retryCurrentPage, 350);
+                scheduleNetworkRetry();
                 return;
             }
             String current = webView.getUrl();
@@ -741,6 +764,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         cancelPageLoadTimeout();
+        if (pendingNetworkRetry != null) {
+            mainHandler.removeCallbacks(pendingNetworkRetry);
+            pendingNetworkRetry = null;
+        }
         mainHandler.removeCallbacksAndMessages(null);
         if (connectivityManager != null && networkCallback != null) {
             try {
