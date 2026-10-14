@@ -37,6 +37,20 @@ assert.match(external, /if \(!safeExternalUri\(uri\)\) return;/);
 for (const scheme of ['https', 'http', 'mailto', 'tel', 'sms', 'smsto', 'market', 'geo']) {
   assert.ok(external.includes('"' + scheme + '".equals(scheme)'), 'Missing allowlisted scheme: ' + scheme);
 }
-assert.match(gradle, /versionCode 12\s*versionName "1\.0\.0-rc2"/);
-assert.match(gradle, /versionCode 11\s*versionName "0\.11-upload-safety"/);
+assert.match(gradle, /versionCode 13\s*versionName "1\.0\.0-rc3"/);
+assert.match(gradle, /versionCode 12\s*versionName "0\.12-network-resilience"/);
+
+// Test guards for network hand-offs and callbacks from destroyed WebViews.
+const network = region('private void registerNetworkRecovery()', 'private void recoverWebView()');
+assert.ok(network.includes('public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities)'));
+assert.ok(network.includes('NetworkCapabilities.NET_CAPABILITY_VALIDATED'));
+assert.ok(network.includes('mainHandler.removeCallbacks(pendingNetworkRetry)'));
+assert.ok(network.includes('errorView.getVisibility() == View.VISIBLE && isNetworkReady()'));
+assert.ok(network.includes('mainHandler.postDelayed(pendingNetworkRetry, 650)'));
+const resume = region('protected void onResume()', 'protected void onPause()');
+assert.ok(resume.includes('scheduleNetworkRetry()'));
+assert.ok(destroy.includes('mainHandler.removeCallbacks(pendingNetworkRetry)'));
+const webCallbacks = region('private class MinjazWebViewClient', 'private void registerNetworkRecovery()');
+assert.ok(webCallbacks.split('if (view != webView) return;').length - 1 >= 5);
+assert.ok(webCallbacks.includes('if (view == webView) recoverWebView();'));
 console.log('MINJAZ_ANDROID_WEBVIEW_SAFETY_OK');
