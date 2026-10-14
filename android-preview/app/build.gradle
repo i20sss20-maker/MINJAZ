@@ -16,14 +16,14 @@ android {
         preview {
             dimension "distribution"
             applicationId "sa.minjaz.preview"
-            versionCode 11
-            versionName "0.11-upload-safety"
+            versionCode 12
+            versionName "0.12-network-resilience"
         }
         production {
             dimension "distribution"
             applicationId "sa.minjaz.app"
-            versionCode 12
-            versionName "1.0.0-rc2"
+            versionCode 13
+            versionName "1.0.0-rc3"
         }
     }
 
