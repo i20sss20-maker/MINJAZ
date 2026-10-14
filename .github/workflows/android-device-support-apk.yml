@@ -59,16 +59,23 @@ jobs:
           test -s "$APK"
           aapt dump badging "$APK" | tee /tmp/minjaz-badging.txt
           grep -q "package: name='sa.minjaz.preview'" /tmp/minjaz-badging.txt
-          grep -q "versionCode='10'" /tmp/minjaz-badging.txt
-          grep -q "versionName='0.10-android-stability'" /tmp/minjaz-badging.txt
           grep -q "targetSdkVersion:'36'" /tmp/minjaz-badging.txt
           grep -q "sdkVersion:'24'" /tmp/minjaz-badging.txt
+
+          # Resolve the built artifact's version instead of pinning a stale one.
+          VERSION_CODE="$(sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p" /tmp/minjaz-badging.txt | head -1)"
+          VERSION_NAME="$(sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p" /tmp/minjaz-badging.txt | head -1)"
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "Invalid preview versionCode"; exit 1; }
+          [[ "$VERSION_NAME" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo "Invalid preview versionName"; exit 1; }
+          echo "MINJAZ_PREVIEW_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "MINJAZ_PREVIEW_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "Verified MINJAZ preview version $VERSION_NAME ($VERSION_CODE)"
           sha256sum "$APK" | tee /tmp/MINJAZ-device-support.apk.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MINJAZ-device-support-apk
+          name: MINJAZ-${{ env.MINJAZ_PREVIEW_VERSION_NAME }}-device-support-apk
           path: |
             android-preview/app/build/outputs/apk/preview/debug/app-preview-debug.apk
             /tmp/MINJAZ-device-support.apk.sha256
