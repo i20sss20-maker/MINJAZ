@@ -41,24 +41,24 @@ async function main(){
   entries.set('/',new Response('original shell',{status:200,headers:{'content-type':'text/html'}}));
   network=async()=>new Response('private policy page',{status:200,headers:{'content-type':'text/html'}});
   assert.equal((await dispatch('fetch',navigation('/privacy'))).status,200);
-  assert.equal(await entries.get('/').text(),'original shell');
+  assert.equal(await entries.get('/').clone().text(),'original shell');
   assert.ok(!writes.includes('/'));
 
   network=async()=>new Response('not found',{status:404,headers:{'content-type':'text/html'}});
   await dispatch('fetch',navigation('/'));
-  assert.equal(await entries.get('/').text(),'original shell');
+  assert.equal(await entries.get('/').clone().text(),'original shell');
 
   network=async()=>new Response('query variant',{status:200,headers:{'content-type':'text/html'}});
   await dispatch('fetch',navigation('/?app_lang=en'));
-  assert.equal(await entries.get('/').text(),'original shell');
+  assert.equal(await entries.get('/').clone().text(),'original shell');
 
   network=async()=>new Response('confidential',{status:200,headers:{'content-type':'text/html','cache-control':'private, no-store'}});
   await dispatch('fetch',navigation('/'));
-  assert.equal(await entries.get('/').text(),'original shell');
+  assert.equal(await entries.get('/').clone().text(),'original shell');
 
   network=async()=>new Response('updated shell',{status:200,headers:{'content-type':'text/html'}});
   await dispatch('fetch',navigation('/'));
-  assert.equal(await entries.get('/').text(),'updated shell');
+  assert.equal(await entries.get('/').clone().text(),'updated shell');
 
   network=async()=>{throw Error('offline')};
   assert.equal(await (await dispatch('fetch',navigation('/'))).text(),'updated shell');
