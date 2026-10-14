@@ -35,6 +35,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.Locale;
 
@@ -246,17 +247,18 @@ public class MainActivity extends Activity {
                 ValueCallback<Uri[]> callback,
                 FileChooserParams params
             ) {
-                if (fileCallback != null) {
-                    fileCallback.onReceiveValue(null);
-                }
+                finishFileChooser(null);
                 fileCallback = callback;
-                Intent intent = params.createIntent();
                 try {
+                    // createIntent can fail if the device has no file picker.
+                    Intent intent = params.createIntent();
+                    if (intent == null) throw new ActivityNotFoundException();
                     startActivityForResult(intent, FILE_CHOOSER_REQUEST);
                     return true;
-                } catch (ActivityNotFoundException e) {
-                    fileCallback = null;
-                    return false;
+                } catch (Exception e) {
+                    finishFileChooser(null);
+                    Toast.makeText(MainActivity.this, R.string.file_picker_unavailable, Toast.LENGTH_LONG).show();
+                    return true;
                 }
             }
         });
@@ -286,7 +288,9 @@ public class MainActivity extends Activity {
         if (uri == null) return false;
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
         String host = uri.getHost() == null ? "" : uri.getHost();
-        return "https".equals(scheme) && APP_HOST.equalsIgnoreCase(host);
+        return "https".equals(scheme) && APP_HOST.equalsIgnoreCase(host)
+            && (uri.getPort() == -1 || uri.getPort() == 443)
+            && uri.getUserInfo() == null;
     }
 
     private boolean handleNavigation(Uri uri) {
@@ -390,7 +394,20 @@ public class MainActivity extends Activity {
         return name;
     }
 
+    private boolean safeExternalUri(Uri uri) {
+        if (uri == null) return false;
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if ("https".equals(scheme) || "http".equals(scheme)) {
+            return uri.getHost() != null && !uri.getHost().isEmpty();
+        }
+        // Do not hand javascript:, file:, content:, data: or blob: to ACTION_VIEW.
+        return "mailto".equals(scheme) || "tel".equals(scheme)
+            || "sms".equals(scheme) || "smsto".equals(scheme)
+            || "market".equals(scheme) || "geo".equals(scheme);
+    }
+
     private void openExternal(Uri uri) {
+        if (!safeExternalUri(uri)) return;
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.addCategory(Intent.CATEGORY_BROWSABLE);
@@ -507,6 +524,8 @@ public class MainActivity extends Activity {
 
     private void recoverWebView() {
         cancelPageLoadTimeout();
+        // The old renderer owns the file input: close its callback before replacement.
+        finishFileChooser(null);
         String current = webView != null ? webView.getUrl() : null;
         final String lastUrl = safeInternalUrl(current)
             ? localizedInternalUrl(Uri.parse(current))
@@ -703,14 +722,17 @@ public class MainActivity extends Activity {
         super.onSaveInstanceState(outState);
     }
 
+    private void finishFileChooser(Uri[] uris) {
+        ValueCallback<Uri[]> pending = fileCallback;
+        fileCallback = null;
+        if (pending != null) pending.onReceiveValue(uris);
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == FILE_CHOOSER_REQUEST) {
             Uri[] result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
-            if (fileCallback != null) {
-                fileCallback.onReceiveValue(result);
-                fileCallback = null;
-            }
+            finishFileChooser(result);
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -728,10 +750,7 @@ public class MainActivity extends Activity {
             networkCallback = null;
         }
 
-        if (fileCallback != null) {
-            fileCallback.onReceiveValue(null);
-            fileCallback = null;
-        }
+        finishFileChooser(null);
         if (webView != null) {
             webView.stopLoading();
             webView.setWebChromeClient(null);
