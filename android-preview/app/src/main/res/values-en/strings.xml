@@ -4,4 +4,5 @@
     <string name="connection_error_message">Check your internet connection and try again.</string>
     <string name="retry">Try again</string>
     <string name="loading">Preparing MINJAZ…</string>
+    <string name="file_picker_unavailable">Could not open the file picker. Install a file app and try again.</string>
 </resources>

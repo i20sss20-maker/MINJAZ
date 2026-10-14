@@ -3,8 +3,10 @@
 ## Android
 - Production applicationId: sa.minjaz.app
 - Preview applicationId: sa.minjaz.preview
-- Production versionCode: 11
-- Production versionName: 1.0.0-rc1
+- Production versionCode: 12
+- Production versionName: 1.0.0-rc2
+- Preview versionCode: 11
+- Preview versionName: 0.11-upload-safety
 - targetSdk: 36
 - minSdk: 24
 - Cleartext traffic disabled
@@ -29,6 +31,13 @@ powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore
 ```
 
 The keystore is created only under `release-private/`, which is ignored by Git. Back up the JKS file and the two passwords in a secure password manager / offline backup. Do not commit them, upload them to project files, or paste them into chat.
+
+## Android release candidate rc2
+
+- Version `1.0.0-rc2` fixes cancellation of pending file input callbacks during picker failures and WebView renderer recovery. Error messages are localized to Arabic and English.
+- HTTPS in-app navigation is restricted to the app's real origin; unsupported external URL schemes are blocked from Android intents.
+- Google Play release signing for **rc2 must be verified in its own Actions run** before considering it a release candidate. The older signed `1.0.0-rc1` artifact does not contain these fixes.
+- Android CI compilation and APK/AAB validation alone do not prove real-device usability or Play approval.
 
 ## Verified Android signing baseline (2026-10-05)
 

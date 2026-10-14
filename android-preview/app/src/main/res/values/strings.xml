@@ -4,4 +4,5 @@
     <string name="connection_error_message">تحقق من اتصال الإنترنت ثم حاول مرة أخرى.</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="loading">جاري تجهيز مِنجاز…</string>
+    <string name="file_picker_unavailable">تعذر فتح اختيار الملفات. تحقق من توفر تطبيق للملفات وحاول مجددًا.</string>
 </resources>
