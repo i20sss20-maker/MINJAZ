@@ -276,6 +276,9 @@ jobs:
       - name: Verify safe PWA cache and notification links
         run: node tests/service_worker_safety.test.cjs
 
+      - name: Verify Android WebView file picker and link safety
+        run: node tests/android_webview_safety.test.cjs
+
       - name: Quality gate passed
         run: echo "MINJAZ_CODE_QUALITY_OK"
 
