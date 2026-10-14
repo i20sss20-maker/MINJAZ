@@ -3,10 +3,10 @@
 ## Android
 - Production applicationId: sa.minjaz.app
 - Preview applicationId: sa.minjaz.preview
-- Production versionCode: 12
-- Production versionName: 1.0.0-rc2
-- Preview versionCode: 11
-- Preview versionName: 0.11-upload-safety
+- Production versionCode: 13
+- Production versionName: 1.0.0-rc3
+- Preview versionCode: 12
+- Preview versionName: 0.12-network-resilience
 - targetSdk: 36
 - minSdk: 24
 - Cleartext traffic disabled
@@ -31,6 +31,12 @@ powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore
 ```
 
 The keystore is created only under `release-private/`, which is ignored by Git. Back up the JKS file and the two passwords in a secure password manager / offline backup. Do not commit them, upload them to project files, or paste them into chat.
+
+## Android release candidate rc3
+
+- Debounce Android Wi-Fi/mobile network callbacks and retry only once the network becomes internet-validated, including transitions from captive Wi-Fi.
+- Ignore late page/error callbacks from a replaced WebView renderer so they cannot overwrite the new loading or error view.
+- The signed rc3 artifact must be verified from its own CI run. Previous signed rc2 binaries do not include these changes.
 
 ## Android release candidate rc2
 
