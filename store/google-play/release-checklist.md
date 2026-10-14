@@ -30,6 +30,19 @@ powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore
 
 The keystore is created only under `release-private/`, which is ignored by Git. Back up the JKS file and the two passwords in a secure password manager / offline backup. Do not commit them, upload them to project files, or paste them into chat.
 
+## Verified Android signing baseline (2026-10-05)
+
+- GitHub Actions **Android Release Artifacts** run [37380503030](https://github.com/i20sss20-maker/MINJAZ/actions/runs/37380503030) successfully built and signed **APK and AAB** for production flavor `sa.minjaz.app`, version `1.0.0-rc1` (`versionCode 11`).
+- The signed artifact was checked by Android `apksigner` and Java `jarsigner`; the run's ZIP includes both files and SHA-256 hashes. This proves signing at that point in time; do not assume a future release is signed until its own workflow verifies it.
+- GitHub Actions artifact `MINJAZ-1.0.0-rc1-production-signed` has a retention expiry of **2026-11-04**. Store final release binaries in an approved release channel before they expire.
+- Signing evidence **does not** mean the app has been submitted, approved, or launched on Google Play.
+
+## Commercial launch status (checked 2026-10-14)
+
+`Production Smoke` verified that `/readiness` returned `ready_for_commercial_launch: false`. Required blockers: `app_environment`, `sms_provider`, `payment_provider`, `file_storage`, `kyc_provider`, and `legal_review`.
+
+Maintain `APP_ENV=beta` until all real providers, signed callbacks, private file storage, and legal review are verified and `/readiness` confirms commercial readiness. Do not use the existing signed binaries to claim commercial readiness.
+
 ## Play Console
 - App name and descriptions
 - App icon / feature graphic / phone screenshots
@@ -47,4 +60,4 @@ The keystore is created only under `release-private/`, which is ignored by Git. 
 - Real SMS must be configured
 - Real payment provider must be configured
 - Real KYC must be configured if required for withdrawals
-- Production signing secrets must exist
+- Production signing material must be present, safely backed up, and verified again for the exact public release
