@@ -95,7 +95,7 @@ jobs:
           grep -q "openAccountDeletionV316" release-v316.js
           grep -q "سياسة الخصوصية" privacy.html
           grep -q "حذف حساب مِنجاز" account-deletion.html
-          grep -q "web-v31.6" sw.js
+          grep -q "web-v31.7" sw.js
 
           curl -fsS -D headers.txt -o /dev/null -H "Origin: $BASE" "$BASE/health"
           grep -qi "access-control-allow-origin: $BASE" headers.txt
