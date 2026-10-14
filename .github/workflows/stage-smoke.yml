@@ -62,5 +62,5 @@ jobs:
           grep -q "حذف حساب مِنجاز" account-deletion.html
           grep -q "/minjaz-push-v312.js" index.html
           grep -q "/minjaz-work-center-v31.js" index.html
-          grep -q "web-v31.6" sw.js
+          grep -q "web-v31.7" sw.js
           echo "PUBLIC_STAGE_OK index_bytes=$(wc -c < index.html) manifest_bytes=$(wc -c < manifest.webmanifest) sw_bytes=$(wc -c < sw.js)"
