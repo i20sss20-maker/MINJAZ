@@ -270,6 +270,9 @@ jobs:
           set -euo pipefail
           find tests -maxdepth 1 -name '*.py' -print0 | xargs -0 -r python3 -m py_compile
 
+      - name: Verify navigation loading never blocks UI
+        run: node tests/navigation_loading.test.cjs
+
       - name: Quality gate passed
         run: echo "MINJAZ_CODE_QUALITY_OK"
 
