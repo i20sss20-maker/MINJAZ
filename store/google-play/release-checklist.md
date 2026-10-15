@@ -3,10 +3,10 @@
 ## Android
 - Production applicationId: sa.minjaz.app
 - Preview applicationId: sa.minjaz.preview
-- Production versionCode: 13
-- Production versionName: 1.0.0-rc3
-- Preview versionCode: 12
-- Preview versionName: 0.12-network-resilience
+- Production versionCode: 14
+- Production versionName: 1.0.0-rc4
+- Preview versionCode: 13
+- Preview versionName: 0.13-back-reliability
 - targetSdk: 36
 - minSdk: 24
 - Cleartext traffic disabled
@@ -31,6 +31,14 @@ powershell -ExecutionPolicy Bypass -File tools/create-minjaz-production-keystore
 ```
 
 The keystore is created only under `release-private/`, which is ignored by Git. Back up the JKS file and the two passwords in a secure password manager / offline backup. Do not commit them, upload them to project files, or paste them into chat.
+
+## Android release candidate rc4
+
+- Bound native Android back-button JS handling to a 1.5-second watchdog, with generation checks so late callbacks cannot hijack a later back press.
+- Recover through native WebView history or close the activity if the page JS is frozen or throws.
+- Back from the full-page connection error no longer reveals the broken WebView error document.
+- Cancel pending back callbacks on pause, renderer replacement, new intent, and activity destruction.
+- A signed rc4 APK/AAB must be verified from a new Android Release Artifacts CI run before distribution.
 
 ## Android release candidate rc3
 
