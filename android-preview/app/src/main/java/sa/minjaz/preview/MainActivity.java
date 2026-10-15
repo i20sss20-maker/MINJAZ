@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
     private static final int FILE_CHOOSER_REQUEST = 7001;
     private static final long PAGE_LOAD_TIMEOUT_MS = 20000L;
+    private static final long BACK_HANDLER_TIMEOUT_MS = 1500L;
 
     private FrameLayout root;
     private WebView webView;
@@ -58,6 +59,8 @@ public class MainActivity extends Activity {
     private int pageLoadGeneration = 0;
     private String lastGoodUrl;
     private boolean backHandling = false;
+    private Runnable backHandlingTimeout;
+    private int backHandlingGeneration = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -546,6 +549,7 @@ public class MainActivity extends Activity {
     }
 
     private void recoverWebView() {
+        cancelBackHandling();
         cancelPageLoadTimeout();
         // The old renderer owns the file input: close its callback before replacement.
         finishFileChooser(null);
@@ -657,10 +661,28 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void cancelBackHandling() {
+        backHandlingGeneration++;
+        backHandling = false;
+        if (backHandlingTimeout != null) {
+            mainHandler.removeCallbacks(backHandlingTimeout);
+            backHandlingTimeout = null;
+        }
+    }
+
+    private void completeBackHandling(int generation, boolean handled) {
+        // Ignore late callbacks from a dead renderer or a superseded back press.
+        if (!backHandling || generation != backHandlingGeneration) return;
+        cancelBackHandling();
+        if (!handled) nativeBackFallback();
+    }
+
     private void handleBack() {
         if (backHandling) return;
         if (errorView != null && errorView.getVisibility() == View.VISIBLE) {
             hideError();
+            // Do not expose the underlying WebView error page.
+            nativeBackFallback();
             return;
         }
         if (webView == null) {
@@ -668,6 +690,9 @@ public class MainActivity extends Activity {
             return;
         }
         backHandling = true;
+        final int generation = ++backHandlingGeneration;
+        backHandlingTimeout = () -> completeBackHandling(generation, false);
+        mainHandler.postDelayed(backHandlingTimeout, BACK_HANDLER_TIMEOUT_MS);
         String script = "(function(){try{"
             + "var g=document.getElementById('globalSearchOverlayV28');"
             + "if(g&&g.classList.contains('on')&&window.closeGlobalSearchV28){window.closeGlobalSearchV28();return true;}"
@@ -676,15 +701,19 @@ public class MainActivity extends Activity {
             + "var p=document.querySelector('.page.on');"
             + "if(p&&p.id&&p.id!=='home'&&window.go){window.go('home');return true;}"
             + "return false;}catch(e){return false;}})();";
-        webView.evaluateJavascript(script, value -> {
-            backHandling = false;
-            if (!"true".equals(value)) nativeBackFallback();
-        });
+        try {
+            webView.evaluateJavascript(
+                script, value -> completeBackHandling(generation, "true".equals(value))
+            );
+        } catch (RuntimeException ignored) {
+            completeBackHandling(generation, false);
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        cancelBackHandling();
         setIntent(intent);
         Uri data = intent == null ? null : intent.getData();
         if (isInternalUri(data)) {
@@ -734,6 +763,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        cancelBackHandling();
         if (webView != null) webView.onPause();
         CookieManager.getInstance().flush();
         super.onPause();
@@ -763,6 +793,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        cancelBackHandling();
         cancelPageLoadTimeout();
         if (pendingNetworkRetry != null) {
             mainHandler.removeCallbacks(pendingNetworkRetry);

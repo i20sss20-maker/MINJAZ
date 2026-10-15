@@ -37,8 +37,8 @@ assert.match(external, /if \(!safeExternalUri\(uri\)\) return;/);
 for (const scheme of ['https', 'http', 'mailto', 'tel', 'sms', 'smsto', 'market', 'geo']) {
   assert.ok(external.includes('"' + scheme + '".equals(scheme)'), 'Missing allowlisted scheme: ' + scheme);
 }
-assert.match(gradle, /versionCode 13\s*versionName "1\.0\.0-rc3"/);
-assert.match(gradle, /versionCode 12\s*versionName "0\.12-network-resilience"/);
+assert.match(gradle, /versionCode 14\s*versionName "1\.0\.0-rc4"/);
+assert.match(gradle, /versionCode 13\s*versionName "0\.13-back-reliability"/);
 
 // Test guards for network hand-offs and callbacks from destroyed WebViews.
 const network = region('private void registerNetworkRecovery()', 'private void recoverWebView()');
@@ -53,4 +53,21 @@ assert.ok(destroy.includes('mainHandler.removeCallbacks(pendingNetworkRetry)'));
 const webCallbacks = region('private class MinjazWebViewClient', 'private void registerNetworkRecovery()');
 assert.ok(webCallbacks.split('if (view != webView) return;').length - 1 >= 5);
 assert.ok(webCallbacks.includes('if (view == webView) recoverWebView();'));
+
+// A WebView renderer may never return evaluateJavascript's callback.
+// The Android back button must remain usable even then.
+const back = region('private void cancelBackHandling()', 'protected void onNewIntent(');
+assert.ok(back.includes('mainHandler.removeCallbacks(backHandlingTimeout)'));
+assert.ok(back.includes('generation != backHandlingGeneration'));
+assert.ok(back.includes('mainHandler.postDelayed(backHandlingTimeout, BACK_HANDLER_TIMEOUT_MS)'));
+assert.ok(back.includes('completeBackHandling(generation, "true".equals(value))'));
+assert.ok(back.includes('catch (RuntimeException ignored)'));
+assert.ok(back.includes('nativeBackFallback();'));
+assert.ok(back.includes('if (errorView != null && errorView.getVisibility() == View.VISIBLE)'));
+const pause = region('protected void onPause()', 'protected void onSaveInstanceState(');
+assert.ok(pause.includes('cancelBackHandling()'));
+assert.ok(destroy.includes('cancelBackHandling()'));
+const recoveryWithBack = region('private void recoverWebView()', 'private void showLoading()');
+assert.ok(recoveryWithBack.includes('cancelBackHandling()'));
+assert.ok(source.includes('private static final long BACK_HANDLER_TIMEOUT_MS = 1500L'));
 console.log('MINJAZ_ANDROID_WEBVIEW_SAFETY_OK');
