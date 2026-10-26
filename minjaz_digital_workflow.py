@@ -299,7 +299,7 @@ def _transition(connect,order_id,actor_id,target,note,is_admin):
                 # delivery event. Links for subsequent revisions stay private
                 # until the next successful hand-off.
                 cur.execute("""UPDATE digital_service_deliverables SET published_at=NOW()
-                  WHERE order_id=%s AND published_at IS NULL""",(order_id,))
+                  WHERE order_id=%s AND published_at IS NULL AND archived_at IS NULL""",(order_id,))
             else:
                 cur.execute("""UPDATE digital_service_orders SET status=%s,updated_at=NOW()
                   WHERE id=%s""",(target,order_id))
