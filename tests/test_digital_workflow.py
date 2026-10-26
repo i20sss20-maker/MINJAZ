@@ -50,6 +50,33 @@ class WorkflowTests(unittest.TestCase):
         if db is None:db=FailConnect()
         return dispatch(method,BASE+path,{},body,actor,(lambda:db) if not isinstance(db,FailConnect) else db)
 
+    def test_package_anonymous_is_denied(self):
+        self.assertEqual(self.call("admin/packages","GET",None,None)[0],401)
+    def test_package_non_admin_is_denied(self):
+        self.assertEqual(self.call("admin/packages","GET",None,CUSTOMER)[0],403)
+    def test_package_invalid_category_type_rejected(self):
+        data={"slug":"test-demo","category":["ai"],"title_ar":"خدمة تجريبية","description_ar":"",
+              "price_sar":"100.00","delivery_days":7,"revision_limit":1,"active":False}
+        self.assertEqual(self.call("admin/packages","POST",data,ADMIN)[0],400)
+    def test_package_wrong_price_rejected(self):
+        data={"slug":"test-demo","category":"ai","title_ar":"خدمة تجريبية","description_ar":"",
+              "price_sar":"NaN","delivery_days":7,"revision_limit":1,"active":False}
+        self.assertEqual(self.call("admin/packages","POST",data,ADMIN)[0],400)
+    def test_package_price_too_precise_rejected(self):
+        data={"slug":"test-demo","category":"ai","title_ar":"خدمة تجريبية","description_ar":"",
+              "price_sar":"100.001","delivery_days":7,"revision_limit":1,"active":False}
+        self.assertEqual(self.call("admin/packages","POST",data,ADMIN)[0],400)
+    def test_package_invalid_fields_rejected(self):
+        data={"slug":"test-demo","category":"ai","title_ar":"خدمة تجريبية","description_ar":"",
+              "price_sar":"100.00","delivery_days":7,"revision_limit":1,"active":False,"is_admin":True}
+        self.assertEqual(self.call("admin/packages","POST",data,ADMIN)[0],400)
+    def test_package_bad_patch_rejected(self):
+        self.assertEqual(self.call("admin/packages/1","PATCH",{"secret":True},ADMIN)[0],400)
+    def test_package_create_preview_only(self):
+        data={"slug":"test-demo","category":"ai","title_ar":"خدمة تجريبية","description_ar":"",
+              "price_sar":"100.00","delivery_days":7,"revision_limit":1,"active":False}
+        with patch.dict(os.environ,{"APP_ENV":"production","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}):
+            self.assertEqual(self.call("admin/packages","POST",data,ADMIN)[0],403)
     def test_unauthorized_admin_read(self):
         self.assertEqual(self.call("admin/orders","GET",None,None)[0],401)
     def test_non_admin_read(self):
