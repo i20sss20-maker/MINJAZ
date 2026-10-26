@@ -37,6 +37,11 @@ def main():
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/orders/1",401,"error")
+    check("/api/digital-services/admin/orders",401,"error")
+    check("/api/digital-services/admin/packages",401,"error")
+    check("/api/digital-services/orders/1/revisions",401,"error")
+    check("/digital-services/admin",401,"error")
+    check("/health",200,"ok")
     print("All read-only sandbox checks passed.")
 
 if __name__=="__main__":
