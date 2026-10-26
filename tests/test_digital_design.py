@@ -66,6 +66,17 @@ class DigitalDesignTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, style)
 
+    def test_email_signin_is_primary_for_customer_freelancer_and_admin(self):
+        main = (ROOT / "index.html").read_text(encoding="utf8")
+        admin = self.admin
+        self.assertIn('id="loginPhone" type="email"', main)
+        self.assertIn("/api/v1/auth/request-email-otp", main)
+        self.assertIn("/api/v1/auth/verify-email-otp", main)
+        self.assertIn('id="adminLoginEmail" type="email"', admin)
+        self.assertIn("/api/v1/auth/request-email-otp", admin)
+        self.assertIn("/api/v1/auth/verify-email-otp", admin)
+        self.assertIn("ADMIN_EMAIL", admin)
+
     def test_no_duplicate_dom_ids(self):
         for page in (self.store_page, self.admin_page):
             with self.subTest(page=page):
@@ -83,7 +94,7 @@ class DigitalDesignTests(unittest.TestCase):
     def test_admin_login_and_editors_retain_expected_ids(self):
         needed = {
             "adminAccess", "adminDashboard", "adminLoginFields", "accessStatus",
-            "adminPhoneForm", "adminOtpForm", "adminLoginPhone", "adminLoginName",
+            "adminEmailForm", "adminOtpForm", "adminLoginEmail", "adminLoginName",
             "adminLoginCode", "requestAdminCode", "verifyAdminCode", "recheckAdmin",
             "summary", "orders", "details", "packages", "packageForm",
             "packagesRefresh", "filter", "refresh", "packageMessage",
