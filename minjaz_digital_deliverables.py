@@ -43,21 +43,30 @@ def dispatch(method, path, query, body, actor, connect):
         return 404, {"error": "not_found"}
     bits = path[len(prefix):].strip("/").split("/")
     is_admin = len(bits) == 4 and bits[0:2] == ["admin", "orders"] and bits[-1] == "deliverables"
+    is_admin_delete = (len(bits) == 5 and bits[0:2] == ["admin", "orders"]
+                       and bits[3] == "deliverables")
     is_customer = len(bits) == 3 and bits[0] == "orders" and bits[-1] == "deliverables"
-    if not (is_admin or is_customer):
+    if not (is_admin or is_admin_delete or is_customer):
         return 404, {"error": "not_found"}
     if actor is None:
         return 401, {"error": "unauthorized"}
-    if is_admin and actor.get("role") != "admin":
+    if (is_admin or is_admin_delete) and actor.get("role") != "admin":
         return 403, {"error": "admin_only"}
-    suffix = bits[-2]
+    suffix = bits[2] if is_admin_delete else bits[-2]
     if not suffix.isascii() or not suffix.isdigit() or int(suffix) <= 0:
         return 404, {"error": "not_found"}
     order_id = int(suffix)
+    asset_id = None
+    if is_admin_delete:
+        asset_suffix = bits[-1]
+        if not asset_suffix.isascii() or not asset_suffix.isdigit() or int(asset_suffix) <= 0:
+            return 404, {"error": "not_found"}
+        asset_id = int(asset_suffix)
     actor_id = int(actor["id"])
     if method == "POST" and is_customer:
         return 403, {"error": "admin_only"}
-    if method not in (("GET", "POST") if is_admin else ("GET",)):
+    allowed_methods = ("DELETE",) if is_admin_delete else (("GET", "POST") if is_admin else ("GET",))
+    if method not in allowed_methods:
         return 405, {"error": "method_not_allowed"}
 
     if method == "POST":
@@ -71,6 +80,8 @@ def dispatch(method, path, query, body, actor, connect):
             return 400, {"error": "invalid_delivery_url"}
         if not _preview():
             return 403, {"error": "sandbox_only"}
+    if method == "DELETE" and not _preview():
+        return 403, {"error": "sandbox_only"}
 
     c = connect()
     try:
@@ -83,18 +94,35 @@ def dispatch(method, path, query, body, actor, connect):
                     return 404, {"error": "order_not_found"}
                 if found[0] != "in_progress":
                     return 409, {"error": "order_not_in_progress"}
-                cur.execute("SELECT COUNT(*) FROM digital_service_deliverables WHERE order_id=%s",(order_id,))
+                cur.execute("SELECT COUNT(*) FROM digital_service_deliverables WHERE order_id=%s AND archived_at IS NULL",(order_id,))
                 if cur.fetchone()[0] >= 25:
                     return 409, {"error": "delivery_link_limit_reached"}
                 cur.execute("""INSERT INTO digital_service_deliverables (order_id,admin_id,title,url)
                   VALUES (%s,%s,%s,%s)
-                  ON CONFLICT (order_id,url) DO NOTHING RETURNING id""",
+                  ON CONFLICT (order_id,url) WHERE archived_at IS NULL DO NOTHING RETURNING id""",
                   (order_id,actor_id,title.strip(),url))
                 inserted = cur.fetchone()
                 if not inserted:
                     return 409, {"error": "duplicate_delivery_url"}
                 c.commit()
                 return 201, {"id": inserted[0], "order_id": order_id, "published": False}
+            if method == "DELETE":
+                c.autocommit = False
+                cur.execute("SELECT status FROM digital_service_orders WHERE id=%s FOR UPDATE",(order_id,))
+                row = cur.fetchone()
+                if not row:
+                    return 404, {"error": "order_not_found"}
+                if row[0] != "in_progress":
+                    return 409, {"error": "order_not_in_progress"}
+                cur.execute("""UPDATE digital_service_deliverables
+                  SET archived_at=NOW(),archived_by=%s
+                  WHERE id=%s AND order_id=%s AND archived_at IS NULL
+                    AND published_at IS NULL RETURNING id""",
+                  (actor_id,asset_id,order_id))
+                if not cur.fetchone():
+                    return 404, {"error": "pending_link_not_found"}
+                c.commit()
+                return 200, {"order_id": order_id, "withdrawn_id": asset_id}
             if is_admin:
                 cur.execute("SELECT 1 FROM digital_service_orders WHERE id=%s",(order_id,))
             else:
@@ -105,11 +133,11 @@ def dispatch(method, path, query, body, actor, connect):
             if is_admin:
                 cur.execute("""SELECT id,title,url,created_at,published_at
                   FROM digital_service_deliverables WHERE order_id=%s
-                  ORDER BY id DESC LIMIT 100""",(order_id,))
+                    AND archived_at IS NULL ORDER BY id DESC LIMIT 100""",(order_id,))
             else:
                 cur.execute("""SELECT id,title,url,created_at,published_at
                   FROM digital_service_deliverables WHERE order_id=%s
-                    AND published_at IS NOT NULL ORDER BY id DESC LIMIT 100""",(order_id,))
+                    AND published_at IS NOT NULL AND archived_at IS NULL ORDER BY id DESC LIMIT 100""",(order_id,))
             assets = [{"id":row[0],"title":row[1],"url":row[2],
                        "created_at":row[3].isoformat(),
                        "published":row[4] is not None,
@@ -117,7 +145,7 @@ def dispatch(method, path, query, body, actor, connect):
                       for row in cur.fetchall()]
             return 200, {"order_id":order_id, "deliverables":assets}
     except Exception:
-        if method == "POST":
+        if method in ("POST","DELETE"):
             c.rollback()
         raise
     finally:
