@@ -80,6 +80,10 @@ def dispatch(method, path, query, body, actor, connect):
                         return 200, {'order_id':prior[0],'status':prior[2],'idempotent_replay':True}
                     return 409, {'error':'idempotency_key_reused'}
                 oid=inserted[0]
+                cur.execute("""INSERT INTO digital_service_order_events
+                  (order_id,actor_id,previous_status,new_status,note)
+                  VALUES (%s,%s,%s,%s,%s)""",
+                  (oid,user_id,'created','draft',None))
             c.commit()
             return 201, {'order_id':oid,'status':'draft','idempotent_replay':False}
         except Exception:
