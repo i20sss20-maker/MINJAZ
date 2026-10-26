@@ -21,18 +21,30 @@ def main():
         raise SystemExit("DATABASE_URL is required")
     with psycopg2.connect(db_url) as connection:
         with connection.cursor() as cur:
-            for slug, category, title, description, price, days, revisions in SAMPLES:
-                cur.execute("""INSERT INTO digital_service_packages
-                    (slug, category, title_ar, description_ar, price_sar, delivery_days, revision_limit, active)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,TRUE)
-                    ON CONFLICT (slug) DO NOTHING""",
-                    (slug, category, title, description, price, days, revisions))
-            cur.execute("SELECT slug FROM digital_service_packages WHERE slug = ANY(%s) AND active=TRUE ORDER BY slug", ([item[0] for item in SAMPLES],))
-            found = {row[0] for row in cur.fetchall()}
-            missing = {item[0] for item in SAMPLES} - found
-            if missing:
-                raise RuntimeError("Missing sandbox demo packages: " + ", ".join(sorted(missing)))
-    print(f"[digital-services] verified {len(found)}/{len(SAMPLES)} active demo packages in sandbox")
+            counts = seed_packages(cur)
+    print(f"[digital-services] verified {counts['present']}/{len(SAMPLES)} demo packages in sandbox; "
+          f"{counts['active']} active, {counts['hidden']} intentionally hidden")
+
+def seed_packages(cur):
+    """Insert missing demo packages, but never overwrite an admin's edits or visibility.
+
+    A package hidden from the admin panel must not block a deployment or be
+    republished by a future seed. This check verifies presence, not visibility.
+    """
+    for slug, category, title, description, price, days, revisions in SAMPLES:
+        cur.execute("""INSERT INTO digital_service_packages
+            (slug, category, title_ar, description_ar, price_sar, delivery_days, revision_limit, active)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,TRUE)
+            ON CONFLICT (slug) DO NOTHING""",
+            (slug, category, title, description, price, days, revisions))
+    slugs = [item[0] for item in SAMPLES]
+    cur.execute("SELECT slug, active FROM digital_service_packages WHERE slug = ANY(%s)", (slugs,))
+    found = {row[0]: bool(row[1]) for row in cur.fetchall()}
+    missing = set(slugs) - set(found)
+    if missing:
+        raise RuntimeError("Missing sandbox demo packages: " + ", ".join(sorted(missing)))
+    return {"present": len(found), "active": sum(found.values()),
+            "hidden": len(found) - sum(found.values())}
 
 if __name__ == "__main__":
     main()
