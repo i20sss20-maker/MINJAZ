@@ -43,7 +43,21 @@ def check_css(path, marker):
         raise AssertionError(f"{path}: missing unified design CSS (HTTP {status})")
     print(f"PASS {path}: unified design CSS served")
 
+def check_script(path, marker):
+    req=Request(BASE+path,headers={"Accept":"application/javascript","User-Agent":"MINJAZ-sandbox-smoke/1"})
+    with urlopen(req,timeout=15) as response:
+        js=response.read(131072).decode("utf-8")
+        status=response.status
+        content_type=response.headers.get("Content-Type","")
+    if status!=200 or "javascript" not in content_type.lower() or marker not in js:
+        raise AssertionError(f"{path}: registration UI not served (HTTP {status})")
+    print(f"PASS {path}: email signup UI ready")
+
 def main():
+    account=check("/api/v1/auth/account-status",200,"configured")
+    if account.get("registration")!="email_link" or account.get("fields")!=["name","email","phone","password"]:
+        raise AssertionError("verified account registration contract missing")
+    check_script("/minjaz-account-registration-v1.js","/api/v1/auth/register")
     state=check("/api/v1/auth/email-status",200,"configured")
     if state.get("method")!="email" or not isinstance(state.get("configured"),bool):
         raise AssertionError("email login provider state missing")
