@@ -2511,6 +2511,10 @@ class H(BaseHTTPRequestHandler):
                 if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
                 if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
                     q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
+                # Development OTP codes are returned by the API for demo clients.
+                # They must never unlock an administrative account on a public URL.
+                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE and SMS_MODE!='adapter':
+                    return self.sendj(503,{'error':'admin_secure_sms_required'})
                 q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
                 if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
                 u=q('select * from users where phone=%s',(ch['phone'],), 'one')
