@@ -4,6 +4,10 @@ All status changes are audited and performed under a row lock.
 No payment, billing, or financial status can be set by this module.
 """
 import os
+import re
+import json
+from decimal import Decimal, InvalidOperation
+import psycopg2
 
 SANDBOX_PROJECT_ID = "b64c32a3-e7d0-4f5c-8482-c0f43bc1f3f4"
 STATUSES = {"draft", "in_progress", "delivered", "revision_requested", "completed", "cancelled"}
@@ -25,6 +29,119 @@ def _order_info(row):
             "requirements": row[5], "delivery_note": row[6],
             "revision_limit": row[7], "created_at": row[8].isoformat()}
 
+
+PACKAGE_CATEGORIES = {"website","mobile_app","ecommerce","branding","maintenance","ai"}
+PACKAGE_FIELDS = {"slug","category","title_ar","description_ar","price_sar","delivery_days","revision_limit","active"}
+
+def _package(row):
+    return {"id":row[0],"slug":row[1],"category":row[2],"title_ar":row[3],
+            "description_ar":row[4],"price_sar":str(row[5]),"delivery_days":row[6],
+            "revision_limit":row[7],"active":row[8]}
+
+def _validated_package(values):
+    if not isinstance(values,dict) or values.keys() != PACKAGE_FIELDS:
+        return None
+    slug=values["slug"];title=values["title_ar"];description=values["description_ar"]
+    if not isinstance(slug,str) or not 3<=len(slug)<=80 or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*",slug):
+        return None
+    if values["category"] not in PACKAGE_CATEGORIES:
+        return None
+    if not isinstance(title,str) or not 3<=len(title.strip())<=150:
+        return None
+    if not isinstance(description,str) or len(description)>5000:
+        return None
+    if type(values["delivery_days"]) is not int or not 1<=values["delivery_days"]<=365:
+        return None
+    if type(values["revision_limit"]) is not int or not 0<=values["revision_limit"]<=50:
+        return None
+    if type(values["active"]) is not bool:
+        return None
+    raw_price=values["price_sar"]
+    if isinstance(raw_price,bool) or not isinstance(raw_price,(str,int,float,Decimal)):
+        return None
+    try:
+        price=Decimal(str(raw_price))
+        if not price.is_finite() or price<0 or price>9999999 or price.as_tuple().exponent < -2:
+            return None
+    except (InvalidOperation,ValueError,TypeError):
+        return None
+    return {**values,"title_ar":title.strip(),"price_sar":str(price.quantize(Decimal("0.01")))}
+
+def _package_admin(method,bits,body,actor,connect):
+    if bits == ["admin","packages"]:
+        if method == "GET":
+            c=connect()
+            try:
+                with c.cursor() as cur:
+                    cur.execute("""SELECT id,slug,category,title_ar,description_ar,price_sar,
+                      delivery_days,revision_limit,active FROM digital_service_packages
+                      ORDER BY id DESC LIMIT 200""")
+                    return 200, {"packages":[_package(row) for row in cur.fetchall()]}
+            finally:
+                c.close()
+        if method != "POST":
+            return 405, {"error":"method_not_allowed"}
+        if not isinstance(body,dict) or set(body) != PACKAGE_FIELDS:
+            return 400, {"error":"invalid_package"}
+        normalized=_validated_package(body)
+        if normalized is None:
+            return 400, {"error":"invalid_package"}
+        return _store_package(connect,actor["id"],normalized)
+    if len(bits)==3 and bits[:2]==["admin","packages"]:
+        package_id=_positive_id(bits[2])
+        if not package_id:
+            return 404, {"error":"not_found"}
+        if method != "PATCH":
+            return 405, {"error":"method_not_allowed"}
+        if not isinstance(body,dict) or not body or not set(body).issubset(PACKAGE_FIELDS):
+            return 400, {"error":"invalid_package"}
+        return _store_package(connect,actor["id"],body,package_id)
+    return 404, {"error":"not_found"}
+
+def _store_package(connect,actor_id,values,package_id=None):
+    if not _preview():
+        return 403, {"error":"sandbox_only"}
+    c=connect();c.autocommit=False
+    try:
+        with c.cursor() as cur:
+            before=None
+            if package_id:
+                cur.execute("""SELECT id,slug,category,title_ar,description_ar,price_sar,
+                  delivery_days,revision_limit,active FROM digital_service_packages WHERE id=%s FOR UPDATE""",(package_id,))
+                row=cur.fetchone()
+                if not row:
+                    return 404, {"error":"package_not_found"}
+                before=_package(row)
+                updated=_validated_package({k:v for k,v in before.items() if k!="id"}|values)
+                if updated is None:
+                    return 400, {"error":"invalid_package"}
+                cur.execute("""UPDATE digital_service_packages SET slug=%s,category=%s,title_ar=%s,
+                  description_ar=%s,price_sar=%s,delivery_days=%s,revision_limit=%s,active=%s,
+                  updated_at=NOW() WHERE id=%s""",
+                  tuple(updated[k] for k in ("slug","category","title_ar","description_ar","price_sar","delivery_days","revision_limit","active"))+(package_id,))
+            else:
+                updated=values
+                cur.execute("""INSERT INTO digital_service_packages
+                  (slug,category,title_ar,description_ar,price_sar,delivery_days,revision_limit,active)
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                  tuple(updated[k] for k in ("slug","category","title_ar","description_ar","price_sar","delivery_days","revision_limit","active")))
+                package_id=cur.fetchone()[0]
+            cur.execute("""INSERT INTO digital_service_package_events(package_id,admin_id,action,before_data,after_data)
+              VALUES (%s,%s,%s,%s::jsonb,%s::jsonb)""",
+              (package_id,int(actor_id),"updated" if before else "created",
+               json.dumps(before,ensure_ascii=False) if before else None,
+               json.dumps(updated,ensure_ascii=False)))
+        c.commit()
+        return (200 if before else 201), {"package_id":package_id,"package":updated}
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        return 409, {"error":"slug_already_exists"}
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
 def dispatch(method, path, query, body, actor, connect):
     prefix = "/api/digital-services/"
     if not path.startswith(prefix):
@@ -37,6 +154,8 @@ def dispatch(method, path, query, body, actor, connect):
         return 403, {"error": "admin_only"}
 
     if admin_route:
+        if len(bits) >= 2 and bits[1] == "packages":
+            return _package_admin(method,bits,body,actor,connect)
         if bits == ["admin", "orders"] and method == "GET":
             requested = (query.get("status") or [None])[0]
             if requested and requested not in STATUSES:
