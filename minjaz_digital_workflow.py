@@ -44,7 +44,7 @@ def _validated_package(values):
     slug=values["slug"];title=values["title_ar"];description=values["description_ar"]
     if not isinstance(slug,str) or not 3<=len(slug)<=80 or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*",slug):
         return None
-    if values["category"] not in PACKAGE_CATEGORIES:
+    if not isinstance(values["category"],str) or values["category"] not in PACKAGE_CATEGORIES:
         return None
     if not isinstance(title,str) or not 3<=len(title.strip())<=150:
         return None
@@ -57,7 +57,7 @@ def _validated_package(values):
     if type(values["active"]) is not bool:
         return None
     raw_price=values["price_sar"]
-    if isinstance(raw_price,bool) or not isinstance(raw_price,(str,int,float,Decimal)):
+    if isinstance(raw_price,bool) or not isinstance(raw_price,(str,int,float,Decimal)) or len(str(raw_price)) > 24:
         return None
     try:
         price=Decimal(str(raw_price))
