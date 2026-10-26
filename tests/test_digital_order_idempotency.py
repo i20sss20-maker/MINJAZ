@@ -56,8 +56,11 @@ class Cursor:
                             if uid==user_id and v["id"]==order_id),None)
                 self.one=(found["id"],"متجر رقمي",found["price"],found["status"],
                     datetime.now(timezone.utc),found["requirements"],None,found["limit"]) if found else None
-        elif "SELECT COUNT(*) FROM digital_service_revisions" in key:
-            self.one=(0,)
+        elif "SELECT note,created_at FROM digital_service_revisions" in key:
+            self.rows=[(row["note"],row["created_at"]) for row in self.db.revision_rows]
+        elif "SELECT previous_status,new_status,note,created_at FROM digital_service_order_events" in key:
+            self.rows=[(row["before"],row["after"],row.get("note"),row["created_at"])
+                       for row in self.db.event_rows]
         else:
             raise AssertionError("unexpected SQL: "+key)
     def fetchone(self):return self.one
@@ -67,6 +70,7 @@ class Connection:
     def __init__(self):
         self.orders={};self.seq=101;self.package=("3499.00",2)
         self.active=True;self.sql=[];self.autocommit=True
+        self.revision_rows=[];self.event_rows=[]
         self.commits=0;self.rollbacks=0;self.closes=0
     def cursor(self):return Cursor(self)
     def commit(self):self.commits+=1
@@ -144,6 +148,21 @@ class OrdersTests(unittest.TestCase):
         code,data=dispatch("GET",BASE+"/"+str(oid),{},None,{"id":12},db)
         self.assertEqual(code,404)
         self.assertEqual(data["error"],"order_not_found")
+    def test_customer_history_is_returned_only_after_owner_lookup(self):
+        db=Connection()
+        oid=self.create(db)[1]["order_id"]
+        now=datetime.now(timezone.utc)
+        db.revision_rows=[{"note":"تعديل شعار المتجر","created_at":now}]
+        db.event_rows=[{"before":"in_progress","after":"delivered","note":"ملفات التسليم","created_at":now}]
+        code,data=dispatch("GET",BASE+"/"+str(oid),{},None,{"id":11},db)
+        self.assertEqual(code,200)
+        self.assertEqual(data["order"]["revisions_used"],1)
+        self.assertEqual(data["order"]["events"][0]["new_status"],"delivered")
+        self.assertEqual(data["order"]["revisions"][0]["note"],"تعديل شعار المتجر")
+        db.sql.clear()
+        code,_=dispatch("GET",BASE+"/"+str(oid),{},None,{"id":12},db)
+        self.assertEqual(code,404)
+        self.assertFalse(any("digital_service_order_events" in query for query,args in db.sql))
     def test_owner_reads_order_and_revision_counts(self):
         db=Connection()
         oid=self.create(db)[1]["order_id"]
