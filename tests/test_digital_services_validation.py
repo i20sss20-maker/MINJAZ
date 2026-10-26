@@ -21,6 +21,18 @@ class DigitalServicesValidationTests(unittest.TestCase):
         self.assertEqual(dispatch('POST','/api/digital-services/orders',{}, {'package_id':True,'requirements':'requirements long enough'}, {'id':5},NoDatabase())[0],400)
     def test_invalid_order_id(self):
         self.assertEqual(dispatch('GET','/api/digital-services/orders/abc',{},None,{'id':5},NoDatabase())[0],404)
+    def test_missing_requirements_rejected(self):
+        self.assertEqual(dispatch('POST','/api/digital-services/orders',{}, {'package_id':1}, {'id':5},NoDatabase())[0],400)
+    def test_whitespace_requirements_rejected(self):
+        self.assertEqual(dispatch('POST','/api/digital-services/orders',{}, {'package_id':1,'requirements':'             '}, {'id':5},NoDatabase())[0],400)
+    def test_non_dict_order_payload_rejected(self):
+        self.assertEqual(dispatch('POST','/api/digital-services/orders',{}, ['invalid'], {'id':5},NoDatabase())[0],400)
+    def test_unicode_order_id_rejected(self):
+        self.assertEqual(dispatch('GET','/api/digital-services/orders/١',{},None,{'id':5},NoDatabase())[0],404)
+    def test_zero_order_id_rejected(self):
+        self.assertEqual(dispatch('GET','/api/digital-services/orders/0',{},None,{'id':5},NoDatabase())[0],404)
+    def test_oversized_requirements_rejected(self):
+        self.assertEqual(dispatch('POST','/api/digital-services/orders',{}, {'package_id':1,'requirements':'x'*10001}, {'id':5},NoDatabase())[0],400)
     def test_unsupported_method(self):
         self.assertEqual(dispatch('DELETE','/api/digital-services/orders',{},None,{'id':5},NoDatabase())[0],405)
 
