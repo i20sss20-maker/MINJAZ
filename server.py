@@ -67,7 +67,10 @@ def _https_url(v):
 def production_blockers():
     blockers=[]
     if SECRET=='dev-secret-change-me' or len(SECRET)<32: blockers.append('AUTH_SECRET')
-    if SMS_MODE!='adapter' or not _https_url(SMS_WEBHOOK_URL) or len(SMS_WEBHOOK_BEARER)<16: blockers.append('SMS_ADAPTER')
+    from minjaz_email_auth import email_delivery_config
+    sms_ready=SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16
+    if not sms_ready and not email_delivery_config()['enabled']:
+        blockers.append('AUTH_PROVIDER')
     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL) or len(PAYMENT_ADAPTER_BEARER)<16 or len(PAYMENT_WEBHOOK_SECRET)<32: blockers.append('PAYMENT_ADAPTER')
     if STORAGE_MODE!='railway_bucket' or not BUCKET_READY: blockers.append('STORAGE_MODE')
     if KYC_MODE!='adapter' or not _https_url(KYC_START_URL) or len(KYC_ADAPTER_BEARER)<16 or len(KYC_WEBHOOK_SECRET)<32: blockers.append('KYC_ADAPTER')
@@ -2366,7 +2369,9 @@ class H(BaseHTTPRequestHandler):
                 checks=[
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
-                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
+                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
+                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':False},
+                    {'key':'authentication_provider','ok':((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled']),'value':'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
                     {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
