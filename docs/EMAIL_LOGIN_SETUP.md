@@ -17,14 +17,15 @@ Railway يمنع SMTP على Free/Trial/Hobby. استخدم مزود HTTPS مث�
    على المستلمين؛ إرسال رموز الدخول لعملاء متعددين يحتاج نطاقًا تملكه
    وتوثّقه في Resend مع سجلات SPF/DKIM.
 3. في مشروع Railway **MINJAZ-DIGITAL-SERVICES-TEST**، خدمة
-   `minjaz-digital-services-api`، البيئة `sandbox` فقط، أضف
-   متغيرات الخدمة التالية عبر **Variables** (لا تضع مفاتيح API في GitHub أو هنا):
+   `minjaz-digital-services-api`، البيئة `sandbox` فقط، جهّز المتغيرات
+   التالية عبر **Variables** (لا تضع مفاتيح API في GitHub أو هنا):
 
-   - `EMAIL_MODE=resend`
-   - `RESEND_API_KEY=<your secret sending-only key>`
-   - `EMAIL_FROM=onboarding@resend.dev` للاختبار المسموح، أو
-     `EMAIL_FROM=login@your-verified-domain.com` بعد توثيق النطاق.
-   - `ADMIN_EMAIL=<your verified administrator mailbox>`
+   - **مضبوطان مسبقًا في sandbox:** `EMAIL_MODE=resend` و
+     `EMAIL_FROM=onboarding@resend.dev` للاختبار المحدود.
+   - **مطلوب منك:** `RESEND_API_KEY=<your secret sending-only key>`
+   - **مطلوب منك:** `ADMIN_EMAIL=<your verified administrator mailbox>`
+   - لاحقًا، للتسليم إلى جميع العملاء، غيّر `EMAIL_FROM` إلى
+     `login@your-verified-domain.com` بعد توثيق نطاق تملكه.
 
 4. يوجد مسبقًا `AUTH_SECRET` عشوائي طويل في Railway sandbox؛ لا
    تستبدله دون حاجة، لأن تغييره ينهي صلاحية الجلسات الحالية.
