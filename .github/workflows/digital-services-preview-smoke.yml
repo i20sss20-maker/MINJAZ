@@ -8,6 +8,8 @@ on:
       - 'server.py'
       - 'Dockerfile'
       - 'minjaz_digital_services.py'
+      - 'minjaz_email_auth.py'
+      - 'public/index.html'
       - 'minjaz_digital_workflow.py'
       - 'public/digital-services*.html'
       - 'public/index.html'
