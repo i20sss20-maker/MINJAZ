@@ -2459,6 +2459,10 @@ class H(BaseHTTPRequestHandler):
                 static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js','/minjaz-release-v316.js':'minjaz-release-v316.js'}[p]
                 ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8','/minjaz-release-v316.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
+            if method=='GET' and p=='/minjaz-account-registration-v1.js':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-account-registration-v1.js'),'rb').read()
+                self._headers(200,'application/javascript; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p=='/minjaz-unified-ui-v1.css':
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-unified-ui-v1.css'),'rb').read()
                 self._headers(200,'text/css; charset=utf-8')
