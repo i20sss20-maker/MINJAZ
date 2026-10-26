@@ -295,6 +295,11 @@ def _transition(connect,order_id,actor_id,target,note,is_admin):
             if target == "delivered":
                 cur.execute("""UPDATE digital_service_orders SET status=%s,delivery_note=%s,updated_at=NOW()
                   WHERE id=%s""",(target,note,order_id))
+                # Publish only new delivery links in the same transaction as the
+                # delivery event. Links for subsequent revisions stay private
+                # until the next successful hand-off.
+                cur.execute("""UPDATE digital_service_deliverables SET published_at=NOW()
+                  WHERE order_id=%s AND published_at IS NULL""",(order_id,))
             else:
                 cur.execute("""UPDATE digital_service_orders SET status=%s,updated_at=NOW()
                   WHERE id=%s""",(target,order_id))
