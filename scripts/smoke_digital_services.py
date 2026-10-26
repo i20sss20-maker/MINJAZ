@@ -44,6 +44,9 @@ def check_css(path, marker):
     print(f"PASS {path}: unified design CSS served")
 
 def main():
+    state=check("/api/v1/auth/email-status",200,"configured")
+    if state.get("method")!="email" or not isinstance(state.get("configured"),bool):
+        raise AssertionError("email login provider state missing")
     catalog = check("/api/digital-services/catalog",200,"services")
     services = catalog["services"]
     if not isinstance(services, list):
