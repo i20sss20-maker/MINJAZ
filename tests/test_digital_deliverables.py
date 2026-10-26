@@ -28,21 +28,30 @@ class FakeCursor:
         if "SELECT status FROM digital_service_orders" in normalized:
             self.one=(self.db.status,) if self.db.exists else None
         elif "SELECT COUNT(*) FROM digital_service_deliverables" in normalized:
-            self.one=(len(self.db.assets),)
+            self.one=(sum(row[0] not in self.db.archived for row in self.db.assets),)
         elif "INSERT INTO digital_service_deliverables" in normalized:
             order,admin_id,title,url=args
-            if any(asset[2]==url for asset in self.db.assets):
+            if any(asset[2]==url and asset[0] not in self.db.archived for asset in self.db.assets):
                 self.one=None
             else:
                 self.db.assets.append((len(self.db.assets)+1,title,url,self.db.now,None))
                 self.one=(len(self.db.assets),)
+        elif "UPDATE digital_service_deliverables" in normalized and "archived_at=NOW()" in normalized:
+            admin_id,asset_id,order_id=args
+            found=next((item for item in self.db.assets
+                        if item[0]==asset_id and item[4] is None and asset_id not in self.db.archived),None)
+            if found:
+                self.db.archived.add(asset_id)
+                self.db.withdrawn_by[asset_id]=admin_id
+                self.one=(asset_id,)
+            else:self.one=None
         elif "SELECT 1 FROM digital_service_orders" in normalized:
             if "AND customer_id=%s" in normalized:
                 self.one=(1,) if self.db.exists and args[1]==self.db.owner else None
             else:
                 self.one=(1,) if self.db.exists else None
         elif "SELECT id,title,url,created_at,published_at" in normalized:
-            self.rows=[r for r in self.db.assets if ("published_at IS NOT NULL" not in normalized or r[4])]
+            self.rows=[r for r in self.db.assets if r[0] not in self.db.archived and ("published_at IS NOT NULL" not in normalized or r[4])]
         else:
             raise AssertionError("unexpected SQL: "+normalized)
     def fetchone(self):return self.one
@@ -53,6 +62,7 @@ class FakeDB:
         self.status=status;self.owner=owner;self.exists=exists
         self.now=datetime.now(timezone.utc)
         self.assets=list(assets or [])
+        self.archived=set();self.withdrawn_by={}
         self.queries=[];self.commits=0;self.rollbacks=0;self.closed=False
         self.autocommit=True
     def __call__(self):return self
@@ -141,6 +151,47 @@ class DeliveryTests(unittest.TestCase):
     def test_other_customer_cannot_see_links(self):
         db=FakeDB()
         self.assertEqual(self.call("GET","orders/12/deliverables",OTHER,db=db)[0],404)
+    def test_non_admin_cannot_withdraw_link(self):
+        self.assertEqual(self.call("DELETE","admin/orders/12/deliverables/1",CUSTOMER)[0],403)
+    def test_cannot_withdraw_published_link(self):
+        now=datetime.now(timezone.utc)
+        db=FakeDB(assets=[(1,"Public","https://example.com/public.zip",now,now)])
+        with patch.dict(os.environ,SANDBOX):
+            code,payload=self.call("DELETE","admin/orders/12/deliverables/1",ADMIN,db=db)
+        self.assertEqual(code,404)
+        self.assertNotIn(1,db.archived)
+    def test_unpublished_link_can_be_withdrawn_with_audit(self):
+        db=FakeDB()
+        with patch.dict(os.environ,SANDBOX):
+            self.call("POST","admin/orders/12/deliverables",ADMIN,FILE,db)
+            code,data=self.call("DELETE","admin/orders/12/deliverables/1",ADMIN,db=db)
+        self.assertEqual(code,200)
+        self.assertEqual(data["withdrawn_id"],1)
+        self.assertEqual(db.withdrawn_by[1],8)
+        code,visible=self.call("GET","admin/orders/12/deliverables",ADMIN,db=db)
+        self.assertEqual(code,200)
+        self.assertEqual(visible["deliverables"],[])
+    def test_withdrawn_url_can_be_readded_as_new_pending_link(self):
+        db=FakeDB()
+        with patch.dict(os.environ,SANDBOX):
+            self.call("POST","admin/orders/12/deliverables",ADMIN,FILE,db)
+            self.call("DELETE","admin/orders/12/deliverables/1",ADMIN,db=db)
+            code,data=self.call("POST","admin/orders/12/deliverables",ADMIN,FILE,db)
+        self.assertEqual(code,201)
+        self.assertEqual(data["id"],2)
+        self.assertEqual(len(db.assets),2)
+    def test_delete_only_allowed_in_working_status(self):
+        db=FakeDB(status="delivered")
+        with patch.dict(os.environ,SANDBOX):
+            code,payload=self.call("DELETE","admin/orders/12/deliverables/1",ADMIN,db=db)
+        self.assertEqual(code,409)
+        self.assertEqual(payload["error"],"order_not_in_progress")
+    def test_delete_requires_sandbox(self):
+        env={"APP_ENV":"production","PAYMENT_MODE":"mock","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID}
+        with patch.dict(os.environ,env):
+            self.assertEqual(self.call("DELETE","admin/orders/12/deliverables/1",ADMIN)[0],403)
+    def test_delete_rejects_invalid_asset_id(self):
+        self.assertEqual(self.call("DELETE","admin/orders/12/deliverables/١",ADMIN)[0],404)
     def test_admin_can_view_pending_links(self):
         now=datetime.now(timezone.utc)
         db=FakeDB(assets=[(1,"Pending file","https://example.com/pending.zip",now,None)])
