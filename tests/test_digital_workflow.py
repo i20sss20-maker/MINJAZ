@@ -75,6 +75,24 @@ VALID_PACKAGE={"slug":"test-demo","category":"website","title_ar":"خدمة مو
                "description_ar":"بناء صفحة تعريفية","price_sar":"100.00",
                "delivery_days":7,"revision_limit":2,"active":False}
 
+class SummaryCursor(Cursor):
+    def execute(self,sql,args=()):
+        compact=" ".join(sql.split())
+        if "GROUP BY status" in compact:
+            self.rows=[("draft",2),("delivered",1),("completed",4)]
+        elif "COUNT(*)::int FROM digital_service_packages" in compact:
+            self.row=(3,)
+        elif "COUNT(*)::int FROM digital_service_revisions" in compact:
+            self.row=(2,)
+        else:
+            raise AssertionError("unexpected summary query "+compact)
+    def fetchall(self):
+        return getattr(self,"rows",[])
+
+class SummaryConn(Conn):
+    def cursor(self):
+        return SummaryCursor(self)
+
 class WorkflowTests(unittest.TestCase):
     def call(self,path,method,body,actor,db=None):
         if db is None:db=FailConnect()
@@ -106,6 +124,21 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(code,200)
         self.assertEqual(len(data["packages"]),1)
         self.assertEqual(data["packages"][0]["slug"],"test-demo")
+    def test_admin_summary_requires_authentication(self):
+        self.assertEqual(self.call("admin/summary","GET",None,None)[0],401)
+        self.assertEqual(self.call("admin/summary","GET",None,CUSTOMER)[0],403)
+    def test_admin_summary_is_read_only_and_aggregates_counts(self):
+        db=SummaryConn()
+        code,data=self.call("admin/summary","GET",None,ADMIN,db)
+        self.assertEqual(code,200)
+        self.assertEqual(data["total_orders"],7)
+        self.assertEqual(data["active_packages"],3)
+        self.assertEqual(data["revisions_last_7_days"],2)
+        self.assertEqual(data["by_status"]["completed"],4)
+        self.assertEqual(db.commits,0)
+        self.assertTrue(db.closed)
+    def test_admin_summary_rejects_writes(self):
+        self.assertEqual(self.call("admin/summary","POST",{},ADMIN)[0],405)
     def test_package_anonymous_is_denied(self):
         self.assertEqual(self.call("admin/packages","GET",None,None)[0],401)
     def test_package_non_admin_is_denied(self):
