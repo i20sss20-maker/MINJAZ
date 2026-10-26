@@ -61,12 +61,12 @@ def dispatch(method, path, query, body, actor, connect):
         c=connect()
         try:
             with c.cursor() as cur:
-                cur.execute("""SELECT o.id,p.title_ar,o.agreed_price_sar,o.status,o.created_at
+                cur.execute("""SELECT o.id,p.title_ar,o.agreed_price_sar,o.status,o.created_at,o.requirements
                   FROM digital_service_orders o JOIN digital_service_packages p ON p.id=o.package_id
                   WHERE o.id=%s AND o.customer_id=%s""",(int(suffix),int(actor['id'])))
                 r=cur.fetchone()
                 if not r:return 404, {'error':'order_not_found'}
                 return 200, {'order':{'id':r[0],'title_ar':r[1],'price_sar':str(r[2]),
-                  'status':r[3],'created_at':r[4].isoformat()}}
+                  'status':r[3],'created_at':r[4].isoformat(),'requirements':r[5]}}
         finally:c.close()
     return 405, {'error':'method_not_allowed'}
