@@ -2305,6 +2305,21 @@ class H(BaseHTTPRequestHandler):
     def route(self,method):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p.startswith('/api/digital-services/admin/') or (p.startswith('/api/digital-services/orders/') and p.rsplit('/',1)[-1] in ('revisions','complete','cancel')):
+                from minjaz_digital_workflow import dispatch as digital_workflow_dispatch
+                actor = auth(self.headers)
+                if method in ('POST','PATCH'):
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415, {'error':'json_required'})
+                    if actor and actor.get('_auth_transport') == 'cookie':
+                        origin = self.headers.get('Origin','').rstrip('/')
+                        allowed = set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403, {'error':'origin_not_allowed'})
+                payload = self.body() if method in ('POST','PATCH') else None
+                status, response = digital_workflow_dispatch(method,p,query,payload,actor,db_connect)
+                return self.sendj(status,response)
             if p == '/api/digital-services/catalog' or p == '/api/digital-services/orders' or p.startswith('/api/digital-services/orders/'):
                 from minjaz_digital_services import dispatch as digital_services_dispatch
                 actor = auth(self.headers) if p != '/api/digital-services/catalog' else None
@@ -2397,6 +2412,13 @@ class H(BaseHTTPRequestHandler):
             if method=='GET' and p in ('/privacy','/privacy.html','/account-deletion','/account-deletion.html'):
                 static_name='privacy.html' if p in ('/privacy','/privacy.html') else 'account-deletion.html'
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/digital-services/admin':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                actor=self.require('admin')
+                if not actor:return
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services-admin.html'),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
             if method=='GET' and p=='/digital-services':
