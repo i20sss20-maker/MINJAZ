@@ -8,13 +8,16 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+import sys
+
+# Running as a file puts scripts/ first on sys.path, not the repo root.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import psycopg2
 from minjaz_digital_services import dispatch as customer
 from minjaz_digital_workflow import dispatch as workflow, SANDBOX_PROJECT_ID
 from scripts.seed_digital_services_preview import seed_packages
-
-ROOT = Path(__file__).resolve().parents[1]
 TEST_URL = os.getenv("DIGITAL_TEST_DATABASE_URL", "")
 CUSTOMER = {"id":11,"role":"customer"}
 ADMIN = {"id":22,"role":"admin"}
