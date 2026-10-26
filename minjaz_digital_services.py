@@ -40,11 +40,6 @@ def dispatch(method, path, query, body, actor, connect):
                       WHERE o.customer_id=%s ORDER BY o.id DESC LIMIT 100""",(user_id,))
                     return 200, {'orders':[{'id':r[0],'title_ar':r[1],'price_sar':str(r[2]),
                       'status':r[3],'created_at':r[4].isoformat()} for r in cur.fetchall()]}
-                if not isinstance(body,dict):return 400, {'error':'invalid_payload'}
-                package_id=body.get('package_id')
-                requirements=body.get('requirements')
-                if type(package_id) is not int or package_id<=0 or not isinstance(requirements,str) or not 10<=len(requirements.strip())<=10000:
-                    return 400, {'error':'invalid_order'}
                 cur.execute("""SELECT price_sar,revision_limit FROM digital_service_packages
                   WHERE id=%s AND active=TRUE FOR SHARE""",(package_id,))
                 package=cur.fetchone()
