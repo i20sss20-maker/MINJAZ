@@ -2,7 +2,10 @@
 import hashlib
 import json
 import unittest
+import os
+from unittest.mock import patch
 from datetime import datetime, timezone
+from minjaz_digital_workflow import SANDBOX_PROJECT_ID
 from minjaz_digital_services import dispatch
 
 BASE="/api/digital-services/orders"
@@ -56,6 +59,16 @@ class Cursor:
                             if uid==user_id and v["id"]==order_id),None)
                 self.one=(found["id"],"متجر رقمي",found["price"],found["status"],
                     datetime.now(timezone.utc),found["requirements"],None,found["limit"]) if found else None
+        elif "SELECT status FROM digital_service_orders" in key:
+            order_id,user_id=args
+            existing=next((v for (uid,_),v in self.db.orders.items()
+                          if uid==user_id and v["id"]==order_id),None)
+            self.one=(existing["status"],) if existing else None
+        elif "UPDATE digital_service_orders SET requirements" in key:
+            updated,order_id,user_id=args
+            existing=next((v for (uid,_),v in self.db.orders.items()
+                          if uid==user_id and v["id"]==order_id),None)
+            if existing:existing["requirements"]=updated
         elif "INSERT INTO digital_service_order_events" in key:
             order_id,actor_id,before,after,note=args
             self.db.event_rows.append({"order_id":order_id,"actor":actor_id,"before":before,
@@ -170,6 +183,53 @@ class OrdersTests(unittest.TestCase):
         code,_=dispatch("GET",BASE+"/"+str(oid),{},None,{"id":12},db)
         self.assertEqual(code,404)
         self.assertFalse(any("digital_service_order_events" in query for query,args in db.sql))
+    def test_customer_can_edit_draft_only_and_audit_it(self):
+        db=Connection()
+        oid=self.create(db)[1]["order_id"]
+        updated="هذا نص محدث يحدد صفحات الموقع المطلوبة وجدول التسليم."
+        env={"APP_ENV":"preview","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            code,result=dispatch("PATCH",BASE+"/"+str(oid),{},
+                                 {"requirements":updated},{"id":11},db)
+        self.assertEqual(code,200)
+        self.assertEqual(result["requirements"],updated)
+        self.assertEqual(db.orders[(11,KEY)]["requirements"],updated)
+        self.assertEqual(db.orders[(11,KEY)]["price"],"3499.00")
+        self.assertEqual(len(db.event_rows),2)
+        self.assertEqual(db.event_rows[-1]["note"],"تم تعديل متطلبات الطلب")
+    def test_other_customer_cannot_edit_draft(self):
+        db=Connection();oid=self.create(db)[1]["order_id"]
+        env={"APP_ENV":"preview","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            code,_=dispatch("PATCH",BASE+"/"+str(oid),{},
+                            {"requirements":"متطلبات جديدة فيها نص كاف للتحديث"},{"id":12},db)
+        self.assertEqual(code,404)
+        self.assertEqual(db.orders[(11,KEY)]["requirements"],REQ)
+        self.assertEqual(len(db.event_rows),1)
+    def test_started_order_cannot_have_requirements_edited(self):
+        db=Connection();oid=self.create(db)[1]["order_id"]
+        db.orders[(11,KEY)]["status"]="in_progress"
+        env={"APP_ENV":"preview","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            code,result=dispatch("PATCH",BASE+"/"+str(oid),{},
+                                {"requirements":"متطلبات جديدة فيها نص كاف للتحديث"},{"id":11},db)
+        self.assertEqual(code,409)
+        self.assertEqual(result["error"],"order_not_editable")
+    def test_edited_draft_rejected_outside_dedicated_sandbox(self):
+        valid={"requirements":"متطلبات جديدة فيها نص كاف للتحديث"}
+        env={"APP_ENV":"production","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            code,_=dispatch("PATCH",BASE+"/1",{},valid,{"id":11},NoDatabase())
+        self.assertEqual(code,403)
+    def test_bad_draft_edits_validate_before_db(self):
+        for body in (None,{"requirements":"short"},{"requirements":123},
+                     {"requirements":"متطلبات مقبولة","price_sar":"0"}):
+            with self.subTest(body=body):
+                code,_=dispatch("PATCH",BASE+"/1",{},body,{"id":11},NoDatabase())
+                self.assertEqual(code,400)
+    def test_anonymous_cannot_edit(self):
+        code,_=dispatch("PATCH",BASE+"/1",{},{"requirements":REQ},None,NoDatabase())
+        self.assertEqual(code,401)
     def test_owner_reads_order_and_revision_counts(self):
         db=Connection()
         oid=self.create(db)[1]["order_id"]
