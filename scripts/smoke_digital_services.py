@@ -33,6 +33,16 @@ def check_html(path, marker):
         raise AssertionError(f"{path}: page or marker missing (HTTP {status})")
     print(f"PASS {path}: HTML page ready")
 
+def check_css(path, marker):
+    req=Request(BASE+path,headers={"Accept":"text/css","User-Agent":"MINJAZ-sandbox-smoke/1"})
+    with urlopen(req,timeout=15) as response:
+        status=response.status
+        content_type=response.headers.get("Content-Type","")
+        style=response.read(131072).decode("utf-8")
+    if status != 200 or "text/css" not in content_type.lower() or marker not in style:
+        raise AssertionError(f"{path}: missing unified design CSS (HTTP {status})")
+    print(f"PASS {path}: unified design CSS served")
+
 def main():
     catalog = check("/api/digital-services/catalog",200,"services")
     services = catalog["services"]
@@ -64,6 +74,8 @@ def main():
     check_html("/digital-services","خدمات منجاز الرقمية")
     check("/api/digital-services/orders/1/revisions",401,"error")
     check_html("/digital-services/admin","أهلًا بك في منجاز")
+    check_html("/","مهمتك، لها من ينجزها.")
+    check_css("/minjaz-unified-ui-v1.css","MINJAZ Unified UI v1")
     check("/health",200,"ok")
     print("All read-only sandbox checks passed.")
 
