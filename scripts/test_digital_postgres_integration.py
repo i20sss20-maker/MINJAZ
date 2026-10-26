@@ -74,6 +74,11 @@ def run():
                        "PAYMENT_MODE":"mock"})
     code,catalog=call_customer("GET","/api/digital-services/catalog")
     check(code==200 and len(catalog["services"])==3,"initial catalog is not public")
+    filtered_code,filtered=customer("GET","/api/digital-services/catalog",
+                                   {"category":["website"]},None,None,guarded_connect)
+    check(filtered_code==200 and len(filtered["services"])==1
+          and filtered["services"][0]["category"]=="website",
+          "category query did not filter on the database")
     package=next(item for item in catalog["services"] if item["slug"]=="website-starter-demo")
     package_id=package["id"]
 
