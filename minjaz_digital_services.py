@@ -24,6 +24,22 @@ def dispatch(method, path, query, body, actor, connect):
                   ORDER BY id DESC LIMIT 100""",(category,category))
                 return 200, {'services':[_public_package(row) for row in cur.fetchall()]}
         finally: c.close()
+    if path == '/api/digital-services/activity' and method == 'GET':
+        if not actor:return 401, {'error':'unauthorized'}
+        customer_id=int(actor['id'])
+        c=connect()
+        try:
+            with c.cursor() as cur:
+                cur.execute("""SELECT ev.id,ev.order_id,p.title_ar,ev.new_status,ev.created_at
+                  FROM digital_service_order_events ev
+                  JOIN digital_service_orders o ON o.id=ev.order_id
+                  JOIN digital_service_packages p ON p.id=o.package_id
+                  WHERE o.customer_id=%s AND ev.actor_id<>o.customer_id
+                  ORDER BY ev.id DESC LIMIT 30""",(customer_id,))
+                return 200, {'activity':[{'event_id':row[0],'order_id':row[1],
+                    'title_ar':row[2],'status':row[3],'created_at':row[4].isoformat()}
+                    for row in cur.fetchall()]}
+        finally:c.close()
     if path == '/api/digital-services/orders' and method in ('GET','POST'):
         if not actor:return 401, {'error':'unauthorized'}
         user_id=int(actor['id'])
