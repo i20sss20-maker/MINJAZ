@@ -37,6 +37,35 @@ class DigitalDesignTests(unittest.TestCase):
         cls.store_page = Page(cls.store)
         cls.admin_page = Page(cls.admin)
 
+    def test_core_client_freelancer_and_admin_share_one_stylesheet(self):
+        main = (ROOT / "index.html").read_text(encoding="utf8")
+        style = (ROOT / "minjaz-unified-ui-v1.css").read_text(encoding="utf8")
+        self.assertIn('id="minjazUnifiedDesign"', main)
+        self.assertIn('href="/minjaz-unified-ui-v1.css"', main)
+        self.assertIn("html[data-minjaz-role=\"client\"]", style)
+        self.assertIn("html[data-minjaz-role=\"freelancer\"]", style)
+        self.assertIn("html[data-minjaz-role=\"admin\"]", style)
+        self.assertIn("document.documentElement.dataset.minjazRole=me.user.role", main)
+        self.assertGreater(len(style), 15000)
+
+    def test_core_main_pages_and_role_navigation_exist(self):
+        main = (ROOT / "index.html").read_text(encoding="utf8")
+        for page in ("auth", "app", "home", "tasks", "orders", "team", "account", "admin"):
+            with self.subTest(page=page):
+                self.assertRegex(main, r'id="'+page+'"')
+        for role in ("client", "freelancer", "admin"):
+            with self.subTest(role=role):
+                self.assertIn(role + ":[", main)
+
+    def test_unified_theme_respects_mobile_and_dark_mode(self):
+        style = (ROOT / "minjaz-unified-ui-v1.css").read_text(encoding="utf8")
+        for marker in ('html[data-theme="dark"]', '.mobileNav', '.authPanel',
+                       '.heroStats', '.filesHeroV30', '.inboxHeroV29',
+                       '@media(max-width:980px)', '@media(max-width:430px)',
+                       'prefers-reduced-motion', 'focus-visible'):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, style)
+
     def test_no_duplicate_dom_ids(self):
         for page in (self.store_page, self.admin_page):
             with self.subTest(page=page):
