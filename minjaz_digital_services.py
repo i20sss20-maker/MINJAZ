@@ -89,6 +89,41 @@ def dispatch(method, path, query, body, actor, connect):
         except Exception:
             c.rollback();raise
         finally:c.close()
+    if path.startswith('/api/digital-services/orders/') and method=='PATCH':
+        if not actor:return 401, {'error':'unauthorized'}
+        suffix=path.rsplit('/',1)[-1]
+        if not suffix.isascii() or not suffix.isdigit() or int(suffix)<=0:
+            return 404, {'error':'not_found'}
+        if not isinstance(body,dict) or set(body) != {'requirements'}:
+            return 400, {'error':'invalid_payload'}
+        requirements=body['requirements']
+        if not isinstance(requirements,str) or not 10<=len(requirements.strip())<=10000:
+            return 400, {'error':'invalid_requirements'}
+        from minjaz_digital_workflow import _preview
+        if not _preview():
+            return 403, {'error':'sandbox_only'}
+        order_id=int(suffix);customer_id=int(actor['id'])
+        c=connect();c.autocommit=False
+        try:
+            with c.cursor() as cur:
+                cur.execute("""SELECT status FROM digital_service_orders
+                  WHERE id=%s AND customer_id=%s FOR UPDATE""",(order_id,customer_id))
+                row=cur.fetchone()
+                if not row:
+                    return 404, {'error':'order_not_found'}
+                if row[0]!='draft':
+                    return 409, {'error':'order_not_editable','status':row[0]}
+                cur.execute("""UPDATE digital_service_orders SET requirements=%s,updated_at=NOW()
+                  WHERE id=%s AND customer_id=%s""",(requirements.strip(),order_id,customer_id))
+                cur.execute("""INSERT INTO digital_service_order_events
+                  (order_id,actor_id,previous_status,new_status,note)
+                  VALUES (%s,%s,%s,%s,%s)""",
+                  (order_id,customer_id,'draft','draft','تم تعديل متطلبات الطلب'))
+            c.commit()
+            return 200, {'order_id':order_id,'status':'draft','requirements':requirements.strip()}
+        except Exception:
+            c.rollback();raise
+        finally:c.close()
     if path.startswith('/api/digital-services/orders/') and method=='GET':
         if not actor:return 401, {'error':'unauthorized'}
         suffix=path.rsplit('/',1)[-1]
