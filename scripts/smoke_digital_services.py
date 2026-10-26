@@ -23,6 +23,16 @@ def check(path, expected, key=None):
     print(f"PASS {path}: HTTP {status}")
     return data
 
+def check_html(path, marker):
+    req = Request(BASE+path,headers={"Accept":"text/html","User-Agent":"MINJAZ-sandbox-smoke/1"})
+    with urlopen(req,timeout=15) as response:
+        status=response.status
+        content_type=response.headers.get("Content-Type","")
+        html=response.read(524288).decode("utf-8")
+    if status != 200 or "text/html" not in content_type.lower() or marker not in html:
+        raise AssertionError(f"{path}: page or marker missing (HTTP {status})")
+    print(f"PASS {path}: HTML page ready")
+
 def main():
     catalog = check("/api/digital-services/catalog",200,"services")
     services = catalog["services"]
@@ -39,6 +49,8 @@ def main():
     check("/api/digital-services/orders/1",401,"error")
     check("/api/digital-services/admin/orders",401,"error")
     check("/api/digital-services/admin/packages",401,"error")
+    check("/api/digital-services/admin/summary",401,"error")
+    check_html("/digital-services","خدمات منجاز الرقمية")
     check("/api/digital-services/orders/1/revisions",401,"error")
     check("/digital-services/admin",401,"error")
     check("/health",200,"ok")
