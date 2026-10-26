@@ -2399,6 +2399,10 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
+            if method=='GET' and p=='/digital-services':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
             if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):
