@@ -24,6 +24,13 @@ def dispatch(method, path, query, body, actor, connect):
     if path == '/api/digital-services/orders' and method in ('GET','POST'):
         if not actor:return 401, {'error':'unauthorized'}
         user_id=int(actor['id'])
+        if method == 'POST':
+            if not isinstance(body, dict):
+                return 400, {'error':'invalid_payload'}
+            package_id = body.get('package_id')
+            requirements = body.get('requirements')
+            if type(package_id) is not int or package_id <= 0 or not isinstance(requirements, str) or not 10 <= len(requirements.strip()) <= 10000:
+                return 400, {'error':'invalid_order'}
         c=connect(); c.autocommit=False
         try:
             with c.cursor() as cur:
