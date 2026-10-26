@@ -97,7 +97,15 @@ class Connection:
 
 class OrdersTests(unittest.TestCase):
     def create(self,db,body=BODY,user_id=11):
-        return dispatch("POST",BASE,{},body,{"id":user_id},db)
+        env={"APP_ENV":"preview","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            return dispatch("POST",BASE,{},body,{"id":user_id},db)
+    def test_new_order_creation_is_rejected_outside_dedicated_sandbox(self):
+        env={"APP_ENV":"production","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,"PAYMENT_MODE":"mock"}
+        with patch.dict(os.environ,env):
+            code,payload=dispatch("POST",BASE,{},BODY,{"id":11},NoDatabase())
+        self.assertEqual(code,403)
+        self.assertEqual(payload["error"],"sandbox_only")
     def test_valid_new_draft(self):
         db=Connection()
         status,data=self.create(db)
