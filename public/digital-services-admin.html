@@ -17,8 +17,8 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
    <p class="subtle">سجّل دخولك بصلاحية مدير للاطلاع على تفاصيل العمل.</p>
    <p id="accessStatus" class="access-status" role="status">نتحقق من صلاحية حسابك...</p>
    <div id="adminLoginFields" hidden>
-    <form id="adminEmailForm"><label for="adminLoginEmail">البريد الإلكتروني المخصّص للإدارة</label><input id="adminLoginEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="admin@example.com"><label for="adminLoginName">اسم المستخدم</label><input id="adminLoginName" type="text" autocomplete="name" maxlength="120" required placeholder="اكتب اسمك"><button id="requestAdminCode" type="submit">إرسال رمز الدخول</button></form>
-    <form id="adminOtpForm" hidden><p>أدخل الرمز المرسل إلى بريدك الإلكتروني لإكمال تسجيل الدخول.</p><label for="adminLoginCode">رمز التحقق</label><input id="adminLoginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required placeholder="رمز التحقق"><button id="verifyAdminCode" type="submit">دخول لوحة الإدارة</button></form>
+    <form id="adminEmailForm"><label for="adminLoginEmail">بريد المدير الإلكتروني</label><input id="adminLoginEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="admin@example.com"><label for="adminLoginPassword">كلمة المرور</label><input id="adminLoginPassword" type="password" autocomplete="current-password" minlength="10" required placeholder="كلمة المرور"><button id="adminLoginBtn" type="submit">دخول لوحة الإدارة</button></form>
+    <p class="muted">ما عندك حساب مدير؟ <a href="/">سجّل في منجاز</a> بالبريد المخصص للإدارة، ثم فعّل الحساب من رابط البريد.</p><p class="muted"><a href="/">نسيت كلمة المرور؟ استعدها من صفحة تسجيل الدخول</a></p>
     <p id="devOtpHint" class="hint muted" hidden></p>
    </div>
    <div class="row"><button id="recheckAdmin" class="secondary" type="button">التحقق من الجلسة</button><a href="/">العودة إلى موقع منجاز</a></div>
@@ -74,7 +74,7 @@ const $=id=>document.getElementById(id);
 const labels={created:'إنشاء الطلب',draft:'مسودة',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',paid:'مدفوع',awaiting_payment:'بانتظار الدفع',refunded:'مسترد'};
 const transitions={draft:[['in_progress','بدء التنفيذ'],['cancelled','إلغاء المسودة']],in_progress:[['delivered','تسليم الخدمة']],revision_requested:[['in_progress','استئناف التنفيذ']]};
 let currentId=null;
-const errorLabels={unauthorized:'سجّل دخولك أولًا',admin_only:'هذه العملية للمدير فقط',sandbox_only:'هذه العملية متاحة في البيئة التجريبية فقط',invalid_order:'بيانات الطلب غير صحيحة',invalid_requirements:'متطلبات المشروع غير صحيحة',invalid_delivery_url:'رابط التسليم يجب أن يكون HTTPS عامًا وصحيحًا',invalid_title:'أدخل اسمًا واضحًا للملف',invalid_deliverable:'بيانات ملف التسليم غير مكتملة',duplicate_delivery_url:'هذا الرابط مضاف مسبقًا',delivery_link_limit_reached:'وصل الطلب إلى الحد الأقصى للروابط',order_not_in_progress:'يجب بدء تنفيذ الطلب أولًا',pending_link_not_found:'الرابط غير موجود أو تم تسليمه ولا يمكن سحبه',invalid_status_transition:'لا يمكن تنفيذ هذا الإجراء في الحالة الحالية',order_not_found:'الطلب غير موجود أو لا تملك صلاحية الوصول إليه',package_unavailable:'الباقة غير متاحة حاليًا',idempotency_key_reused:'تغيّرت بيانات الطلب؛ أعد فتح نافذة الطلب لإنشاء محاولة جديدة',origin_not_allowed:'تعذّر التحقق من مصدر الطلب؛ حدّث الصفحة وحاول مجددًا',admin_secure_sms_required:'دخول المدير برقم الجوال غير متاح قبل تفعيل SMS آمن',email_not_configured:'إرسال البريد لم يُربط بعد؛ أضف إعدادات مزود البريد في Railway',email_delivery_failed:'تعذر إرسال الرمز؛ تحقق من حساب البريد المرسل',invalid_email:'عنوان البريد الإلكتروني غير صحيح',admin_email_mismatch:'هذا البريد ليس مخصصًا للإدارة'};
+const errorLabels={unauthorized:'سجّل دخولك أولًا',admin_only:'هذه العملية للمدير فقط',sandbox_only:'هذه العملية متاحة في البيئة التجريبية فقط',invalid_order:'بيانات الطلب غير صحيحة',invalid_requirements:'متطلبات المشروع غير صحيحة',invalid_delivery_url:'رابط التسليم يجب أن يكون HTTPS عامًا وصحيحًا',invalid_title:'أدخل اسمًا واضحًا للملف',invalid_deliverable:'بيانات ملف التسليم غير مكتملة',duplicate_delivery_url:'هذا الرابط مضاف مسبقًا',delivery_link_limit_reached:'وصل الطلب إلى الحد الأقصى للروابط',order_not_in_progress:'يجب بدء تنفيذ الطلب أولًا',pending_link_not_found:'الرابط غير موجود أو تم تسليمه ولا يمكن سحبه',invalid_status_transition:'لا يمكن تنفيذ هذا الإجراء في الحالة الحالية',order_not_found:'الطلب غير موجود أو لا تملك صلاحية الوصول إليه',package_unavailable:'الباقة غير متاحة حاليًا',idempotency_key_reused:'تغيّرت بيانات الطلب؛ أعد فتح نافذة الطلب لإنشاء محاولة جديدة',origin_not_allowed:'تعذّر التحقق من مصدر الطلب؛ حدّث الصفحة وحاول مجددًا',admin_secure_sms_required:'دخول المدير برقم الجوال غير متاح قبل تفعيل SMS آمن',email_not_configured:'إرسال البريد لم يُربط بعد؛ أضف إعدادات مزود البريد في Railway',email_delivery_failed:'تعذر إرسال الرمز؛ تحقق من حساب البريد المرسل',invalid_email:'عنوان البريد الإلكتروني غير صحيح',admin_email_mismatch:'هذا البريد ليس مخصصًا للإدارة',email_not_verified:'فعّل حسابك من رابط البريد قبل الدخول',invalid_credentials:'البريد أو كلمة المرور غير صحيحة',email_registration_required:'استخدم تسجيل الدخول بكلمة المرور'};
 function el(tag,value,cls){const node=document.createElement(tag);if(value!==undefined)node.textContent=value;if(cls)node.className=cls;return node}
 async function api(path,opts={}){const response=await fetch(path,{credentials:'same-origin',headers:{Accept:'application/json',...(opts.body?{'Content-Type':'application/json'}:{})},...opts});let data;try{data=await response.json()}catch{throw Error('تعذر قراءة استجابة الخادم')}if(!response.ok)throw Error(response.status===401?'يرجى تسجيل الدخول بحساب مدير':response.status===403?'لا تملك صلاحية المدير':errorLabels[data.error]||data.error||'حدث خطأ');return data}
 function message(text,error=false){$('message').textContent=text;$('message').className=error?'error':'good'}
@@ -99,7 +99,7 @@ function resetPackage(){editingPackageId=null;$('packageForm').reset();$('packag
 async function loadPackages(){const box=$('packages');box.replaceChildren();packageMessage('جاري تحميل الباقات...');try{const data=await api('/api/digital-services/admin/packages');if(!Array.isArray(data.packages))throw Error('تعذر قراءة الباقات');packageMessage('عدد الباقات: '+data.packages.length);for(const p of data.packages){const c=el('article',undefined,'card');c.append(el('h3',p.title_ar),el('p',p.category+' | '+p.price_sar+' ر.س'),el('p',p.active?'منشورة':'مخفية','badge'));const edit=el('button','تعديل','secondary');edit.addEventListener('click',()=>fillPackage(p));const toggle=el('button',p.active?'إخفاء الباقة':'نشر الباقة',p.active?'danger':'secondary');toggle.addEventListener('click',async()=>{if(!confirm('تأكيد تغيير نشر الباقة؟'))return;toggle.disabled=true;try{await api('/api/digital-services/admin/packages/'+p.id,{method:'PATCH',body:JSON.stringify({active:!p.active})});packageMessage('تم تغيير حالة ظهور الباقة');await loadPackages()}catch(e){packageMessage(e.message,true)}finally{toggle.disabled=false}});const history=el('button','سجل الباقة','secondary');history.addEventListener('click',async()=>{history.disabled=true;try{const data=await api('/api/digital-services/admin/packages/'+p.id+'/events');let log=c.querySelector('.package-history');if(!log){log=el('div',undefined,'package-history');c.append(log)}log.replaceChildren(el('h4','آخر تغييرات الباقة'));if(!data.events?.length){log.append(el('p','لا توجد تغييرات مسجلة'));return}const ul=el('ul');for(const event of data.events){const title=event.action==='created'?'إنشاء الباقة':'تعديل الباقة';const before=event.before?.active;const after=event.after?.active;const visibility=before!==undefined&&before!==after?' • تغيّر ظهور الباقة':'';ul.append(el('li',title+visibility+' • '+new Date(event.created_at).toLocaleString('ar-SA')))}log.append(ul)}catch(error){packageMessage(error.message,true)}finally{history.disabled=false}});c.append(edit,el('span',' '),toggle,el('span',' '),history);box.append(c)}}catch(e){packageMessage(e.message,true)}}
 $('packageForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const payload={slug:form.elements.namedItem('slug').value.trim(),category:form.elements.namedItem('category').value,title_ar:form.elements.namedItem('title_ar').value.trim(),description_ar:form.elements.namedItem('description_ar').value.trim(),price_sar:form.elements.namedItem('price_sar').value,delivery_days:Number(form.elements.namedItem('delivery_days').value),revision_limit:Number(form.elements.namedItem('revision_limit').value),active:form.elements.namedItem('active').checked};const btn=$('savePackage');btn.disabled=true;try{const endpoint=editingPackageId?'/api/digital-services/admin/packages/'+editingPackageId:'/api/digital-services/admin/packages';await api(endpoint,{method:editingPackageId?'PATCH':'POST',body:JSON.stringify(payload)});resetPackage();await loadPackages();packageMessage('تم حفظ الباقة بنجاح')}catch(e){packageMessage(e.message,true)}finally{btn.disabled=false}});
 $('resetPackage').addEventListener('click',resetPackage);$('packagesRefresh').addEventListener('click',loadPackages);
-const loginForm=$('adminEmailForm'),codeForm=$('adminOtpForm');
+const loginForm=$('adminEmailForm');
 let pendingChallenge=null, adminAuthenticated=false;
 function showAccess(text,isError=false){
  $('adminAccess').hidden=false;$('adminDashboard').hidden=true;
@@ -120,8 +120,8 @@ async function checkAdminAccess(){
      showAccess('حسابك الحالي ليس حساب مدير. سجل الدخول ببريد المدير المعتمد في إعدادات Railway (ADMIN_EMAIL).',true);
    }else if(res.status===401){
      showAccess('سجّل الدخول ببريد المدير الإلكتروني لفتح لوحة الإدارة.');
-     try{const ready=await fetch('/api/v1/auth/email-status',{credentials:'same-origin'});
-       if(ready.ok){const status=await ready.json();if(!status.configured){$('accessStatus').textContent='واجهة الدخول جاهزة، لكن يلزم ربط بريد الإرسال في Railway قبل وصول الرموز.';}else if(!status.admin_email_configured){$('accessStatus').textContent='خدمة البريد جاهزة، لكن يلزم تحديد ADMIN_EMAIL لبريد المدير.';}}
+     try{const ready=await fetch('/api/v1/auth/account-status',{credentials:'same-origin'});
+       if(ready.ok){const status=await ready.json();if(!status.configured){$('accessStatus').textContent='يلزم ربط بريد الإرسال في Railway حتى يمكن تفعيل الحسابات واستعادة كلمة المرور.';}else if(!status.admin_email_configured){$('accessStatus').textContent='يلزم تحديد بريد الإدارة (ADMIN_EMAIL) في Railway قبل إنشاء حساب المدير.';}}
      }catch(error){/* Keep login form visible. */}
    }else{
      showAccess('تعذّر التحقق من حسابك (HTTP '+res.status+'). حاول تحديث الصفحة.',true);
@@ -136,31 +136,17 @@ async function authJson(path,payload){
 }
 loginForm.addEventListener('submit',async event=>{
  event.preventDefault();
- const btn=$('requestAdminCode');btn.disabled=true;
- $('accessStatus').textContent='جارٍ طلب رمز الدخول...';
+ const btn=$('adminLoginBtn');btn.disabled=true;
+ $('accessStatus').textContent='جارٍ التحقق من بيانات الدخول...';
  try{
-   const result=await authJson('/api/v1/auth/request-email-otp',{email:$('adminLoginEmail').value.trim().toLowerCase(),role:'client'});
-   pendingChallenge=result.challenge_id;codeForm.hidden=false;
-   $('accessStatus').textContent='أرسلنا رمز الدخول إلى بريدك الإلكتروني. أدخله بالأسفل.';
-   $('devOtpHint').hidden=true;
- }catch(error){showAccess('تعذر إرسال رمز التحقق: '+error.message,true)}
- finally{btn.disabled=false}
-});
-codeForm.addEventListener('submit',async event=>{
- event.preventDefault();
- if(!pendingChallenge)return;
- const btn=$('verifyAdminCode');btn.disabled=true;
- $('accessStatus').textContent='جارٍ التحقق من رمز الدخول...';
- try{
-   const data=await authJson('/api/v1/auth/verify-email-otp',{challenge_id:pendingChallenge,code:$('adminLoginCode').value.trim(),name:$('adminLoginName').value.trim(),role:'client'});
-   if(data.user?.role==='admin'){
-     pendingChallenge=null;codeForm.hidden=true;
-     await checkAdminAccess();
-   }else{
-     showAccess('تم تسجيل الدخول، لكن هذا البريد ليس حساب مدير. عيّن بريدك في Railway باسم ADMIN_EMAIL وفعّل إرسال البريد.',true);
-     codeForm.hidden=true;pendingChallenge=null;
-   }
- }catch(error){showAccess('فشل التحقق: '+error.message,true)}
+   const data=await authJson('/api/v1/auth/login-email',{
+     email:$('adminLoginEmail').value.trim().toLowerCase(),
+     password:$('adminLoginPassword').value
+   });
+   $('adminLoginPassword').value='';
+   if(data.user?.role==='admin'){await checkAdminAccess()}
+   else showAccess('البريد صحيح ولكن الحساب ليس مديرًا. يلزم اعتماد هذا البريد ضمن ADMIN_EMAIL ثم تفعيله.',true);
+ }catch(error){showAccess('تعذر الدخول: '+error.message,true)}
  finally{btn.disabled=false}
 });
 $('recheckAdmin').addEventListener('click',checkAdminAccess);
