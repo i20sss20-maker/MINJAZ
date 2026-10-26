@@ -1,8 +1,30 @@
 <!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>لوحة إدارة الخدمات الرقمية | منجاز</title><style>
 :root{color-scheme:dark;font-family:system-ui,"Segoe UI",sans-serif}*{box-sizing:border-box}
-body{margin:0;background:#0b1022;color:#f4f5ff}header{background:linear-gradient(120deg,#302364,#141c38);padding:24px max(18px,calc((100vw - 1160px)/2))}.wrap{max-width:1160px;margin:auto;padding:24px 18px}h1{margin:6px 0}p{color:#bfcae2;line-height:1.8}a{color:#c8bdff}button,select,textarea,input{font:inherit;border-radius:10px;padding:10px 13px}button{background:#8067e9;color:#fff;border:0;cursor:pointer}button:hover{filter:brightness(1.1)}button:disabled{opacity:.6;cursor:wait}select,textarea,input{background:#151b35;color:white;border:1px solid #3c4664}textarea{width:100%;min-height:110px;resize:vertical}.card{border:1px solid #38405b;border-radius:15px;background:#181f38;padding:19px;margin:15px 0}.row{display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;gap:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.muted{color:#abb8d2}.error{color:#ffb1b1}.good{color:#a9edca}.badge{border-radius:20px;padding:5px 12px;background:#35315c;color:#eee3ff;font-size:13px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}form label{display:block;margin:12px 0 5px}form input:not([type=checkbox]),form select{width:100%}ul{padding-inline-start:24px}li{margin:8px 0}button.secondary{background:#334364}button.danger{background:#953b4d}</style></head><body>
+body{margin:0;background:#0b1022;color:#f4f5ff}header{background:linear-gradient(120deg,#302364,#141c38);padding:24px max(18px,calc((100vw - 1160px)/2))}.wrap{max-width:1160px;margin:auto;padding:24px 18px}h1{margin:6px 0}p{color:#bfcae2;line-height:1.8}a{color:#c8bdff}button,select,textarea,input{font:inherit;border-radius:10px;padding:10px 13px}button{background:#8067e9;color:#fff;border:0;cursor:pointer}button:hover{filter:brightness(1.1)}button:disabled{opacity:.6;cursor:wait}select,textarea,input{background:#151b35;color:white;border:1px solid #3c4664}textarea{width:100%;min-height:110px;resize:vertical}.card{border:1px solid #38405b;border-radius:15px;background:#181f38;padding:19px;margin:15px 0}.row{display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;gap:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.muted{color:#abb8d2}.error{color:#ffb1b1}.good{color:#a9edca}.badge{border-radius:20px;padding:5px 12px;background:#35315c;color:#eee3ff;font-size:13px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}form label{display:block;margin:12px 0 5px}form input:not([type=checkbox]),form select{width:100%}ul{padding-inline-start:24px}li{margin:8px 0}button.secondary{background:#334364}button.danger{background:#953b4d}[hidden]{display:none!important}.access-panel{max-width:640px;margin:26px auto}.access-panel form{max-width:470px}.access-panel input{width:100%;display:block}.access-panel .row{justify-content:flex-start}.access-status{padding:10px 0}.access-panel button{margin-top:12px}.access-panel input{padding:14px;margin-top:6px}.access-panel .hint{font-size:.91rem}</style></head><body>
 <header><span class="badge">نسخة تجريبية — لا توجد معاملات دفع</span><h1>إدارة خدمات منجاز الرقمية</h1><p>إدارة مسودات العملاء ومراحل التنفيذ والتسليم وطلبات التعديل.</p><a href="/digital-services">العودة إلى متجر الخدمات</a></header>
-<main class="wrap"><section><h2>ملخص الأداء التجريبي</h2><p class="muted">الأرقام إحصاءات للطلبات، وليست مبالغ محصّلة أو إيرادات فعلية.</p><div id="summary" class="grid" aria-live="polite"></div></section><div class="row"><h2>الطلبات الرقمية</h2><div><label for="filter">تصفية الحالة: </label><select id="filter"><option value="">جميع الحالات</option><option value="draft">مسودة</option><option value="in_progress">قيد التنفيذ</option><option value="delivered">تم التسليم</option><option value="revision_requested">طلب تعديل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select> <button id="refresh">تحديث</button></div></div>
+<section id="adminAccess" class="wrap access-panel card" aria-label="تسجيل دخول إدارة منجاز">
+<h2>تسجيل الدخول للوحة إدارة منجاز</h2>
+<p id="accessStatus" class="access-status" role="status">نتحقق من صلاحية حسابك...</p>
+<div id="adminLoginFields" hidden>
+<form id="adminPhoneForm">
+<label for="adminLoginPhone">رقم جوالك المرتبط بحساب الإدارة</label>
+<input id="adminLoginPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="05xxxxxxxx">
+<label for="adminLoginName">اسم المستخدم</label>
+<input id="adminLoginName" type="text" autocomplete="name" maxlength="120" required placeholder="اسمك في منجاز">
+<button id="requestAdminCode" type="submit">إرسال رمز الدخول</button>
+</form>
+<form id="adminOtpForm" hidden>
+<p>أدخل رمز التحقق المرسل لرقمك.</p>
+<label for="adminLoginCode">رمز التحقق</label>
+<input id="adminLoginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required placeholder="رمز التحقق">
+<button id="verifyAdminCode" type="submit">دخول لوحة الإدارة</button>
+</form>
+<p id="devOtpHint" class="hint muted" hidden></p>
+</div>
+<div class="row"><button id="recheckAdmin" class="secondary" type="button">التحقق من الجلسة</button><a href="/">فتح صفحة منجاز الرئيسية</a></div>
+<p class="muted hint">لوحة الإدارة لا تُظهر طلبات العملاء إلا بعد تسجيل الدخول بحساب يمتلك صلاحية مدير. إذا لم يُخصّص رقم مدير لهذه البيئة، يلزم إعداد ADMIN_PHONE ووسيلة تحقق آمنة قبل تفعيل الإدارة.</p>
+</section>
+<main id="adminDashboard" class="wrap" hidden><section><h2>ملخص الأداء التجريبي</h2><p class="muted">الأرقام إحصاءات للطلبات، وليست مبالغ محصّلة أو إيرادات فعلية.</p><div id="summary" class="grid" aria-live="polite"></div></section><div class="row"><h2>الطلبات الرقمية</h2><div><label for="filter">تصفية الحالة: </label><select id="filter"><option value="">جميع الحالات</option><option value="draft">مسودة</option><option value="in_progress">قيد التنفيذ</option><option value="delivered">تم التسليم</option><option value="revision_requested">طلب تعديل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select> <button id="refresh">تحديث</button></div></div>
 <p id="message" role="status">جاري تحميل الطلبات...</p><section id="orders" class="grid" aria-live="polite"></section><section id="details" aria-live="polite"></section>
 <section class="card" id="packagesPanel"><div class="row"><h2>إدارة باقات الخدمات</h2><button id="packagesRefresh">تحديث الباقات</button></div>
 <p id="packageMessage" role="status"></p><div id="packages" class="grid" aria-live="polite"></div>
@@ -48,5 +70,70 @@ function resetPackage(){editingPackageId=null;$('packageForm').reset();$('packag
 async function loadPackages(){const box=$('packages');box.replaceChildren();packageMessage('جاري تحميل الباقات...');try{const data=await api('/api/digital-services/admin/packages');if(!Array.isArray(data.packages))throw Error('تعذر قراءة الباقات');packageMessage('عدد الباقات: '+data.packages.length);for(const p of data.packages){const c=el('article',undefined,'card');c.append(el('h3',p.title_ar),el('p',p.category+' | '+p.price_sar+' ر.س'),el('p',p.active?'منشورة':'مخفية','badge'));const edit=el('button','تعديل','secondary');edit.addEventListener('click',()=>fillPackage(p));const toggle=el('button',p.active?'إخفاء الباقة':'نشر الباقة',p.active?'danger':'secondary');toggle.addEventListener('click',async()=>{if(!confirm('تأكيد تغيير نشر الباقة؟'))return;toggle.disabled=true;try{await api('/api/digital-services/admin/packages/'+p.id,{method:'PATCH',body:JSON.stringify({active:!p.active})});packageMessage('تم تغيير حالة ظهور الباقة');await loadPackages()}catch(e){packageMessage(e.message,true)}finally{toggle.disabled=false}});const history=el('button','سجل الباقة','secondary');history.addEventListener('click',async()=>{history.disabled=true;try{const data=await api('/api/digital-services/admin/packages/'+p.id+'/events');let log=c.querySelector('.package-history');if(!log){log=el('div',undefined,'package-history');c.append(log)}log.replaceChildren(el('h4','آخر تغييرات الباقة'));if(!data.events?.length){log.append(el('p','لا توجد تغييرات مسجلة'));return}const ul=el('ul');for(const event of data.events){const title=event.action==='created'?'إنشاء الباقة':'تعديل الباقة';const before=event.before?.active;const after=event.after?.active;const visibility=before!==undefined&&before!==after?' • تغيّر ظهور الباقة':'';ul.append(el('li',title+visibility+' • '+new Date(event.created_at).toLocaleString('ar-SA')))}log.append(ul)}catch(error){packageMessage(error.message,true)}finally{history.disabled=false}});c.append(edit,el('span',' '),toggle,el('span',' '),history);box.append(c)}}catch(e){packageMessage(e.message,true)}}
 $('packageForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const payload={slug:form.elements.namedItem('slug').value.trim(),category:form.elements.namedItem('category').value,title_ar:form.elements.namedItem('title_ar').value.trim(),description_ar:form.elements.namedItem('description_ar').value.trim(),price_sar:form.elements.namedItem('price_sar').value,delivery_days:Number(form.elements.namedItem('delivery_days').value),revision_limit:Number(form.elements.namedItem('revision_limit').value),active:form.elements.namedItem('active').checked};const btn=$('savePackage');btn.disabled=true;try{const endpoint=editingPackageId?'/api/digital-services/admin/packages/'+editingPackageId:'/api/digital-services/admin/packages';await api(endpoint,{method:editingPackageId?'PATCH':'POST',body:JSON.stringify(payload)});resetPackage();await loadPackages();packageMessage('تم حفظ الباقة بنجاح')}catch(e){packageMessage(e.message,true)}finally{btn.disabled=false}});
 $('resetPackage').addEventListener('click',resetPackage);$('packagesRefresh').addEventListener('click',loadPackages);
-$('refresh').addEventListener('click',load);$('filter').addEventListener('change',load);load();loadPackages();
+const loginForm=$('adminPhoneForm'),codeForm=$('adminOtpForm');
+let pendingChallenge=null, adminAuthenticated=false;
+function showAccess(text,isError=false){
+ $('adminAccess').hidden=false;$('adminDashboard').hidden=true;
+ $('adminLoginFields').hidden=false;
+ $('accessStatus').textContent=text;$('accessStatus').className='access-status '+(isError?'error':'');
+ adminAuthenticated=false;
+}
+async function checkAdminAccess(){
+ try{
+   const res=await fetch('/api/v1/me',{credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'});
+   if(res.ok){
+     const data=await res.json();
+     if(data.user?.role==='admin'){
+       $('adminAccess').hidden=true;$('adminDashboard').hidden=false;adminAuthenticated=true;
+       await Promise.all([load(),loadPackages()]);
+       return;
+     }
+     showAccess('أنت مسجّل الدخول بحساب غير إداري. ادخل برقم المدير المخصّص لهذه البيئة، أو اضبط صلاحية ADMIN_PHONE في Railway.',true);
+   }else if(res.status===401){
+     showAccess('يلزم تسجيل الدخول برقم المدير لفتح لوحة الإدارة.');
+   }else{
+     showAccess('تعذّر التحقق من حسابك (HTTP '+res.status+'). حاول تحديث الصفحة.',true);
+   }
+ }catch(error){showAccess('تعذّر الاتصال للتحقق من الجلسة: '+error.message,true)}
+}
+async function authJson(path,payload){
+ const res=await fetch(path,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(payload)});
+ let data={};try{data=await res.json()}catch{}
+ if(!res.ok)throw Error(errorLabels[data.error]||data.error||'تعذر تسجيل الدخول (HTTP '+res.status+')');
+ return data;
+}
+loginForm.addEventListener('submit',async event=>{
+ event.preventDefault();
+ const btn=$('requestAdminCode');btn.disabled=true;
+ $('accessStatus').textContent='جارٍ طلب رمز الدخول...';
+ try{
+   const result=await authJson('/api/v1/auth/request-otp',{phone:$('adminLoginPhone').value.trim()});
+   pendingChallenge=result.challenge_id;codeForm.hidden=false;
+   $('accessStatus').textContent='تم طلب رمز التحقق. أدخله بالأسفل.';
+   $('devOtpHint').hidden=result.delivery!=='development';
+   $('devOtpHint').textContent=result.delivery==='development'?'البيئة تستخدم رمز تحقق تجريبيًا. حسابات المدير تتطلب وسيلة تحقق آمنة قبل استخدامها.':'';
+ }catch(error){showAccess('تعذر إرسال رمز التحقق: '+error.message,true)}
+ finally{btn.disabled=false}
+});
+codeForm.addEventListener('submit',async event=>{
+ event.preventDefault();
+ if(!pendingChallenge)return;
+ const btn=$('verifyAdminCode');btn.disabled=true;
+ $('accessStatus').textContent='جارٍ التحقق من رمز الدخول...';
+ try{
+   const data=await authJson('/api/v1/auth/verify-otp',{challenge_id:pendingChallenge,code:$('adminLoginCode').value.trim(),name:$('adminLoginName').value.trim(),role:'client'});
+   if(data.user?.role==='admin'){
+     pendingChallenge=null;codeForm.hidden=true;
+     await checkAdminAccess();
+   }else{
+     showAccess('تم تسجيل الدخول، لكن هذا الرقم ليس حساب مدير. يجب تخصيص رقم المدير في إعدادات Railway (ADMIN_PHONE) مع وسيلة تحقق آمنة.',true);
+     codeForm.hidden=true;pendingChallenge=null;
+   }
+ }catch(error){showAccess('فشل التحقق: '+error.message,true)}
+ finally{btn.disabled=false}
+});
+$('recheckAdmin').addEventListener('click',checkAdminAccess);
+$('refresh').addEventListener('click',load);
+$('filter').addEventListener('change',load);
+checkAdminAccess();
 </script></body></html>
