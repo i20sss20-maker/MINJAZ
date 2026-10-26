@@ -2012,7 +2012,7 @@ def session_token_from_headers(headers):
 def auth(headers):
     raw,transport=session_token_from_headers(headers)
     if not raw:return None
-    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
+    row=q("""select u.id,u.phone,u.email,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
              from sessions s join users u on u.id=s.user_id
@@ -2486,6 +2486,36 @@ class H(BaseHTTPRequestHandler):
                 return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
             if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
             if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
+            if method=='GET' and p=='/api/v1/auth/email-status':
+                from minjaz_email_auth import email_delivery_config
+                cfg=email_delivery_config()
+                return self.sendj(200,{'method':'email','configured':cfg['enabled'],
+                     'mode':cfg['mode'],'admin_email_configured':bool(os.getenv('ADMIN_EMAIL','').strip())})
+            if method=='POST' and p=='/api/v1/auth/request-email-otp':
+                from minjaz_email_auth import request_email_otp,send_email_code,email_delivery_config
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                cfg=email_delivery_config()
+                status,payload=request_email_otp(self.body(),db_connect,SECRET,send_email_code,
+                    ip_allowed=rate_limit_event('email_otp_ip',self.client_key(),15,600),
+                    config_ready=cfg['enabled'])
+                return self.sendj(status,payload)
+            if method=='POST' and p=='/api/v1/auth/verify-email-otp':
+                from minjaz_email_auth import verify_email_otp,email_delivery_config
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                cfg=email_delivery_config()
+                status,payload=verify_email_otp(self.body(),db_connect,SECRET,
+                    os.getenv('ADMIN_EMAIL',''),cfg['enabled'],
+                    SESSION_TTL_DAYS,str(self.headers.get('User-Agent') or '')[:500],
+                    self.client_ip() or '')
+                if status==200:
+                    self.set_session_cookie(payload.pop('session_raw'))
+                    log_account_activity(payload['user']['id'],'login',
+                        'تسجيل دخول بالبريد الإلكتروني',payload.pop('session_id'),{'method':'email'})
+                return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/request-otp':
                 b=self.body(); phone=normalize_phone(b.get('phone',''))
                 if not phone:return self.sendj(400,{'error':'invalid_phone'})
@@ -2556,7 +2586,7 @@ class H(BaseHTTPRequestHandler):
                 if not roles:
                     q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
                 prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
+                user={k:as_json(u.get(k)) for k in ('id','phone','email','name','role','is_verified')}; user['roles']=roles
                 return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
             if p=='/api/v1/me/profile' and method=='PATCH':
                 u=self.require();
