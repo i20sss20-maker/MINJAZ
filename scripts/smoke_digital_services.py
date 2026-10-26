@@ -38,12 +38,16 @@ def main():
     services = catalog["services"]
     if not isinstance(services, list):
         raise AssertionError("catalog.services must be an array")
-    expected_slugs = {"website-starter-demo", "ecommerce-starter-demo", "branding-starter-demo"}
-    actual_slugs = {item.get("slug") for item in services if isinstance(item, dict)}
-    missing = expected_slugs - actual_slugs
-    if missing:
-        raise AssertionError(f"missing active demo packages from public catalog: {sorted(missing)}")
-    print(f"PASS public catalog contains all {len(expected_slugs)} demo packages")
+    for item in services:
+        if not isinstance(item, dict) or not isinstance(item.get("slug"), str) or not item.get("title_ar"):
+            raise AssertionError("catalog contains an incomplete package")
+        if "price_sar" not in item or "delivery_days" not in item:
+            raise AssertionError("catalog package missing essential fields")
+    # The administrator may hide any demo package. Hidden services must remain
+    # absent from the public catalog and cannot be required by this smoke test.
+    demo_slugs = {"website-starter-demo", "ecommerce-starter-demo", "branding-starter-demo"}
+    visible = {item["slug"] for item in services if item["slug"] in demo_slugs}
+    print(f"PASS public catalog structure; {len(services)} visible services; {len(visible)} demo packages currently visible")
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/orders/1",401,"error")
