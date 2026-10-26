@@ -41,6 +41,11 @@ def dispatch(method, path, query, body, actor, connect):
             fingerprint = hashlib.sha256(json.dumps(
                 [package_id,requirements.strip()],ensure_ascii=False,separators=(',',':')
             ).encode('utf-8')).hexdigest()
+            # Never accept preview draft orders if this module is accidentally
+            # deployed outside the dedicated sandbox project.
+            from minjaz_digital_workflow import _preview
+            if not _preview():
+                return 403, {'error':'sandbox_only'}
         c=connect(); c.autocommit=False
         try:
             with c.cursor() as cur:
