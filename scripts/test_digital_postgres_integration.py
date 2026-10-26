@@ -53,6 +53,7 @@ def setup():
             "030_digital_service_package_audit.sql",
             "031_digital_service_order_idempotency.sql",
             "032_digital_service_deliverables.sql",
+            "033_digital_service_delivery_withdrawal.sql",
         ):
             # Each migration wraps its statements in BEGIN/COMMIT.
             with db.cursor() as cur:
@@ -137,6 +138,15 @@ def run():
     check(call_deliverables("GET",customer_assets,actor=OTHER)[0]==404,
           "other customer accessed private delivery artifacts")
     check(call_deliverables("POST",asset_base,link_1)[0]==409,"duplicate asset accepted")
+    link_id=asset["id"]
+    code,withdrawn=call_deliverables("DELETE",asset_base+"/"+str(link_id))
+    check(code==200 and withdrawn["withdrawn_id"]==link_id,
+          "unpublished delivery link could not be withdrawn")
+    code,withdrawn_read=call_deliverables("GET",asset_base)
+    check(code==200 and not withdrawn_read["deliverables"],
+          "withdrawn link remained listed to admin")
+    code,asset=call_deliverables("POST",asset_base,link_1)
+    check(code==201 and asset["id"]!=link_id,"withdrawn delivery link could not be corrected")
     check(call_customer("PATCH",ORDER+"/"+str(order_id),
           {"requirements":"لا يجب تعديل المشروع بعد بدء التنفيذ"})[0]==409,
           "started order requirements were changed")
@@ -144,6 +154,13 @@ def run():
     code,visible=call_deliverables("GET",customer_assets,actor=CUSTOMER)
     check(code==200 and len(visible["deliverables"])==1
           and visible["deliverables"][0]["published"],"delivery did not publish staged link")
+    with guarded_connect() as db:
+        with db.cursor() as cur:
+            cur.execute("""SELECT archived_by,published_at FROM digital_service_deliverables
+              WHERE id=%s""",(link_id,))
+            archived_by,published_at=cur.fetchone()
+            check(archived_by==22 and published_at is None,
+                  "withdrawn link was published or withdrawal audit was lost")
     customer_to("revisions","يرجى تعديل ألوان الصفحة الرئيسية إلى الأزرق")
     admin_to("in_progress")
     link_2={"title":"نسخة ثانية من الملفات","url":"https://files.example.com/digital/second.zip"}
