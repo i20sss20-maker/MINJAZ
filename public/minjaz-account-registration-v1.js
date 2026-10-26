@@ -142,6 +142,8 @@ async function consumeActionLink(){
  const hash=window.location.hash.slice(1);
  const match=/^(verify-email|reset-password)=([A-Za-z0-9_-]{35,160})$/.exec(hash);
  if(!match)return;
+ document.getElementById("auth")?.classList.remove("hidden");
+ document.getElementById("app")?.classList.add("hidden");
  history.replaceState(null,"",location.pathname+location.search);
  if(match[1]==="reset-password"){
    resetToken=match[2];show("accountNewPassword");status("أدخل كلمة مرور جديدة لإتمام الاستعادة.");return;
