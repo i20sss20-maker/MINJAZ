@@ -2323,7 +2323,7 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/digital-services/catalog' or p == '/api/digital-services/orders' or p.startswith('/api/digital-services/orders/'):
                 from minjaz_digital_services import dispatch as digital_services_dispatch
                 actor = auth(self.headers) if p != '/api/digital-services/catalog' else None
-                if method == 'POST' and p == '/api/digital-services/orders':
+                if method in ('POST','PATCH'):
                     # Browser cookie sessions require an allowed same-origin request.
                     # Reject form submissions and cross-origin writes.
                     if not self.headers.get('Content-Type','').lower().startswith('application/json'):
@@ -2334,7 +2334,7 @@ class H(BaseHTTPRequestHandler):
                         if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
                         if not origin or origin not in allowed:
                             return self.sendj(403, {'error':'origin_not_allowed'})
-                payload = self.body() if method == 'POST' and p == '/api/digital-services/orders' else None
+                payload = self.body() if method in ('POST','PATCH') else None
                 status, response = digital_services_dispatch(method, p, query, payload, actor, db_connect)
                 return self.sendj(status, response)
             if p=='/health':
