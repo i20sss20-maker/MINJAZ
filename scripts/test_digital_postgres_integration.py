@@ -18,6 +18,7 @@ import psycopg2
 from minjaz_digital_services import dispatch as customer
 from minjaz_digital_workflow import dispatch as workflow, SANDBOX_PROJECT_ID
 from minjaz_digital_deliverables import dispatch as deliverables
+from minjaz_email_auth import request_email_otp, verify_email_otp
 from scripts.seed_digital_services_preview import seed_packages
 TEST_URL = os.getenv("DIGITAL_TEST_DATABASE_URL", "")
 CUSTOMER = {"id":11,"role":"customer"}
@@ -62,6 +63,19 @@ def setup():
                 cur.execute((ROOT/"database"/"migrations"/name).read_text(encoding="utf-8"))
             print("PASS migration",name)
         with db.cursor() as cur:
+            cur.execute("""CREATE TABLE IF NOT EXISTS user_roles (
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                PRIMARY KEY (user_id,role))""")
+            cur.execute("""CREATE TABLE IF NOT EXISTS freelancer_profiles (
+                user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE)""")
+            cur.execute("""CREATE TABLE IF NOT EXISTS sessions (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id),
+                token_hash TEXT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                user_agent TEXT,device_label TEXT,ip_hash TEXT,last_seen_at TIMESTAMPTZ)""")
+        with db.cursor() as cur:
             counts=seed_packages(cur)
             check(counts=={"present":3,"active":3,"hidden":0},"initial seed inconsistent")
         print("PASS initial sandbox demo seed")
@@ -75,8 +89,68 @@ def call_workflow(method,path,body=None,actor=ADMIN):
 def call_deliverables(method,path,body=None,actor=ADMIN):
     return deliverables(method,path,{},body,actor,guarded_connect)
 
+def verify_email_contract():
+    secret = "ci-verified-email-secret-" + "x" * 48
+    sent = {}
+    def deliver(email, code):
+        sent[email] = code
+    code,data=request_email_otp(
+        {"email":"qa-client@example.com","role":"client"},
+        guarded_connect,secret,deliver)
+    check(code==201 and data["code_length"]==6 and "dev_code" not in data,
+          "email code was not generated safely")
+    challenge_id=data["challenge_id"]
+    code,response=verify_email_otp(
+        {"challenge_id":challenge_id,"code":"000000" if sent["qa-client@example.com"]!="000000" else "999999",
+         "name":"عميل اختبار"},guarded_connect,secret,"",True,30,"CI browser","127.0.0.1")
+    check(code==401,"wrong email code was accepted")
+    code,result=verify_email_otp(
+        {"challenge_id":challenge_id,"code":sent["qa-client@example.com"],"name":"عميل اختبار"},
+        guarded_connect,secret,"",True,30,"CI browser","127.0.0.1")
+    check(code==200 and result["user"]["role"]=="client"
+          and result["user"]["email"]=="qa-client@example.com",
+          "client email login failed")
+    check(verify_email_otp(
+        {"challenge_id":challenge_id,"code":sent["qa-client@example.com"],"name":"عميل اختبار"},
+        guarded_connect,secret,"",True,30,"CI browser","127.0.0.1")[0]==409,
+        "verified challenge allowed repeated logins")
+
+    code,admin_req=request_email_otp(
+        {"email":"qa-admin@example.com","role":"client"},guarded_connect,secret,deliver)
+    check(code==201,"admin verification email could not be requested")
+    code,admin=verify_email_otp(
+        {"challenge_id":admin_req["challenge_id"],"code":sent["qa-admin@example.com"],
+         "name":"مدير اختبار"},guarded_connect,secret,"qa-admin@example.com",
+        True,30,"CI browser","127.0.0.1")
+    check(code==200 and admin["user"]["role"]=="admin"
+          and "admin" in admin["roles"],
+          "verified configured admin email did not receive admin role")
+    code,freelancer_req=request_email_otp(
+        {"email":"qa-freelancer@example.com","role":"freelancer"},
+        guarded_connect,secret,deliver)
+    check(code==201,"freelancer email challenge failed")
+    code,freelancer=verify_email_otp(
+        {"challenge_id":freelancer_req["challenge_id"],"code":sent["qa-freelancer@example.com"],
+         "name":"مستقل اختبار","role":"admin"},guarded_connect,secret,"qa-admin@example.com",
+        True,30,"CI browser","127.0.0.1")
+    check(code==200 and freelancer["user"]["role"]=="freelancer",
+          "verify endpoint allowed a forged admin role")
+    with guarded_connect() as db:
+        with db.cursor() as cur:
+            cur.execute("SELECT phone FROM users WHERE email=%s",("qa-client@example.com",))
+            check(cur.fetchone()[0] is None,"email-only users were assigned a fake phone number")
+            cur.execute("SELECT COUNT(*) FROM freelancer_profiles WHERE user_id=%s",
+                        (freelancer["user"]["id"],))
+            check(cur.fetchone()[0]==1,"new freelancer email account lacks profile")
+            cur.execute("SELECT COUNT(*) FROM sessions WHERE user_id IN (%s,%s,%s)",
+                (result["user"]["id"],admin["user"]["id"],freelancer["user"]["id"]))
+            check(cur.fetchone()[0]==3,"verified email sessions were not persisted")
+    print("PASS email client/freelancer/admin OTP, wrong code, one-use, privacy and sessions")
+
+
 def run():
     setup()
+    verify_email_contract()
     # Workflow mutations are guarded by this exact project ID and payment_mode.
     os.environ.update({"APP_ENV":"preview","RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,
                        "PAYMENT_MODE":"mock"})
