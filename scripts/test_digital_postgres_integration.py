@@ -94,7 +94,15 @@ def run():
           "other customer accessed private order")
     check(call_workflow("GET",ADMIN_ROUTE+"/orders",actor=OTHER)[0]==403,
           "non-admin listed customer orders")
-    print("PASS owner privacy, frozen pricing and idempotent submission")
+    edited_requirements="تم تعديل متطلبات الموقع لإضافة صفحة معرض أعمال وقسم أسئلة شائعة."
+    code,changed=call_customer("PATCH",ORDER+"/"+str(order_id),
+                               {"requirements":edited_requirements})
+    check(code==200 and changed["requirements"]==edited_requirements,
+          "customer could not update draft requirements")
+    check(call_customer("PATCH",ORDER+"/"+str(order_id),
+                        {"requirements":"محاولة تعديل من عميل غير مالك"},OTHER)[0]==404,
+          "another customer updated the draft")
+    print("PASS owner privacy, frozen pricing, draft edit and idempotent submission")
 
     def admin_to(state,note=""):
         code,payload=call_workflow("PATCH",ADMIN_ROUTE+"/orders/"+str(order_id),
@@ -109,6 +117,9 @@ def run():
           {"status":"delivered","note":"ملفات التسليم جاهزة للعميل"})[0]==409,
           "admin skipped from draft to delivered")
     admin_to("in_progress")
+    check(call_customer("PATCH",ORDER+"/"+str(order_id),
+          {"requirements":"لا يجب تعديل المشروع بعد بدء التنفيذ"})[0]==409,
+          "started order requirements were changed")
     admin_to("delivered","تم إعداد الموقع وتسليم ملفات النسخة الأولى")
     customer_to("revisions","يرجى تعديل ألوان الصفحة الرئيسية إلى الأزرق")
     admin_to("in_progress")
@@ -126,7 +137,7 @@ def run():
     code,result=call_customer("GET",ORDER+"/"+str(order_id))
     check(code==200 and result["order"]["status"]=="completed"
           and result["order"]["revisions_used"]==2
-          and len(result["order"]["events"])==10,
+          and len(result["order"]["events"])==11,
           "full order audit timeline is incomplete")
     print("PASS complete delivery lifecycle, two revisions, final acceptance and audit")
 
