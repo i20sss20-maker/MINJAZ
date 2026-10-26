@@ -2431,8 +2431,8 @@ class H(BaseHTTPRequestHandler):
                 return self.wfile.write(data)
             if method=='GET' and p=='/digital-services/admin':
                 if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
-                actor=self.require('admin')
-                if not actor:return
+                # Serve an unprivileged login shell even when signed out. All
+                # admin data/actions remain protected by role-checked APIs.
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services-admin.html'),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
