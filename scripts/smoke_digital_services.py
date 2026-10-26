@@ -63,7 +63,7 @@ def main():
     check("/api/digital-services/orders/1/deliverables",401,"error")
     check_html("/digital-services","خدمات منجاز الرقمية")
     check("/api/digital-services/orders/1/revisions",401,"error")
-    check("/digital-services/admin",401,"error")
+    check_html("/digital-services/admin","تسجيل الدخول للوحة إدارة منجاز")
     check("/health",200,"ok")
     print("All read-only sandbox checks passed.")
 
