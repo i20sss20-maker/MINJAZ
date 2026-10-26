@@ -2289,7 +2289,7 @@ linear-gradient(135deg,#fbfcff,#fff);padding:15px}
       <button id="roleFreelancer" onclick="setRole('freelancer')">أنا مستقل</button>
     </div>
     <div class="field"><label>الاسم</label><input id="loginName" autocomplete="name" placeholder="مثال: صالح"></div>
-    <div class="field"><label>رقم الجوال</label><input id="loginPhone" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="+9665xxxxxxxx"></div>
+    <div class="field"><label for="loginPhone">البريد الإلكتروني</label><input id="loginPhone" type="email" inputmode="email" autocomplete="email" dir="ltr" maxlength="254" placeholder="name@example.com" required></div>
     <button id="sendOtpBtn" class="btn primary wide" onclick="requestOtp()">إرسال رمز التحقق</button>
     <div id="otpBox" class="hidden" style="margin-top:14px">
       <div class="field"><label>رمز التحقق</label><div class="otp" id="otpInputs"><input inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"><input inputmode="numeric" pattern="[0-9]*"><input inputmode="numeric" pattern="[0-9]*"><input inputmode="numeric" pattern="[0-9]*"></div></div>
@@ -2592,28 +2592,31 @@ function wireOtp(){
 wireOtp();
 async function requestOtp(){
  if(otpRequestBusy||Date.now()<otpCooldownUntil)return;
- const phone=$('loginPhone').value.trim(),name=$('loginName').value.trim();
- if(!phone||!name)return toast('اكتب الاسم ورقم الجوال');
+ const email=$('loginPhone').value.trim().toLowerCase(),name=$('loginName').value.trim();
+ if(!email||!$('loginPhone').checkValidity()||!name)return toast('اكتب الاسم والبريد الإلكتروني الصحيح');
  otpRequestBusy=true;otpButtonLabel();
- const {r,j}=await api('/api/v1/auth/request-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})});
+ const route=DEMO_MODE?'/api/v1/auth/request-otp':'/api/v1/auth/request-email-otp';
+ const form=DEMO_MODE?{phone:email}:{email,role};
+ const {r,j}=await api(route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(form)});
  otpRequestBusy=false;
  if(!r.ok){
   if(['otp_wait','otp_rate_limited','otp_source_rate_limited'].includes(j?.error))setOtpCooldown(Math.min(Number(j?.retry_after_seconds)||60,600));else otpButtonLabel();
-  return toast(j?.error==='otp_wait'?'انتظر قبل طلب رمز جديد':j?.error==='otp_rate_limited'||j?.error==='otp_source_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':'تعذر إرسال الرمز');
+  return toast(j?.error==='otp_wait'?'انتظر قبل طلب رمز جديد':j?.error==='otp_rate_limited'||j?.error==='otp_source_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':j?.error==='email_not_configured'?'إرسال البريد غير مفعّل بعد. يلزم إعداد بريد الإرسال في لوحة الخدمة.':j?.error==='invalid_email'?'تأكد من كتابة بريد إلكتروني صحيح':'تعذر إرسال الرمز إلى بريدك الإلكتروني');
  }
  challenge=j.challenge_id;
  renderOtpInputs(j?.code_length||String(j?.dev_code||'').length||6);
  const hint=$('devOtpHint');
  if(hint){if(j?.dev_code){hint.innerHTML='رمز التحقق التجريبي <b>'+esc(j.dev_code)+'</b>.';hint.classList.remove('hidden')}else{hint.textContent='';hint.classList.add('hidden')}}
  const status=$('otpStatus');if(status)status.textContent='الرمز صالح لمدة '+Math.max(1,Math.round(Number(j?.expires_in_seconds||600)/60))+' دقائق';
- $('otpBox').classList.remove('hidden');setOtpCooldown(60);document.querySelector('.otp input')?.focus();toast(j?.delivery==='adapter'?'تم إرسال رمز التحقق':'تم إنشاء رمز التحقق');
+ $('otpBox').classList.remove('hidden');setOtpCooldown(60);document.querySelector('.otp input')?.focus();toast(j?.delivery==='email'?'تم إرسال رمز التحقق إلى بريدك الإلكتروني':j?.delivery==='adapter'?'تم إرسال رمز التحقق':'تم إنشاء رمز التحقق');
 }
 async function verifyOtp(){
  if(otpVerifyBusy)return;
  const code=[...document.querySelectorAll('.otp input')].map(x=>x.value).join('');
  if(code.length!==otpLength)return toast('اكتب الرمز كامل');
  const btn=$('verifyOtpBtn');otpVerifyBusy=true;if(btn){btn.disabled=true;btn.textContent='جاري الدخول…'}
- const {r,j}=await api('/api/v1/auth/verify-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
+ const endpoint=DEMO_MODE?'/api/v1/auth/verify-otp':'/api/v1/auth/verify-email-otp';
+ const {r,j}=await api(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
  otpVerifyBusy=false;if(btn){btn.disabled=false;btn.textContent='دخول'}
  if(!r.ok){
   if(j?.error==='otp_expired'){setOtpCooldown(0);const status=$('otpStatus');if(status)status.textContent='انتهت صلاحية الرمز — اطلب رمزًا جديدًا'}
