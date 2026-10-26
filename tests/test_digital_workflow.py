@@ -60,6 +60,8 @@ class PackageCursor(Cursor):
             self.conn.package_events.append(args)
         elif "FROM digital_service_packages ORDER BY id DESC" in compact:
             self.rows=[self.conn.package] if self.conn.package else []
+        elif "FROM digital_service_package_events WHERE package_id=%s" in compact:
+            self.rows=[("created",None,{"slug":"test-demo"},self.conn.sample_time)]
     def fetchall(self):
         return getattr(self,"rows",[])
 
@@ -68,6 +70,8 @@ class PackageConn(Conn):
         super().__init__()
         self.package=package
         self.package_events=[]
+        from datetime import datetime, timezone
+        self.sample_time=datetime.now(timezone.utc)
     def cursor(self):
         return PackageCursor(self)
 
@@ -98,6 +102,18 @@ class WorkflowTests(unittest.TestCase):
         if db is None:db=FailConnect()
         return dispatch(method,BASE+path,{},body,actor,(lambda:db) if not isinstance(db,FailConnect) else db)
 
+    def test_package_events_are_admin_only(self):
+        self.assertEqual(self.call("admin/packages/91/events","GET",None,None)[0],401)
+        self.assertEqual(self.call("admin/packages/91/events","GET",None,CUSTOMER)[0],403)
+    def test_admin_reads_package_events(self):
+        db=PackageConn()
+        code,data=self.call("admin/packages/91/events","GET",None,ADMIN,db)
+        self.assertEqual(code,200)
+        self.assertEqual(data["events"][0]["action"],"created")
+        self.assertEqual(data["events"][0]["after"]["slug"],"test-demo")
+        self.assertTrue(db.closed)
+    def test_package_events_reject_writes(self):
+        self.assertEqual(self.call("admin/packages/91/events","POST",{},ADMIN)[0],405)
     def test_admin_creates_package_with_audit(self):
         db=PackageConn()
         with patch.dict(os.environ,PREVIEW):
