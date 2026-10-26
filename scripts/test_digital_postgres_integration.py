@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 import psycopg2
 from minjaz_digital_services import dispatch as customer
 from minjaz_digital_workflow import dispatch as workflow, SANDBOX_PROJECT_ID
+from minjaz_digital_deliverables import dispatch as deliverables
 from scripts.seed_digital_services_preview import seed_packages
 TEST_URL = os.getenv("DIGITAL_TEST_DATABASE_URL", "")
 CUSTOMER = {"id":11,"role":"customer"}
@@ -51,6 +52,7 @@ def setup():
             "029_digital_service_fulfillment.sql",
             "030_digital_service_package_audit.sql",
             "031_digital_service_order_idempotency.sql",
+            "032_digital_service_deliverables.sql",
         ):
             # Each migration wraps its statements in BEGIN/COMMIT.
             with db.cursor() as cur:
@@ -66,6 +68,9 @@ def call_customer(method,path,body=None,actor=CUSTOMER):
 
 def call_workflow(method,path,body=None,actor=ADMIN):
     return workflow(method,path,{},body,actor,guarded_connect)
+
+def call_deliverables(method,path,body=None,actor=ADMIN):
+    return deliverables(method,path,{},body,actor,guarded_connect)
 
 def run():
     setup()
@@ -122,13 +127,35 @@ def run():
           {"status":"delivered","note":"ملفات التسليم جاهزة للعميل"})[0]==409,
           "admin skipped from draft to delivered")
     admin_to("in_progress")
+    asset_base=ADMIN_ROUTE+"/orders/"+str(order_id)+"/deliverables"
+    customer_assets=ORDER+"/"+str(order_id)+"/deliverables"
+    link_1={"title":"نسخة أولى من الملفات","url":"https://files.example.com/digital/first.zip"}
+    code,asset=call_deliverables("POST",asset_base,link_1)
+    check(code==201 and asset["published"] is False,"delivery upload link was not staged")
+    code,private=call_deliverables("GET",customer_assets,actor=CUSTOMER)
+    check(code==200 and private["deliverables"]==[],"pending link leaked before delivery")
+    check(call_deliverables("GET",customer_assets,actor=OTHER)[0]==404,
+          "other customer accessed private delivery artifacts")
+    check(call_deliverables("POST",asset_base,link_1)[0]==409,"duplicate asset accepted")
     check(call_customer("PATCH",ORDER+"/"+str(order_id),
           {"requirements":"لا يجب تعديل المشروع بعد بدء التنفيذ"})[0]==409,
           "started order requirements were changed")
     admin_to("delivered","تم إعداد الموقع وتسليم ملفات النسخة الأولى")
+    code,visible=call_deliverables("GET",customer_assets,actor=CUSTOMER)
+    check(code==200 and len(visible["deliverables"])==1
+          and visible["deliverables"][0]["published"],"delivery did not publish staged link")
     customer_to("revisions","يرجى تعديل ألوان الصفحة الرئيسية إلى الأزرق")
     admin_to("in_progress")
+    link_2={"title":"نسخة ثانية من الملفات","url":"https://files.example.com/digital/second.zip"}
+    code,_=call_deliverables("POST",asset_base,link_2)
+    check(code==201,"revised delivery link was not staged")
+    code,held=call_deliverables("GET",customer_assets,actor=CUSTOMER)
+    check(code==200 and len(held["deliverables"])==1,
+          "new revision delivery link was exposed before next delivery")
     admin_to("delivered","تم تحديث الألوان وتسليم النسخة الثانية")
+    code,released=call_deliverables("GET",customer_assets,actor=CUSTOMER)
+    check(code==200 and len(released["deliverables"])==2,
+          "revised delivery link was not published")
     customer_to("revisions","يرجى تحسين حجم النص في الصفحة الرئيسية")
     admin_to("in_progress")
     admin_to("delivered","تم تعديل حجم النص وتسليم النسخة النهائية")
@@ -144,6 +171,7 @@ def run():
           and result["order"]["revisions_used"]==2
           and len(result["order"]["events"])==11,
           "full order audit timeline is incomplete")
+    print("PASS private staged delivery links, atomic publishing and revision handoff")
     print("PASS complete delivery lifecycle, two revisions, final acceptance and audit")
 
     code,pkg=call_workflow("PATCH",ADMIN_ROUTE+"/packages/"+str(package_id),
