@@ -154,6 +154,25 @@ def dispatch(method, path, query, body, actor, connect):
         return 403, {"error": "admin_only"}
 
     if admin_route:
+        if bits == ["admin", "summary"]:
+            if method != "GET":
+                return 405, {"error":"method_not_allowed"}
+            c=connect()
+            try:
+                with c.cursor() as cur:
+                    cur.execute("""SELECT status,COUNT(*)::int FROM digital_service_orders
+                      GROUP BY status""")
+                    counts={status:count for status,count in cur.fetchall()}
+                    cur.execute("SELECT COUNT(*)::int FROM digital_service_packages WHERE active=TRUE")
+                    active_packages=cur.fetchone()[0]
+                    cur.execute("""SELECT COUNT(*)::int FROM digital_service_revisions
+                      WHERE created_at > NOW()-INTERVAL '7 days'""")
+                    recent_revisions=cur.fetchone()[0]
+                    return 200, {"total_orders":sum(counts.values()),"by_status":counts,
+                                 "active_packages":active_packages,"revisions_last_7_days":recent_revisions,
+                                 "preview_only":True}
+            finally:
+                c.close()
         if len(bits) >= 2 and bits[1] == "packages":
             return _package_admin(method,bits,body,actor,connect)
         if bits == ["admin", "orders"] and method == "GET":
