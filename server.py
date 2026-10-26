@@ -2305,11 +2305,11 @@ class H(BaseHTTPRequestHandler):
     def route(self,method):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
-            if p.startswith('/api/digital-services/') and p.endswith('/deliverables'):
+            if p.startswith('/api/digital-services/') and (p.endswith('/deliverables') or '/deliverables/' in p):
                 from minjaz_digital_deliverables import dispatch as digital_deliverables_dispatch
                 actor = auth(self.headers)
-                if method == 'POST':
-                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                if method in ('POST','DELETE'):
+                    if method == 'POST' and not self.headers.get('Content-Type','').lower().startswith('application/json'):
                         return self.sendj(415, {'error':'json_required'})
                     if actor and actor.get('_auth_transport') == 'cookie':
                         origin = self.headers.get('Origin','').rstrip('/')
