@@ -21,9 +21,19 @@ def check(path, expected, key=None):
     if status!=expected or (key is not None and key not in data):
         raise AssertionError(f"{path}: expected {expected} and key {key}, got {status} {str(data)[:250]}")
     print(f"PASS {path}: HTTP {status}")
+    return data
 
 def main():
-    check("/api/digital-services/catalog",200,"services")
+    catalog = check("/api/digital-services/catalog",200,"services")
+    services = catalog["services"]
+    if not isinstance(services, list):
+        raise AssertionError("catalog.services must be an array")
+    expected_slugs = {"website-starter-demo", "ecommerce-starter-demo", "branding-starter-demo"}
+    actual_slugs = {item.get("slug") for item in services if isinstance(item, dict)}
+    missing = expected_slugs - actual_slugs
+    if missing:
+        raise AssertionError(f"missing active demo packages from public catalog: {sorted(missing)}")
+    print(f"PASS public catalog contains all {len(expected_slugs)} demo packages")
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/orders/1",401,"error")
