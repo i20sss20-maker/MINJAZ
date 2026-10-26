@@ -56,6 +56,10 @@ class Cursor:
                             if uid==user_id and v["id"]==order_id),None)
                 self.one=(found["id"],"متجر رقمي",found["price"],found["status"],
                     datetime.now(timezone.utc),found["requirements"],None,found["limit"]) if found else None
+        elif "INSERT INTO digital_service_order_events" in key:
+            order_id,actor_id,before,after,note=args
+            self.db.event_rows.append({"order_id":order_id,"actor":actor_id,"before":before,
+                                       "after":after,"note":note,"created_at":datetime.now(timezone.utc)})
         elif "SELECT note,created_at FROM digital_service_revisions" in key:
             self.rows=[(row["note"],row["created_at"]) for row in self.db.revision_rows]
         elif "SELECT previous_status,new_status,note,created_at FROM digital_service_order_events" in key:
@@ -89,6 +93,8 @@ class OrdersTests(unittest.TestCase):
         self.assertEqual(db.commits,1)
         self.assertEqual(db.orders[(11,KEY)]["price"],"3499.00")
         self.assertEqual(db.closes,1)
+        self.assertEqual(len(db.event_rows),1)
+        self.assertEqual(db.event_rows[0]["before"],"created")
     def test_same_key_and_body_replayed_once(self):
         db=Connection()
         first=self.create(db)
@@ -98,6 +104,7 @@ class OrdersTests(unittest.TestCase):
         self.assertEqual(first[1]["order_id"],second[1]["order_id"])
         self.assertTrue(second[1]["idempotent_replay"])
         self.assertEqual(len(db.orders),1)
+        self.assertEqual(len(db.event_rows),1)
         self.assertEqual(db.commits,1)
     def test_key_reused_with_different_body_conflicts(self):
         db=Connection()
