@@ -58,6 +58,8 @@ def main():
     check("/api/digital-services/admin/orders",401,"error")
     check("/api/digital-services/admin/packages",401,"error")
     check("/api/digital-services/admin/summary",401,"error")
+    check("/api/digital-services/admin/orders/1/deliverables",401,"error")
+    check("/api/digital-services/orders/1/deliverables",401,"error")
     check_html("/digital-services","خدمات منجاز الرقمية")
     check("/api/digital-services/orders/1/revisions",401,"error")
     check("/digital-services/admin",401,"error")
