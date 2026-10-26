@@ -73,6 +73,12 @@ class Cursor:
             order_id,actor_id,before,after,note=args
             self.db.event_rows.append({"order_id":order_id,"actor":actor_id,"before":before,
                                        "after":after,"note":note,"created_at":datetime.now(timezone.utc)})
+        elif "FROM digital_service_order_events ev" in key:
+            uid=args[0]
+            owned={v["id"] for (user_id,_),v in self.db.orders.items() if user_id==uid}
+            self.rows=[(index,entry["order_id"],"متجر رقمي",entry["after"],entry["created_at"])
+                       for index,entry in enumerate(self.db.event_rows,1)
+                       if entry.get("order_id") in owned and entry.get("actor") != uid][::-1][:30]
         elif "SELECT note,created_at FROM digital_service_revisions" in key:
             self.rows=[(row["note"],row["created_at"]) for row in self.db.revision_rows]
         elif "SELECT previous_status,new_status,note,created_at FROM digital_service_order_events" in key:
@@ -237,6 +243,22 @@ class OrdersTests(unittest.TestCase):
                 self.assertEqual(code,400)
     def test_anonymous_cannot_edit(self):
         code,_=dispatch("PATCH",BASE+"/1",{},{"requirements":REQ},None,NoDatabase())
+        self.assertEqual(code,401)
+    def test_customer_activity_exposes_only_admin_status_events_on_owned_orders(self):
+        db=Connection()
+        oid=self.create(db,user_id=11)[1]["order_id"]
+        db.event_rows.append({"order_id":oid,"actor":22,"after":"delivered",
+                              "created_at":datetime.now(timezone.utc),"before":"in_progress"})
+        code,payload=dispatch("GET","/api/digital-services/activity",{},None,{"id":11},db)
+        self.assertEqual(code,200)
+        self.assertEqual(len(payload["activity"]),1)
+        self.assertEqual(payload["activity"][0]["status"],"delivered")
+        self.assertEqual(payload["activity"][0]["order_id"],oid)
+        other_code,other_data=dispatch("GET","/api/digital-services/activity",{},None,{"id":12},db)
+        self.assertEqual(other_code,200)
+        self.assertEqual(other_data["activity"],[])
+    def test_anonymous_cannot_view_digital_activity(self):
+        code,_=dispatch("GET","/api/digital-services/activity",{},None,None,NoDatabase())
         self.assertEqual(code,401)
     def test_owner_reads_order_and_revision_counts(self):
         db=Connection()
