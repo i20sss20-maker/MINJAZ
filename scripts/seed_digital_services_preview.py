@@ -27,7 +27,12 @@ def main():
                     VALUES (%s,%s,%s,%s,%s,%s,%s,TRUE)
                     ON CONFLICT (slug) DO NOTHING""",
                     (slug, category, title, description, price, days, revisions))
-    print("[digital-services] sandbox demo packages seeded idempotently")
+            cur.execute("SELECT slug FROM digital_service_packages WHERE slug = ANY(%s) AND active=TRUE ORDER BY slug", ([item[0] for item in SAMPLES],))
+            found = {row[0] for row in cur.fetchall()}
+            missing = {item[0] for item in SAMPLES} - found
+            if missing:
+                raise RuntimeError("Missing sandbox demo packages: " + ", ".join(sorted(missing)))
+    print(f"[digital-services] verified {len(found)}/{len(SAMPLES)} active demo packages in sandbox")
 
 if __name__ == "__main__":
     main()
