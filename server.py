@@ -2305,6 +2305,12 @@ class H(BaseHTTPRequestHandler):
     def route(self,method):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p == '/api/digital-services/catalog' or p == '/api/digital-services/orders' or p.startswith('/api/digital-services/orders/'):
+                from minjaz_digital_services import dispatch as digital_services_dispatch
+                actor = auth(self.headers) if p != '/api/digital-services/catalog' else None
+                payload = self.body() if method == 'POST' and p == '/api/digital-services/orders' else None
+                status, response = digital_services_dispatch(method, p, query, payload, actor, db_connect)
+                return self.sendj(status, response)
             if p=='/health':
                 started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
