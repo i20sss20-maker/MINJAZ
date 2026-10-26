@@ -31,6 +31,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate frontend JavaScript syntax
+        run: |
+          python - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          for name in ("public/digital-services.html", "public/digital-services-admin.html"):
+              html=Path(name).read_text(encoding="utf-8")
+              match=re.search(r"<script>(.*?)</script>",html,re.S)
+              if not match: raise RuntimeError(f"script tag missing in {name}")
+              subprocess.run(["node","--check"],input=match.group(1),text=True,check=True)
+              print("PASS JavaScript syntax:",name)
+          PY
+      - name: Validate preview backend unit tests
+        run: |
+          python -m pip install --disable-pip-version-check psycopg2-binary
+          python -m unittest discover -s tests -p 'test_digital*.py' -v
       - name: Validate deployed preview read-only routes
         env:
           MINJAZ_SMOKE_URL: https://minjaz-digital-services-api-sandbox.up.railway.app
