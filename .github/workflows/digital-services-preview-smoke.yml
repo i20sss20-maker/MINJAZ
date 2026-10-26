@@ -10,6 +10,8 @@ on:
       - 'minjaz_digital_services.py'
       - 'minjaz_digital_workflow.py'
       - 'public/digital-services*.html'
+      - 'public/index.html'
+      - 'public/minjaz-unified-ui-v1.css'
       - 'scripts/smoke_digital_services.py'
       - 'scripts/seed_digital_services_preview.py'
       - 'scripts/test_digital_postgres_integration.py'
@@ -46,6 +48,21 @@ jobs:
               if not match: raise RuntimeError(f"script tag missing in {name}")
               subprocess.run(["node","--check"],input=match.group(1),text=True,check=True)
               print("PASS JavaScript syntax:",name)
+          PY
+      - name: Validate all main-app JavaScript blocks
+        run: |
+          python - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          html=Path("public/index.html").read_text(encoding="utf-8")
+          parts=re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>',html,re.S|re.I)
+          checked=0
+          for index,code in enumerate(parts,1):
+              if not code.strip(): continue
+              subprocess.run(["node","--check"],input=code,text=True,check=True)
+              checked+=1
+          if checked < 35: raise RuntimeError("Main app scripts unexpectedly missing")
+          print(f"PASS {checked} main-app inline JavaScript blocks")
           PY
       - name: Validate preview backend unit tests
         run: |
