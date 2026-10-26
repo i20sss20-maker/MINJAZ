@@ -97,10 +97,19 @@ def dispatch(method, path, query, body, actor, connect):
                   WHERE o.id=%s AND o.customer_id=%s""",(int(suffix),int(actor['id'])))
                 r=cur.fetchone()
                 if not r:return 404, {'error':'order_not_found'}
-                cur.execute("SELECT COUNT(*) FROM digital_service_revisions WHERE order_id=%s",(int(suffix),))
-                revision_used=cur.fetchone()[0]
+                cur.execute("""SELECT note,created_at FROM digital_service_revisions
+                  WHERE order_id=%s AND customer_id=%s ORDER BY id DESC LIMIT 100""",
+                  (int(suffix),int(actor['id'])))
+                revision_rows=cur.fetchall()
+                revisions=[{'note':note,'created_at':created.isoformat()} for note,created in revision_rows]
+                cur.execute("""SELECT previous_status,new_status,note,created_at
+                  FROM digital_service_order_events WHERE order_id=%s ORDER BY id DESC LIMIT 100""",
+                  (int(suffix),))
+                events=[{'previous_status':before,'new_status':after,'note':note,
+                         'created_at':created.isoformat()} for before,after,note,created in cur.fetchall()]
                 return 200, {'order':{'id':r[0],'title_ar':r[1],'price_sar':str(r[2]),
                   'status':r[3],'created_at':r[4].isoformat(),'requirements':r[5],
-                  'delivery_note':r[6],'revision_limit':r[7],'revisions_used':revision_used}}
+                  'delivery_note':r[6],'revision_limit':r[7],'revisions_used':len(revisions),
+                  'events':events,'revisions':revisions}}
         finally:c.close()
     return 405, {'error':'method_not_allowed'}
