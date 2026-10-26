@@ -154,6 +154,13 @@ def run():
     code,visible=call_deliverables("GET",customer_assets,actor=CUSTOMER)
     check(code==200 and len(visible["deliverables"])==1
           and visible["deliverables"][0]["published"],"delivery did not publish staged link")
+    code,notifications=call_customer("GET","/api/digital-services/activity")
+    check(code==200 and any(event["order_id"]==order_id and event["status"]=="delivered"
+                            for event in notifications["activity"]),
+          "owner did not receive status activity for first delivery")
+    code,other_activity=call_customer("GET","/api/digital-services/activity",actor=OTHER)
+    check(code==200 and not other_activity["activity"],
+          "another customer received private order activity")
     with guarded_connect() as db:
         with db.cursor() as cur:
             cur.execute("""SELECT archived_by,published_at FROM digital_service_deliverables
