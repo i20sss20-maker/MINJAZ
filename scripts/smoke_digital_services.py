@@ -48,6 +48,10 @@ def main():
     demo_slugs = {"website-starter-demo", "ecommerce-starter-demo", "branding-starter-demo"}
     visible = {item["slug"] for item in services if item["slug"] in demo_slugs}
     print(f"PASS public catalog structure; {len(services)} visible services; {len(visible)} demo packages currently visible")
+    category_catalog = check("/api/digital-services/catalog?category=website",200,"services")
+    if not all(item.get("category") == "website" for item in category_catalog["services"]):
+        raise AssertionError("category filtering returned a different category")
+    print("PASS category-filtered catalog")
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/orders/1",401,"error")
