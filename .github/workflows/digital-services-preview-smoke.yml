@@ -5,6 +5,8 @@ on:
     branches:
       - feature/digital-services-geidea-sandbox
     paths:
+      - 'server.py'
+      - 'Dockerfile'
       - 'minjaz_digital_services.py'
       - 'minjaz_digital_workflow.py'
       - 'public/digital-services*.html'
@@ -12,7 +14,7 @@ on:
       - 'scripts/seed_digital_services_preview.py'
       - 'scripts/test_digital_postgres_integration.py'
       - 'tests/test_digital*.py'
-      - 'database/migrations/0*_digital_service*.sql'
+      - 'database/migrations/0*.sql'
       - '.github/workflows/digital-services-preview-smoke.yml'
   workflow_dispatch:
 
