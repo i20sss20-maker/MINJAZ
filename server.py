@@ -2305,6 +2305,21 @@ class H(BaseHTTPRequestHandler):
     def route(self,method):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p.startswith('/api/digital-services/') and p.endswith('/deliverables'):
+                from minjaz_digital_deliverables import dispatch as digital_deliverables_dispatch
+                actor = auth(self.headers)
+                if method == 'POST':
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415, {'error':'json_required'})
+                    if actor and actor.get('_auth_transport') == 'cookie':
+                        origin = self.headers.get('Origin','').rstrip('/')
+                        allowed = set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403, {'error':'origin_not_allowed'})
+                payload = self.body() if method == 'POST' else None
+                status, response = digital_deliverables_dispatch(method, p, query, payload, actor, db_connect)
+                return self.sendj(status, response)
             if p.startswith('/api/digital-services/admin/') or (p.startswith('/api/digital-services/orders/') and p.rsplit('/',1)[-1] in ('revisions','complete','cancel')):
                 from minjaz_digital_workflow import dispatch as digital_workflow_dispatch
                 actor = auth(self.headers)
