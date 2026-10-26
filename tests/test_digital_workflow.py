@@ -45,11 +45,67 @@ class Conn:
     def rollback(self):self.rollbacks+=1
     def close(self):self.closed=True
 
+class PackageCursor(Cursor):
+    def execute(self,sql,args=()):
+        super().execute(sql,args)
+        compact=" ".join(sql.split())
+        if "FROM digital_service_packages WHERE id=%s FOR UPDATE" in compact:
+            self.row=self.conn.package
+        elif "INSERT INTO digital_service_packages" in compact:
+            self.row=(91,)
+            self.conn.package=(91,)+args
+        elif "UPDATE digital_service_packages SET" in compact:
+            self.conn.package=(self.conn.package[0],)+args[:8]
+        elif "INSERT INTO digital_service_package_events" in compact:
+            self.conn.package_events.append(args)
+        elif "FROM digital_service_packages ORDER BY id DESC" in compact:
+            self.rows=[self.conn.package] if self.conn.package else []
+    def fetchall(self):
+        return getattr(self,"rows",[])
+
+class PackageConn(Conn):
+    def __init__(self,package=None):
+        super().__init__()
+        self.package=package
+        self.package_events=[]
+    def cursor(self):
+        return PackageCursor(self)
+
+VALID_PACKAGE={"slug":"test-demo","category":"website","title_ar":"خدمة موقع تجريبية",
+               "description_ar":"بناء صفحة تعريفية","price_sar":"100.00",
+               "delivery_days":7,"revision_limit":2,"active":False}
+
 class WorkflowTests(unittest.TestCase):
     def call(self,path,method,body,actor,db=None):
         if db is None:db=FailConnect()
         return dispatch(method,BASE+path,{},body,actor,(lambda:db) if not isinstance(db,FailConnect) else db)
 
+    def test_admin_creates_package_with_audit(self):
+        db=PackageConn()
+        with patch.dict(os.environ,PREVIEW):
+            code,data=self.call("admin/packages","POST",dict(VALID_PACKAGE),ADMIN,db)
+        self.assertEqual(code,201)
+        self.assertEqual(data["package_id"],91)
+        self.assertEqual(db.commits,1)
+        self.assertEqual(len(db.package_events),1)
+        self.assertEqual(db.package_events[0][2],"created")
+    def test_admin_updates_package_with_audit(self):
+        old=(91,"test-demo","website","خدمة موقع تجريبية","بناء صفحة تعريفية",
+             "100.00",7,2,False)
+        db=PackageConn(old)
+        with patch.dict(os.environ,PREVIEW):
+            code,data=self.call("admin/packages/91","PATCH",{"active":True},ADMIN,db)
+        self.assertEqual(code,200)
+        self.assertEqual(data["package"]["active"],True)
+        self.assertTrue(db.package[8])
+        self.assertEqual(db.package_events[0][2],"updated")
+    def test_admin_can_list_packages(self):
+        db=PackageConn((91,"test-demo","website","خدمة موقع تجريبية","بناء صفحة تعريفية",
+                        "100.00",7,2,False))
+        code,data=self.call("admin/packages","GET",None,ADMIN,db)
+        self.assertEqual(code,200)
+        self.assertEqual(len(data["packages"]),1)
+        self.assertEqual(data["packages"][0]["slug"],"test-demo")
     def test_package_anonymous_is_denied(self):
         self.assertEqual(self.call("admin/packages","GET",None,None)[0],401)
     def test_package_non_admin_is_denied(self):
