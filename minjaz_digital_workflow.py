@@ -87,6 +87,23 @@ def _package_admin(method,bits,body,actor,connect):
         if normalized is None:
             return 400, {"error":"invalid_package"}
         return _store_package(connect,actor["id"],normalized)
+    if len(bits)==4 and bits[:2]==["admin","packages"] and bits[3]=="events":
+        package_id=_positive_id(bits[2])
+        if not package_id:
+            return 404, {"error":"not_found"}
+        if method != "GET":
+            return 405, {"error":"method_not_allowed"}
+        c=connect()
+        try:
+            with c.cursor() as cur:
+                cur.execute("""SELECT action,before_data,after_data,created_at
+                  FROM digital_service_package_events WHERE package_id=%s
+                  ORDER BY id DESC LIMIT 50""",(package_id,))
+                return 200, {"package_id":package_id,
+                             "events":[{"action":r[0],"before":r[1],"after":r[2],
+                                        "created_at":r[3].isoformat()} for r in cur.fetchall()]}
+        finally:
+            c.close()
     if len(bits)==3 and bits[:2]==["admin","packages"]:
         package_id=_positive_id(bits[2])
         if not package_id:
