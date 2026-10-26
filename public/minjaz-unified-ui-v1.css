@@ -337,3 +337,122 @@ html[data-theme="dark"] .mobileNav button.on{color:#9bafff}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:0s!important;transition:none!important}
 }
+
+
+/* Workspaces added by the mature client/freelancer features (v18-v30). */
+.roleQuickLinks{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px;
+ border-radius:16px;padding:14px 15px;background:var(--ux-surface);
+ border:1px solid var(--ux-line);box-shadow:var(--ux-shadow)}
+.roleQuickLinks .btn{flex:1 1 auto;white-space:nowrap;min-width:145px}
+.roleQuickLinks .btn.soft{background:#e9efff;color:#364cc5}
+.workCenterHeadV23,.clientProjectsHeadV24{margin-bottom:19px;gap:15px;align-items:center}
+.workCenterHeadV23 h2,.clientProjectsHeadV24 h2{font:750 20px/1.55 var(--ux-head);color:var(--ux-ink)}
+.workCenterHeadV23 p,.clientProjectsHeadV24 p{font-size:12px;line-height:1.8}
+.workMetricsV23,.clientProjectMetricsV24{gap:13px;margin-bottom:18px}
+.workMetricV23,.clientProjectMetricV24,.workSummaryV18,.directoryMetricV20,.profileTrustMetricV20,
+.clientProfileStat,.executionFactV23,.clientMonitorFactV24,.workMetricV18{
+ background:var(--ux-surface);border-color:var(--ux-line);border-radius:16px;
+ padding:18px;box-shadow:0 5px 20px #24375b0a}
+.workMetricV23 b,.clientProjectMetricV24 b,.directoryMetricV20 b,.workMetricV18 b{
+ font:800 22px/1.45 var(--ux-head);color:#2a4185}
+.workMetricV23 span,.clientProjectMetricV24 span,.directoryMetricV20 span{font-size:10px;color:var(--ux-muted)}
+.workBoardV23,.clientProjectBoardV24{gap:13px}
+.workCardV23,.clientProjectCardV24,.proposalCardV22,.dailyQueueItemV26,.notifGroupV27{
+ background:var(--ux-surface);border:1px solid var(--ux-line);border-radius:18px;
+ padding:18px;box-shadow:var(--ux-shadow)}
+.workCardV23 h3,.clientProjectCardV24 h3,.proposalCardV22 h3{font:750 13px/1.6 var(--ux-head);color:var(--ux-ink)}
+.workCardV23 p,.clientProjectCardV24 p,.proposalCardV22 p{font-size:11px;line-height:1.85;color:var(--ux-muted)}
+.workCardV23:hover,.clientProjectCardV24:hover,.proposalCardV22:hover{
+ border-color:#bfcaf1;box-shadow:0 17px 36px #18345b12}
+.workCardV23.overdue,.clientProjectCardV24.overdue{border-color:#edc5ca;background:linear-gradient(115deg,var(--ux-surface),#fff5f6)}
+.workCardV23.soon,.clientProjectCardV24.soon{border-color:#ead9a9;background:linear-gradient(115deg,var(--ux-surface),#fffbf1)}
+.workCardV23.revision,.clientProjectCardV24.action{border-color:#bfcbf0;background:linear-gradient(110deg,var(--ux-surface),#f3f6ff)}
+.proposalCardV22.accepted{background:linear-gradient(110deg,var(--ux-surface),#edfbf3);border-color:#b6e2c6}
+.proposalMessageV22{font-size:10px;line-height:1.8;border-color:var(--ux-line);background:var(--ux-surface-2);color:var(--ux-muted)}
+.proposalSideV22,.workCardSideV23,.clientProjectSideV24{min-width:155px}
+.dailyHeroV26{background:linear-gradient(135deg,var(--ux-surface),#edf1ff);
+ border-color:#d8e3fc;border-radius:22px;padding:24px;box-shadow:var(--ux-shadow)}
+.dailyHeadV26 h2{font:760 21px/1.5 var(--ux-head);color:var(--ux-ink)}
+.dailyHeadV26 p{font-size:11px;line-height:1.9;color:var(--ux-muted)}
+.dailyMainV26{padding:20px;background:var(--ux-surface);border-radius:17px;border-color:var(--ux-line)}
+.dailyMainV26 h3{font:740 16px/1.5 var(--ux-head);color:var(--ux-ink)}
+.dailyMainV26 p{font-size:11px;line-height:1.8}
+.dailyGridV26{gap:16px}
+.dailyQueueV26,.dailyShortcutsV26,.notifResumeV27,.notifDigestCardV27{
+ background:var(--ux-surface);border:1px solid var(--ux-line);border-radius:19px;
+ padding:20px;box-shadow:var(--ux-shadow)}
+.dailyQueueV26 h3,.dailyShortcutsV26 h3{font:750 15px/1.6 var(--ux-head);color:var(--ux-ink)}
+.dailyQueueListV26{gap:10px}
+.dailyQueueItemV26{padding:15px;box-shadow:none;border-radius:14px}
+.dailyQueueItemV26:hover{background:var(--ux-surface-2)}
+.dailyStatV26,.dailyShortcutV26{background:var(--ux-surface);border:1px solid var(--ux-line);border-radius:15px;padding:16px}
+.dailyShortcutsV26 button{min-height:44px}
+.notifGroupV27{padding:0;overflow:hidden}
+.notifGroupV27.unread{border-color:#b9c7ff;box-shadow:inset -4px 0 #6578ee,0 11px 30px #233c7b15}
+.notifGroupMainV27{padding:17px 19px;gap:15px}
+.notifGroupMainV27 h3{font:740 13px/1.6 var(--ux-head);color:var(--ux-ink)}
+.notifGroupMainV27 p{font-size:11px;line-height:1.8}
+.notifGroupIconV27{background:#eef2ff;color:#5065d7;border-radius:15px}
+.notifGroupUpdatesV27{background:var(--ux-surface-2);padding:13px 17px;border-color:var(--ux-line)}
+.chatWorkspaceHeadV25{padding:15px 18px;background:var(--ux-surface);border-color:var(--ux-line)}
+.chatTabV25{font:740 11px/1.4 var(--ux-body);padding:9px 14px;border-color:var(--ux-line);color:var(--ux-muted)}
+.chatTabV25.on{background:var(--ux-brand);border-color:var(--ux-brand);color:white}
+.chatSearchV25{padding:13px;border-color:var(--ux-line)}
+.chatSearchV25 input{font-size:12px;border-color:var(--ux-line);background:var(--ux-surface)}
+.chatMsgV25,.chatEmptyV25{border-color:var(--ux-line);border-radius:17px}
+.chatMsgV25Body{font-size:12px;line-height:1.95}
+.chatComposerV25{border-color:var(--ux-line);background:var(--ux-surface)}
+.inboxListV29{gap:12px}.inboxCardV29{padding:17px}
+.inboxToolbarV29 .btn.on{background:#edf1ff;color:#3f57d0;border-color:#bac8f4}
+.freelancerCard{border-color:var(--ux-line);background:var(--ux-surface);box-shadow:var(--ux-shadow)}
+.freelancerCard:hover{border-color:#bec9f2;box-shadow:0 18px 40px #1a356311}
+.freelancerCard:after{background:radial-gradient(circle,#8098fd25,transparent 68%)}
+.freelancerCardFoot{border-color:var(--ux-line)}
+.profileHero,.profileTrustV20,.shortlistTrustV21,.proposalSummaryV22,.executionTopV23,.clientMonitorTopV24{
+ border:1px solid var(--ux-line);background:linear-gradient(130deg,var(--ux-surface),var(--ux-surface-2));
+ border-radius:19px;padding:20px}
+.freelancerToolbar,.workToolsV18,.proposalToolsV22{gap:10px}
+.freelancerToolbar input,.workToolsV18 input,.proposalToolsV22 input{border-radius:12px;border:1px solid var(--ux-line);padding:11px 13px}
+.proposalPrepGridV22,.deliveryPrepGridV23{gap:12px}
+.proposalPrepItemV22,.deliveryPrepItemV23,.taskReadyItemV21{background:var(--ux-surface);border-color:var(--ux-line);border-radius:14px;padding:14px}
+.filesGridV30,.freelancerGrid{gap:14px}
+.fileCardV30{box-shadow:var(--ux-shadow)}
+.fileCardV30:hover{border-color:#bdc9f3}
+.fileActionsV30 .btn{min-height:35px}
+#admin .kpiGrid .card{min-height:134px}
+#admin .table th{font-size:11px;font-weight:800}
+#admin .table td{font-size:11px}
+#notifications .notifPageItem{border:1px solid var(--ux-line);border-radius:16px;padding:17px;background:var(--ux-surface)}
+/* Expand the unified responsive system to nested workflow screens. */
+@media(max-width:1100px){
+ .clientProjectMetricsV24,.workMetricsV23{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .dailyGridV26{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+ .roleQuickLinks{gap:8px;padding:10px}
+ .roleQuickLinks .btn{min-width:calc(50% - 8px);font-size:11px;padding:10px 8px}
+ .dailyHeroV26{padding:17px}
+ .dailyMainV26{grid-template-columns:1fr}
+ .dailyMainV26 .btn{min-width:0;width:100%}
+ .dailyStatsV26{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workCardV23,.clientProjectCardV24,.proposalCardV22{grid-template-columns:1fr}
+ .workCardSideV23,.clientProjectSideV24,.proposalSideV22{min-width:0;text-align:start}
+ .clientProjectMetricsV24,.workMetricsV23{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .workCenterHeadV23,.clientProjectsHeadV24{flex-wrap:wrap}
+ .filesGridV30{grid-template-columns:1fr}
+}
+html[data-theme="dark"] .dailyHeroV26{background:linear-gradient(135deg,#1b2843,#243555);border-color:#42527c}
+html[data-theme="dark"] .dailyMainV26,html[data-theme="dark"] .roleQuickLinks,
+html[data-theme="dark"] .dailyQueueV26,html[data-theme="dark"] .dailyShortcutsV26{
+ background:var(--ux-surface);border-color:var(--ux-line)}
+html[data-theme="dark"] .dailyHeroV26 h2,html[data-theme="dark"] .dailyMainV26 h3,
+html[data-theme="dark"] .clientProjectsHeadV24 h2,html[data-theme="dark"] .workCenterHeadV23 h2,
+html[data-theme="dark"] .workCardV23 h3,html[data-theme="dark"] .clientProjectCardV24 h3,
+html[data-theme="dark"] .dailyQueueV26 h3,html[data-theme="dark"] .dailyShortcutsV26 h3,
+html[data-theme="dark"] .notifGroupMainV27 h3{color:var(--ux-ink)}
+html[data-theme="dark"] .workCardV23.overdue,html[data-theme="dark"] .clientProjectCardV24.overdue{background:#392737;border-color:#774c62}
+html[data-theme="dark"] .workCardV23.soon,html[data-theme="dark"] .clientProjectCardV24.soon{background:#38322a;border-color:#6d5e41}
+html[data-theme="dark"] .workCardV23.revision,html[data-theme="dark"] .clientProjectCardV24.action{background:#25385a;border-color:#526998}
+html[data-theme="dark"] .roleQuickLinks .btn.soft{background:#293962;color:#c1cdff}
+html[data-theme="dark"] .workMetricV23 b,html[data-theme="dark"] .clientProjectMetricV24 b{color:#c3d0ff}
+html[data-theme="dark"] .notifGroupUpdatesV27{background:#1d2a44}
