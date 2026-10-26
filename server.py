@@ -2012,12 +2012,20 @@ def session_token_from_headers(headers):
 def auth(headers):
     raw,transport=session_token_from_headers(headers)
     if not raw:return None
-    row=q("""select u.id,u.phone,u.email,u.name,u.role,u.is_verified,
+    row=q("""select u.id,u.phone,u.email,u.email_verified_at,u.password_hash,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
              from sessions s join users u on u.id=s.user_id
              where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() and u.deleted_at is null limit 1""",
           (sha(raw+SECRET),), 'one')
+    if row and APP_ENV=='preview':
+        from minjaz_email_auth import normalize_email
+        if (not row.get('email_verified_at') or not row.get('phone')
+            or not row.get('password_hash') or len(str(row.get('name') or '').strip())<2):
+            return None
+        configured_admin=normalize_email(os.getenv('ADMIN_EMAIL',''))
+        if row.get('role')=='admin' and (not configured_admin or row.get('email')!=configured_admin):
+            return None
     if row:
         row['_auth_transport']=transport
         try:
@@ -2486,12 +2494,62 @@ class H(BaseHTTPRequestHandler):
                 return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
             if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
             if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
+            if method=='GET' and p=='/api/v1/auth/account-status':
+                from minjaz_account_auth import secure_config
+                return self.sendj(200,{'registration':'email_link','configured':secure_config(),
+                                      'admin_configured':bool(os.getenv('ADMIN_EMAIL','').strip()),
+                                      'fields':['name','email','phone','password']})
+            if method=='POST' and p in (
+                '/api/v1/auth/register','/api/v1/auth/confirm-email',
+                '/api/v1/auth/resend-verification','/api/v1/auth/login-email',
+                '/api/v1/auth/forgot-password','/api/v1/auth/reset-password'):
+                from minjaz_account_auth import (
+                    register,consume_email_link,resend_verification,login,
+                    request_password_reset,reset_password,secure_config)
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                if APP_ENV!='preview':
+                    return self.sendj(403,{'error':'sandbox_only'})
+                body=self.body();ready=secure_config()
+                if p=='/api/v1/auth/register':
+                    if not rate_limit_event('registration_ip',self.client_key(),6,3600):
+                        return self.sendj(429,{'error':'registration_rate_limited'})
+                    status,payload=register(body,db_connect,SECRET,ready=ready)
+                elif p=='/api/v1/auth/confirm-email':
+                    status,payload=consume_email_link(body,db_connect,SECRET,os.getenv('ADMIN_EMAIL',''))
+                elif p=='/api/v1/auth/resend-verification':
+                    if not rate_limit_event('resend_verification_ip',self.client_key(),15,3600):
+                        return self.sendj(429,{'error':'otp_rate_limited'})
+                    status,payload=resend_verification(body,db_connect,SECRET,ready=ready)
+                elif p=='/api/v1/auth/login-email':
+                    if not rate_limit_event('email_login_ip',self.client_key(),20,600):
+                        return self.sendj(429,{'error':'login_rate_limited'})
+                    status,payload=login(body,db_connect,SECRET,os.getenv('ADMIN_EMAIL',''),
+                                         SESSION_TTL_DAYS,str(self.headers.get('User-Agent') or ''),
+                                         self.client_ip() or '')
+                    if status==200:
+                        self.set_session_cookie(payload.pop('session_raw'))
+                        sid=payload.pop('session_id')
+                        log_account_activity(payload['user']['id'],'login',
+                                             'تسجيل دخول بكلمة مرور مع بريد مفعّل',sid,{'method':'email_password'})
+                elif p=='/api/v1/auth/forgot-password':
+                    if not rate_limit_event('password_recovery_ip',self.client_key(),15,3600):
+                        return self.sendj(429,{'error':'otp_rate_limited'})
+                    status,payload=request_password_reset(body,db_connect,SECRET,ready=ready)
+                else:
+                    if not rate_limit_event('password_reset_ip',self.client_key(),20,600):
+                        return self.sendj(429,{'error':'login_rate_limited'})
+                    status,payload=reset_password(body,db_connect,SECRET)
+                return self.sendj(status,payload)
             if method=='GET' and p=='/api/v1/auth/email-status':
                 from minjaz_email_auth import email_delivery_config
                 cfg=email_delivery_config()
                 return self.sendj(200,{'method':'email','configured':cfg['enabled'],
                      'mode':cfg['mode'],'admin_email_configured':bool(os.getenv('ADMIN_EMAIL','').strip())})
             if method=='POST' and p=='/api/v1/auth/request-email-otp':
+                if APP_ENV=='preview':
+                    return self.sendj(410,{'error':'email_registration_required'})
                 from minjaz_email_auth import request_email_otp,send_email_code,email_delivery_config
                 origin=(self.headers.get('Origin') or '').rstrip('/')
                 if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
@@ -2502,6 +2560,8 @@ class H(BaseHTTPRequestHandler):
                     config_ready=cfg['enabled'])
                 return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/verify-email-otp':
+                if APP_ENV=='preview':
+                    return self.sendj(410,{'error':'email_registration_required'})
                 from minjaz_email_auth import verify_email_otp,email_delivery_config
                 origin=(self.headers.get('Origin') or '').rstrip('/')
                 if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
@@ -2517,6 +2577,8 @@ class H(BaseHTTPRequestHandler):
                         'تسجيل دخول بالبريد الإلكتروني',payload.pop('session_id'),{'method':'email'})
                 return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/request-otp':
+                if APP_ENV=='preview':
+                    return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); phone=normalize_phone(b.get('phone',''))
                 if not phone:return self.sendj(400,{'error':'invalid_phone'})
                 if not rate_limit_event('otp_ip',self.client_key(),20,600):return self.sendj(429,{'error':'otp_source_rate_limited','retry_after_seconds':600})
@@ -2537,6 +2599,8 @@ class H(BaseHTTPRequestHandler):
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
+                if APP_ENV=='preview':
+                    return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
                 ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
                 if not ch:return self.sendj(404,{'error':'challenge_not_found'})
@@ -2586,7 +2650,7 @@ class H(BaseHTTPRequestHandler):
                 if not roles:
                     q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
                 prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
-                user={k:as_json(u.get(k)) for k in ('id','phone','email','name','role','is_verified')}; user['roles']=roles
+                user={k:as_json(u.get(k)) for k in ('id','phone','email','name','role','is_verified')}; user['email_verified']=bool(u.get('email_verified_at')); user['roles']=roles
                 return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
             if p=='/api/v1/me/profile' and method=='PATCH':
                 u=self.require();
