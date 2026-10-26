@@ -55,7 +55,7 @@ jobs:
           import re, subprocess
           from pathlib import Path
           html=Path("public/index.html").read_text(encoding="utf-8")
-          parts=re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>',html,re.S|re.I)
+          parts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S|re.I)
           checked=0
           for index,code in enumerate(parts,1):
               if not code.strip(): continue
