@@ -456,3 +456,26 @@ html[data-theme="dark"] .workCardV23.revision,html[data-theme="dark"] .clientPro
 html[data-theme="dark"] .roleQuickLinks .btn.soft{background:#293962;color:#c1cdff}
 html[data-theme="dark"] .workMetricV23 b,html[data-theme="dark"] .clientProjectMetricV24 b{color:#c3d0ff}
 html[data-theme="dark"] .notifGroupUpdatesV27{background:#1d2a44}
+
+
+/* Verified registration and email-password recovery */
+.account-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:5px;margin:20px 0 24px;border:1px solid var(--ux-line);background:var(--ux-surface-2);border-radius:14px}
+.account-tabs button{padding:13px;border-radius:10px;border:0;color:var(--ux-muted);background:transparent;cursor:pointer;font-weight:800}
+.account-tabs button.on{background:var(--ux-surface);color:var(--ux-brand);box-shadow:0 3px 12px #14234e16}
+.account-panel h2{font:750 18px/1.65 var(--ux-head);margin:0 0 15px;color:var(--ux-ink)}
+.account-panel[hidden]{display:none!important}
+.account-panel .field{margin:0 0 14px;gap:6px}
+.account-panel .field label{font-weight:750;font-size:12px}
+.account-panel .field input{width:100%;min-height:45px}
+.account-panel .roleSwitch{display:grid;grid-template-columns:1fr 1fr;margin:0 0 19px}
+.account-panel form .btn{margin-top:9px}
+.account-hint{border:1px solid #dfe7f6;padding:14px;border-radius:13px;background:var(--ux-surface-2);color:var(--ux-muted);font-size:12px;line-height:1.9}
+.account-resend{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:15px;font-size:12px}
+.account-resend span{color:var(--ux-muted)}
+.account-text-button{border:0;background:transparent;color:var(--ux-brand);font-weight:750;padding:12px 0;cursor:pointer}
+.account-text-button:hover{text-decoration:underline}
+.account-status{font-size:12px;line-height:1.85;margin-top:17px;padding:10px 0;min-height:24px;color:var(--ux-green);font-weight:750}
+.account-status.error{color:#bb3f59}
+html[data-theme="dark"] .account-tabs button.on{background:#334261;color:#d8e0ff}
+html[data-theme="dark"] .account-hint{border-color:#374966}
+@media(max-width:480px){.account-tabs{margin-block:14px}.account-panel h2{font-size:16px}.account-resend{align-items:flex-start;flex-direction:column}}
