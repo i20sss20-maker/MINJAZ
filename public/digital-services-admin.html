@@ -20,7 +20,7 @@ body{margin:0;background:#0b1022;color:#f4f5ff}header{background:linear-gradient
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const labels={draft:'مسودة',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',paid:'مدفوع',awaiting_payment:'بانتظار الدفع',refunded:'مسترد'};
+const labels={created:'إنشاء الطلب',draft:'مسودة',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',paid:'مدفوع',awaiting_payment:'بانتظار الدفع',refunded:'مسترد'};
 const transitions={draft:[['in_progress','بدء التنفيذ'],['cancelled','إلغاء المسودة']],in_progress:[['delivered','تسليم الخدمة']],revision_requested:[['in_progress','استئناف التنفيذ']]};
 let currentId=null;
 function el(tag,value,cls){const node=document.createElement(tag);if(value!==undefined)node.textContent=value;if(cls)node.className=cls;return node}
