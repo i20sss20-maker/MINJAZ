@@ -210,5 +210,36 @@ def main():
                 "deleted account password changed with a stale reset link")
     print("PASS deleted users cannot activate, resend verification, or reset passwords")
 
+    # Audit must observe legacy users but never change account rows or return PII.
+    from scripts.audit_minjaz_legacy_accounts import audit_counts
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("""INSERT INTO users(phone,name,role,is_verified)
+                           VALUES('+966599000011','Legacy CI Customer','client',true)
+                           RETURNING id""")
+            legacy_id=cur.fetchone()[0]
+            cur.execute("""INSERT INTO sessions(user_id,token_hash,expires_at,revoked_at)
+                           VALUES(%s,%s,now()+interval '20 minutes',NULL)""",
+                        (legacy_id,"ci-legacy-session-hash"))
+    audit=audit_counts(connect)
+    stats=audit["counts"]
+    assert_true(stats["active_phone_only"]==1 and stats["blocked_by_email_only"]==1,
+                "phone-only legacy user not detected")
+    assert_true(stats["blocked_with_active_sessions"]==1,
+                "existing legacy login session not reported")
+    assert_true(stats["deleted_accounts"]==2,
+                "deleted users were accidentally counted as active")
+    assert_true(audit["account_migration_required"] and not audit["writes_performed"]
+                and not audit["contains_personal_data"],
+                "unsafe legacy migration audit report")
+    # A transaction configured READ ONLY cannot silently create a migrated email account.
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("SELECT email,password_hash,email_verified_at FROM users WHERE id=%s",
+                        (legacy_id,))
+            assert_true(cur.fetchone()==(None,None,None),
+                        "legacy account was modified by read-only audit")
+    print("PASS privacy-safe legacy account audit blocks email-only activation")
+
 if __name__=="__main__":
     main()
