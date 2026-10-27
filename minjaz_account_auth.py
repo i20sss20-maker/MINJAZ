@@ -93,7 +93,9 @@ def deliver_link(address,action,raw,config=None):
           data=json.dumps({"from":"MINJAZ <"+from_email+">","to":[address],
                            "subject":"MINJAZ | "+title,"text":body},ensure_ascii=False).encode(),
           headers={"Authorization":"Bearer "+env["RESEND_API_KEY"],
-                   "Content-Type":"application/json"})
+                   "Content-Type": "application/json",
+                   "Accept": "application/json",
+                   "User-Agent": "Mozilla/5.0 (compatible; MINJAZ-Mailer/1.0)"})
         with urllib.request.urlopen(req,timeout=12) as res:
             if res.status not in (200,201):raise RuntimeError("email_provider_failure")
             res.read(8192)
