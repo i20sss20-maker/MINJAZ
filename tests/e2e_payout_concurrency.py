@@ -114,9 +114,13 @@ def run():
 
     final_statuses=sorted(result[1][0] for result in decisions_result)
     assert final_statuses==[200,409],decisions_result
-    winning_decision=next(status for status,(http,payload) in decisions_result if http==200)
-    rejected_response=next(payload for status,(http,payload) in decisions_result if http==409)
-    assert rejected_response.get("error")=="payout_finalized",rejected_response
+    # Production-safety policy: a fake "paid" confirmation can never win in beta
+    # without verified marketplace transfer evidence, even during a race.
+    paid_http,paid_response=next(result for status,result in decisions_result if status=="paid")
+    rejected_http,rejected_payload=next(result for status,result in decisions_result if status=="rejected")
+    assert paid_http==409 and paid_response.get("error")=="verified_payout_provider_required",decisions_result
+    assert rejected_http==200 and rejected_payload["item"]["status"]=="rejected",decisions_result
+    winning_decision="rejected"
 
     rows=call("GET","/api/admin/payouts",token=at,expected=(200,)).get("items") or []
     row=next(x for x in rows if int(x["id"])==int(payout_id))
@@ -129,17 +133,15 @@ def run():
 
     balance=call("GET","/api/v1/freelancer/earnings",token=ft,expected=(200,))
     assert float(balance.get("available_balance") or 0)>=0,balance
-    if winning_decision=="paid":
-        assert round(float(balance.get("paid_out") or 0),2)==available,balance
-        assert round(float(balance.get("pending_payouts") or 0),2)==0.0,balance
-    else:
-        assert round(float(balance.get("available_balance") or 0),2)==available,balance
-        assert round(float(balance.get("pending_payouts") or 0),2)==0.0,balance
+    assert round(float(balance.get("available_balance") or 0),2)==available,balance
+    assert round(float(balance.get("pending_payouts") or 0),2)==0.0,balance
+    assert round(float(balance.get("paid_out") or 0),2)==0.0,balance
 
     return {
         "ok":True,"version":health.get("version"),
         "concurrent_balance_reservation":True,
         "concurrent_admin_finality":True,
+        "unverified_paid_status_rejected":True,
         "finalized_replay_rejected":True,
         "non_negative_balance":True,
         "winning_admin_decision":winning_decision,

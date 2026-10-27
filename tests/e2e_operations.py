@@ -127,8 +127,19 @@ def run():
     admin_payouts=call("GET","/api/admin/payouts",token=at,expected=(200,)).get("items") or []
     assert any(int(x["id"])==int(payout_id) for x in admin_payouts)
     call("PATCH",f"/api/admin/payouts/{payout_id}",{"status":"processing","admin_note":"اختبار معالجة"},at,expected=(200,))
-    paid_payout=call("PATCH",f"/api/admin/payouts/{payout_id}",{"status":"paid","admin_note":"اختبار تم التنفيذ"},at,expected=(200,))
-    assert paid_payout["item"]["status"]=="paid",paid_payout
+    # A manual admin action is not evidence of an actual PSP transfer.
+    # The beta backend must reject "paid" and preserve processing state.
+    denied_paid=None
+    try:
+        call("PATCH",f"/api/admin/payouts/{payout_id}",
+             {"status":"paid","admin_note":"اختبار رفض تحويل غير موثق"},at)
+    except AssertionError as exc:
+        denied_paid=exc.args[0] if exc.args else None
+    assert (isinstance(denied_paid,tuple) and len(denied_paid)==3
+            and denied_paid[1]==409
+            and denied_paid[2].get("error")=="verified_payout_provider_required"),denied_paid
+    payout_rows=call("GET","/api/admin/payouts",token=at,expected=(200,)).get("items") or []
+    assert next(x for x in payout_rows if int(x["id"])==int(payout_id))["status"]=="processing"
 
     # Cancellation + mock refund lifecycle.
     task2,order2=create_order(ct,ft,cat,"اختبار الإلغاء والاسترداد")
