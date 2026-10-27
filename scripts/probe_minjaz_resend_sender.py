@@ -25,6 +25,36 @@ TEST_SENDER = "onboarding@resend.dev"
 TEST_ENDPOINT = "https://api.resend.com/emails"
 
 
+def classify_rejection(response):
+    """Classify 4xx errors without returning response text, addresses or secrets.
+
+    Resend error message strings can include personal addresses and request
+    contents. Match only high-signal fragments from a small allowlist.
+    """
+    try:
+        payload=json.loads(response.read(4096).decode("utf-8"))
+        if not isinstance(payload,dict):
+            return "unclassified"
+        message=str(payload.get("message") or "").lower()
+        name=str(payload.get("name") or payload.get("type") or "").lower()
+    except (ValueError,UnicodeError,AttributeError):
+        return "unclassified"
+    if "only send testing emails to your own email" in message or (
+        "only send" in message and "testing" in message and "own email" in message):
+        return "test_sender_recipient_mismatch"
+    if "domain" in message and any(x in message for x in ("not verified","is not verified","verify a domain","not found","not authorized")):
+        return "sender_domain_not_verified_or_restricted"
+    if ("api key" in message or "permission" in message) and any(
+        x in message for x in ("restricted","not allowed","unauthorized","permission","not authorized","invalid")
+    ):
+        return "api_key_restricted_or_invalid"
+    if "account" in message and "restricted" in message:
+        return "provider_account_restricted"
+    if name in ("missing_api_key","invalid_api_key","restricted_api_key","validation_error"):
+        return "provider_"+name
+    return "unclassified"
+
+
 def readiness(env):
     """Return only public configuration status, never secret or recipient values."""
     from minjaz_email_auth import normalize_email
@@ -78,8 +108,9 @@ def send_test(env, transport=None):
             return {"result":"accepted_by_provider", "status":response.status,
                     "inbox_delivery_confirmed":False}
     except urllib.error.HTTPError as exc:
-        # Never print response body: some providers echo sender, recipient or IDs.
-        return {"result":"provider_rejected", "status":exc.code}
+        # Never print provider response text: it may echo customer PII and tokens.
+        return {"result":"provider_rejected", "status":exc.code,
+                "reason_code":classify_rejection(exc)}
     except (OSError,TimeoutError):
         return {"result":"network_failure", "status":None}
 
