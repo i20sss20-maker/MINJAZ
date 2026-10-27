@@ -1,0 +1,82 @@
+"""No domain required to test the provider, but never send to real users."""
+import io
+import json
+import unittest
+import urllib.error
+from unittest.mock import patch
+from scripts.probe_minjaz_resend_sender import readiness,send_test,main,SANDBOX_PROJECT_ID
+
+CONFIG={
+    "RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,
+    "APP_ENV":"preview",
+    "EMAIL_MODE":"resend",
+    "EMAIL_FROM":"onboarding@resend.dev",
+    "RESEND_API_KEY":"re_"+"secret-for-unit-test",
+    "RESEND_TEST_RECIPIENT":"owner@example.com",
+    "AUTH_SECRET":"test-secret-must-be-32-chars-long-beyond",
+}
+
+class MockSuccess:
+    status=200
+    def __init__(self): self.read_count=0
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self,*args):self.read_count+=1;return b'{"id":"hidden"}'
+
+class ResendSetupProbeTests(unittest.TestCase):
+    def test_preview_only_and_no_secrets(self):
+        self.assertTrue(readiness(CONFIG)["ready"])
+        denied=readiness({**CONFIG,"APP_ENV":"production","RAILWAY_PROJECT_ID":"other"})
+        self.assertFalse(denied["ready"])
+        self.assertIn("dedicated_sandbox_project",denied["missing"])
+        self.assertIn("preview_environment",denied["missing"])
+        self.assertNotIn("re_secret",repr(denied))
+        self.assertFalse(denied["has_created_mailbox"])
+
+    def test_missing_provider_and_recipient_fail_closed(self):
+        for name in ("RESEND_API_KEY","RESEND_TEST_RECIPIENT","EMAIL_MODE","EMAIL_FROM","AUTH_SECRET"):
+            with self.subTest(missing=name):
+                cfg=CONFIG.copy()
+                cfg.pop(name)
+                self.assertFalse(readiness(cfg)["ready"])
+                with self.assertRaisesRegex(RuntimeError,"sandbox_mail_not_ready"):
+                    send_test(cfg,transport=lambda *a,**kw:self.fail("network call forbidden"))
+
+    def test_recipient_is_private_and_test_message_has_no_real_activation(self):
+        seen={}
+        def transport(request,timeout):
+            seen["url"]=request.full_url
+            seen["timeout"]=timeout
+            seen["headers"]=dict(request.header_items())
+            seen["body"]=json.loads(request.data.decode("utf-8"))
+            return MockSuccess()
+        out=send_test(CONFIG,transport)
+        self.assertEqual(out,{"result":"accepted_by_provider","status":200,
+                              "inbox_delivery_confirmed":False})
+        self.assertEqual(seen["url"],"https://api.resend.com/emails")
+        self.assertEqual(seen["body"]["to"],["owner@example.com"])
+        self.assertEqual(seen["body"]["from"],"MINJAZ Test <onboarding@resend.dev>")
+        self.assertNotIn("#verify-email=",seen["body"]["text"])
+        self.assertNotIn("owner@example.com",str(out))
+        self.assertNotIn("re_secret",str(out))
+
+    def test_provider_rejection_has_no_response_body(self):
+        def bad(req,timeout):
+            raise urllib.error.HTTPError(req.full_url,403,"test",{},None)
+        self.assertEqual(send_test(CONFIG,bad),{"result":"provider_rejected","status":403})
+
+    def test_dry_run_does_not_contact_external_provider(self):
+        with patch("os.environ",CONFIG):
+            with patch("urllib.request.urlopen",side_effect=AssertionError("network forbidden")):
+                with patch("sys.stdout",new_callable=io.StringIO) as output:
+                    self.assertEqual(main([]),0)
+                self.assertTrue(json.loads(output.getvalue())["ready"])
+
+    def test_sending_requires_explicit_confirmation(self):
+        with patch("os.environ",CONFIG):
+            with self.assertRaises(SystemExit):
+                main(["--send"])
+        self.assertFalse(readiness({**CONFIG,"EMAIL_FROM":"noreply@fake-domain.com"})["ready"])
+
+if __name__=="__main__":
+    unittest.main()
