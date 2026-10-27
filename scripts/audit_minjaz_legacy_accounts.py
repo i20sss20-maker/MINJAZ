@@ -13,6 +13,8 @@ REQUIRED_COLUMNS = {
     "users": {"id", "name", "phone", "email", "password_hash",
               "email_verified_at", "deleted_at", "role"},
     "sessions": {"user_id", "revoked_at", "expires_at"},
+    "account_email_actions": {"user_id", "used_at", "expires_at"},
+    "email_login_challenges": {"email", "verified_at", "expires_at"},
 }
 OPTIONAL_ORDER_COLUMNS = {"client_id", "freelancer_id"}
 
@@ -32,7 +34,9 @@ def audit_counts(connect):
             cur.execute("""SELECT table_name, column_name
                            FROM information_schema.columns
                            WHERE table_schema=current_schema()
-                             AND table_name IN ('users','sessions','orders')""")
+                             AND table_name IN ('users','sessions','orders',
+                                                'account_email_actions',
+                                                'email_login_challenges')""")
             cols={}
             for table,column in cur.fetchall():
                 cols.setdefault(table,set()).add(column)
@@ -84,6 +88,22 @@ def audit_counts(connect):
                 totals["blocked_with_orders"]=int(cur.fetchone()[0])
             else:
                 totals["blocked_with_orders"]=None
+            # This is intentionally an aggregate-only lookup: deleted users
+            # must never be reported with their email, ID or token.
+            cur.execute("""SELECT
+                count(DISTINCT u.id),
+                count(DISTINCT u.id) FILTER (
+                    WHERE a.used_at IS NULL AND a.expires_at > now()
+                )
+                FROM users u JOIN account_email_actions a ON a.user_id=u.id
+                WHERE u.deleted_at IS NOT NULL""")
+            actions=cur.fetchone()
+            totals["deleted_accounts_with_email_actions"]=int(actions[0])
+            totals["deleted_accounts_with_live_email_actions"]=int(actions[1])
+            cur.execute("""SELECT count(DISTINCT u.id)
+                FROM users u JOIN email_login_challenges c ON c.email=u.email
+                WHERE u.deleted_at IS NOT NULL""")
+            totals["deleted_accounts_with_email_challenges"]=int(cur.fetchone()[0])
         db.rollback()  # Leave no transaction open; read-only throughout.
         return {
             "report":"minjaz_legacy_email_transition_inventory_v1",
@@ -95,12 +115,16 @@ def audit_counts(connect):
                 totals["deleted_accounts_retaining_email"]
                 or totals["deleted_accounts_retaining_password_hash"]
                 or totals["deleted_accounts_retaining_verified_marker"]
+                or totals["deleted_accounts_with_email_actions"]
+                or totals["deleted_accounts_with_email_challenges"]
             ),
             "privacy_deletion_gate":(
                 "review_required" if (
                     totals["deleted_accounts_retaining_email"]
                     or totals["deleted_accounts_retaining_password_hash"]
                     or totals["deleted_accounts_retaining_verified_marker"]
+                    or totals["deleted_accounts_with_email_actions"]
+                    or totals["deleted_accounts_with_email_challenges"]
                 ) else "no_retained_email_credentials_detected"
             ),
             "email_policy_switch_account_gate":(
