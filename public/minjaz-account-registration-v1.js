@@ -107,10 +107,19 @@ async function request(path,body){
  }
  return json;
 }
+let emailCapability=null;
+function canSubmitEmailForm(form){
+ if(!emailCapability)return true;
+ if(!emailCapability.enabled)return false;
+ return form.id==="existingAccountForm"||form.id==="accountResetForm"
+   ? true : emailCapability.configured===true;
+}
 async function submitForm(event,fn){
- event.preventDefault();const btn=event.currentTarget.querySelector('button[type="submit"]');
+ event.preventDefault();const form=event.currentTarget;
+ const btn=form.querySelector('button[type="submit"]');
  if(btn)btn.disabled=true;
- try{await fn()}catch(err){status(err.message,true)}finally{if(btn)btn.disabled=false}
+ try{await fn()}catch(err){status(err.message,true)}
+ finally{if(btn)btn.disabled=!canSubmitEmailForm(form)}
 }
 $("roleClient").addEventListener("click",()=>{if(typeof setRole==="function")setRole("client")});
 $("roleFreelancer").addEventListener("click",()=>{if(typeof setRole==="function")setRole("freelancer")});
@@ -186,6 +195,7 @@ consumeActionLink();
 // need a new email merely to authenticate.
 function applyEmailCapability(info){
  if(!info || typeof info.enabled!=="boolean" || typeof info.configured!=="boolean")return;
+ emailCapability=info;
  const enabled=info.enabled===true, senderReady=info.configured===true;
  const signup=$("newAccountForm").querySelector('button[type="submit"]');
  const login=$("existingAccountForm").querySelector('button[type="submit"]');
