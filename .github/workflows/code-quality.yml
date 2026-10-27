@@ -276,6 +276,9 @@ jobs:
           set -euo pipefail
           find tests -maxdepth 1 -name '*.py' -print0 | xargs -0 -r python3 -m py_compile
 
+      - name: Refuse CI admin fixture outside isolated test environments
+        run: python3 -m unittest discover -s tests -p 'test_ci_admin_fixture.py' -v
+
       - name: Verify navigation loading never blocks UI
         run: node tests/navigation_loading.test.cjs
 
@@ -309,6 +312,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -413,6 +417,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -507,6 +512,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -633,6 +639,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: adapter

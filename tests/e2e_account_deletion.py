@@ -19,6 +19,9 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     return payload
 
 def login(phone,name,role="client"):
+    if role=="admin" and os.getenv("E2E_CI_ADMIN_FIXTURE")=="1":
+        from ci_admin_fixture import issue_local_admin_session
+        return issue_local_admin_session(phone,name)
     ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
     assert ch.get("dev_code"),ch
     return call("POST","/api/v1/auth/verify-otp",{
@@ -38,7 +41,7 @@ def run():
         "request_type":"delete","details":"Delete this test account",
         "idempotency_key":"privacy-delete-"+seed
     },token)
-    admin=login(ADMIN_PHONE,"Deletion E2E Admin")
+    admin=login(ADMIN_PHONE,"Deletion E2E Admin",role="admin")
     assert admin["user"]["role"]=="admin",admin
     done=call("PATCH",f"/api/admin/privacy/{int(req['id'])}",{
         "status":"completed","admin_note":"Deletion E2E execution"

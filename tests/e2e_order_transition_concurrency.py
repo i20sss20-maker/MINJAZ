@@ -33,6 +33,9 @@ def accept_legal(token):
     return out
 
 def login(phone,role,name):
+    if role=="admin" and os.getenv("E2E_CI_ADMIN_FIXTURE")=="1":
+        from ci_admin_fixture import issue_local_admin_session
+        return issue_local_admin_session(phone,name)
     ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
     code=ch.get("dev_code") or "1234"
     out=call("POST","/api/v1/auth/verify-otp",{
