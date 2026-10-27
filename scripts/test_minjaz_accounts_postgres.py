@@ -229,6 +229,13 @@ def main():
                 "existing legacy login session not reported")
     assert_true(stats["deleted_accounts"]==2,
                 "deleted users were accidentally counted as active")
+    assert_true(stats["deleted_accounts_with_email_actions"]==2
+                and stats["deleted_accounts_with_live_email_actions"]>=1,
+                "pending or historical verification/recovery links were not detected")
+    assert_true(stats["deleted_accounts_with_email_challenges"]==0,
+                "unexpected passwordless email challenge in isolated fixture")
+    assert_true(audit["privacy_deletion_review_required"],
+                "deleted account token residue was not flagged for privacy review")
     assert_true(audit["account_migration_required"] and not audit["writes_performed"]
                 and not audit["contains_personal_data"],
                 "unsafe legacy migration audit report")
