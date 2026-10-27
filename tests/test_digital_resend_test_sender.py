@@ -124,6 +124,29 @@ class ResendSetupProbeTests(unittest.TestCase):
                     self.assertEqual(main([]),0)
                 self.assertTrue(json.loads(output.getvalue())["ready"])
 
+
+    def test_edge_html_403_is_diagnosed_without_leaking_page_or_cf_token(self):
+        from email.message import Message
+        headers=Message()
+        headers["Content-Type"]="text/html; charset=UTF-8"
+        headers["CF-Ray"]="secret-edge-identifier-never-log"
+        html=b"<html><title>Attention Required! | Cloudflare</title>private@example.com</html>"
+        def rejected(req,timeout):
+            raise urllib.error.HTTPError(req.full_url,403,"Forbidden",headers,io.BytesIO(html))
+        result=send_test(CONFIG,rejected)
+        self.assertEqual(result,{"result":"provider_rejected","status":403,
+                                 "reason_code":"edge_access_block_suspected"})
+        self.assertNotIn("private@example.com",json.dumps(result))
+        self.assertNotIn("secret-edge-identifier-never-log",json.dumps(result))
+        self.assertNotIn(CONFIG["RESEND_API_KEY"],json.dumps(result))
+
+    def test_plain_html_403_cannot_be_falsely_classified_as_resend_json(self):
+        def rejected(req,timeout):
+            raise urllib.error.HTTPError(req.full_url,403,"Forbidden",
+                {"Content-Type":"text/html"},io.BytesIO(b"<html>Forbidden</html>"))
+        result=send_test(CONFIG,rejected)
+        self.assertEqual(result["reason_code"],"non_json_403_response")
+
     def test_cli_dry_run_in_subprocess_resolves_sibling_email_module(self):
         # Reproduces Railway's exact command path, not just importing the
         # module from pytest/unittest (which masks the /app/scripts sys.path).
