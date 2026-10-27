@@ -77,9 +77,9 @@ footer a{color:#463cbd;text-decoration:none}
     <button type="button" id="back" class="link" hidden>رجوع لتسجيل الدخول</button>
   </div>
   <div id="message" role="status" aria-live="polite"></div>
-  <p class="note">التجربة مخصّصة لبريد مالك حساب Resend الحالي فقط، وليس لإرسال رسائل عامة. لا تشارك رابط التفعيل مع أحد.</p>
+  <p class="note">التجربة مخصّصة لبريد مالك حساب Resend الحالي فقط، وليس لإرسال رسائل عامة. رسالة التفعيل قد تصل إلى Spam. لا تشارك رابط التفعيل مع أحد.</p>
 </main>
-<footer><a href="/digital-services">استعراض الخدمات الجاهزة</a> · <a href="/app">دخول واجهة المنصة الكاملة</a></footer>
+<footer><a href="/digital-services">استعراض الخدمات الجاهزة</a> · <a href="/workspace">دخول واجهة المنصة الكاملة</a></footer>
 <script>
 (function(){
   "use strict";
@@ -157,14 +157,15 @@ footer a{color:#463cbd;text-decoration:none}
     if(response.registered){
       $("password").value="";$("confirm").value="";$("loginEmail").value=email;
       show("login",true);
-      status("تم إنشاء الحساب. افتح رسالة التفعيل في البريد ثم سجّل دخولك.","good");
+      status("تم إنشاء الحساب. افتح رسالة التفعيل في بريدك (راجع الرسائل غير المرغوب فيها Spam) ثم سجّل الدخول.","good");
     }
   }));
   $("login").addEventListener("submit",e=>submit(e,async()=>{
     await call("/api/v1/auth/login-email",{email:$("loginEmail").value.trim().toLowerCase(),password:$("loginPass").value});
     const me=await call("/api/v1/me",undefined,"GET");
     if(!me.user)throw Error("تعذّر تأكيد تسجيل الدخول.");
-    window.location.assign("/digital-services");
+    const backToStore=new URLSearchParams(location.search).get("next")==="digital-services";
+    window.location.assign(backToStore?"/digital-services":"/workspace");
   }));
   $("recover").addEventListener("submit",e=>submit(e,async()=>{
     await call("/api/v1/auth/forgot-password",{email:$("recoverEmail").value.trim().toLowerCase()});
