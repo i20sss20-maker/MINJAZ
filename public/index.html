@@ -2745,7 +2745,12 @@ async function newTaskModal(){
 }
 function minjazSyncRequestCategory(){
  const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
- if(selected)$('ntCat').value=String(selected.category_id);
+ if(selected){
+  $('ntCat').value=String(selected.category_id);
+  if(!$('ntTitle').value.trim())$('ntTitle').value=selected.name_ar||'';
+  if(!$('ntMin').value.trim()&&selected.min_price)$('ntMin').value=String(selected.min_price);
+  if(!$('ntMax').value.trim()&&selected.max_price)$('ntMax').value=String(selected.max_price);
+ }
 }
 function minjazSyncRequestService(){
  const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
@@ -2779,7 +2784,7 @@ async function createTask(){
   closeModal();
   minjazTaskDraftKey='';
   toast(j?.idempotent_replay?'الطلب منشور بالفعل، تم فتح قائمة طلباتك.':'تم نشر الطلب بنجاح.');
-  await go('tasks');
+  try{await go('tasks')}catch(e){toast('تم نشر الطلب، لكن تعذر تحديث قائمة طلباتك. افتح قسم مهامي.')}
  }catch(e){toast('تعذر الاتصال. يمكنك إعادة المحاولة بدون إنشاء طلب مكرر.')}
  finally{minjazPublishingBusy=false;if(publish?.isConnected){publish.disabled=false;publish.textContent='نشر الطلب'}}
 }
