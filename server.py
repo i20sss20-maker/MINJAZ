@@ -72,6 +72,10 @@ def production_blockers():
     from minjaz_email_auth import email_delivery_config
     sms_ready=SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16
     email_ready=email_delivery_config()['enabled']
+    if not EMAIL_AUTH_REQUIRED:
+        blockers.append('VERIFIED_EMAIL_POLICY')
+    if not os.getenv('ADMIN_EMAIL','').strip():
+        blockers.append('ADMIN_EMAIL')
     if EMAIL_AUTH_REQUIRED and not email_ready:
         blockers.append('EMAIL_PROVIDER')
     elif not sms_ready and not email_ready:
@@ -2380,7 +2384,9 @@ class H(BaseHTTPRequestHandler):
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
                     {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
-                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':False},
+                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':True},
+                    {'key':'verified_email_policy','ok':EMAIL_AUTH_REQUIRED,'value':'enforced' if EMAIL_AUTH_REQUIRED else 'not_enforced','required':True},
+                    {'key':'admin_email_configured','ok':bool(os.getenv('ADMIN_EMAIL','').strip()),'value':'configured' if os.getenv('ADMIN_EMAIL','').strip() else 'missing','required':True},
                     {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
                     {'key':'marketplace_payout_settlement','ok':False,'value':'no_verified_payout_adapter','required':True},
