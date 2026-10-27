@@ -39,7 +39,7 @@ class GuestServiceOrderTests(unittest.TestCase):
         self.assertIn("card.dataset.packageId=String(p.id)",SCRIPT)
         self.assertIn("await beginServiceOrder(packageItem,card,card.querySelector('button'))",SCRIPT)
         self.assertIn("if(needsLogin)hint.append(signInLink())",SCRIPT)
-        self.assertIn("a.href='/?auth=login&next=digital-services'",SCRIPT)
+        self.assertIn("a.href='/signup?auth=login&next=digital-services'",SCRIPT)
         self.assertIn("if(err.code==='unauthorized')$('formError').append(signInLink())",SCRIPT)
 
     def test_no_real_checkout_or_credential_storage(self):
