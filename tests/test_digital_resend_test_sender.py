@@ -4,10 +4,13 @@ import json
 import unittest
 import urllib.error
 from unittest.mock import patch
-from scripts.probe_minjaz_resend_sender import readiness,send_test,main,SANDBOX_PROJECT_ID
+from scripts.probe_minjaz_resend_sender import (readiness, send_test, main,
+    SANDBOX_PROJECT_ID, SANDBOX_ENVIRONMENT_ID, SANDBOX_SERVICE_ID)
 
 CONFIG={
     "RAILWAY_PROJECT_ID":SANDBOX_PROJECT_ID,
+    "RAILWAY_ENVIRONMENT_ID":SANDBOX_ENVIRONMENT_ID,
+    "RAILWAY_SERVICE_ID":SANDBOX_SERVICE_ID,
     "APP_ENV":"preview",
     "EMAIL_MODE":"resend",
     "EMAIL_FROM":"onboarding@resend.dev",
@@ -29,6 +32,11 @@ class ResendSetupProbeTests(unittest.TestCase):
         denied=readiness({**CONFIG,"APP_ENV":"production","RAILWAY_PROJECT_ID":"other"})
         self.assertFalse(denied["ready"])
         self.assertIn("dedicated_sandbox_project",denied["missing"])
+        for name,expected in (("RAILWAY_ENVIRONMENT_ID","dedicated_sandbox_environment"),
+                              ("RAILWAY_SERVICE_ID","dedicated_sandbox_service")):
+            with self.subTest(name=name):
+                self.assertFalse(readiness({**CONFIG,name:"foreign"})["ready"])
+                self.assertIn(expected,readiness({**CONFIG,name:"foreign"})["missing"])
         self.assertIn("preview_environment",denied["missing"])
         self.assertNotIn("re_secret",repr(denied))
         self.assertFalse(denied["has_created_mailbox"])

@@ -12,6 +12,8 @@ import urllib.error
 import urllib.request
 
 SANDBOX_PROJECT_ID = "b64c32a3-e7d0-4f5c-8482-c0f43bc1f3f4"
+SANDBOX_ENVIRONMENT_ID = "d3e2f4a8-582d-4c3d-b6c8-cc919b2dac78"
+SANDBOX_SERVICE_ID = "7d61ddbd-d1c3-40d2-ac57-09c4f0c2cdcf"
 TEST_SENDER = "onboarding@resend.dev"
 TEST_ENDPOINT = "https://api.resend.com/emails"
 
@@ -22,6 +24,10 @@ def readiness(env):
     missing = []
     if env.get("RAILWAY_PROJECT_ID") != SANDBOX_PROJECT_ID:
         missing.append("dedicated_sandbox_project")
+    if env.get("RAILWAY_ENVIRONMENT_ID") != SANDBOX_ENVIRONMENT_ID:
+        missing.append("dedicated_sandbox_environment")
+    if env.get("RAILWAY_SERVICE_ID") != SANDBOX_SERVICE_ID:
+        missing.append("dedicated_sandbox_service")
     if env.get("APP_ENV", "").lower() != "preview":
         missing.append("preview_environment")
     if env.get("EMAIL_MODE", "").lower() != "resend":
