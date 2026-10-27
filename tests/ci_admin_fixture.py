@@ -14,8 +14,8 @@ def require_isolated_ci(env=None, phone=None):
         raise RuntimeError("CI administrator fixture is disabled")
     if env.get("APP_ENV")!="beta" or env.get("EMAIL_AUTH_REQUIRED","0")=="1":
         raise RuntimeError("CI fixture cannot run with production/verified-email policy")
-    if env.get("SMS_MODE")!="dev" or env.get("PAYMENT_MODE")!="mock":
-        raise RuntimeError("CI fixture requires mock payment and dev-only OTP")
+    if env.get("SMS_MODE")!="dev" or env.get("PAYMENT_MODE") not in ("mock","adapter"):
+        raise RuntimeError("CI fixture requires test payment mode and dev-only OTP")
     if not phone or phone!=env.get("ADMIN_PHONE"):
         raise RuntimeError("CI fixture administrator phone mismatch")
     if len(env.get("AUTH_SECRET",""))<32 or env["AUTH_SECRET"]=="dev-secret-change-me":
