@@ -11,6 +11,13 @@ import sys
 import urllib.error
 import urllib.request
 
+# Executing "python scripts/probe_minjaz_resend_sender.py" sets sys.path[0]
+# to /app/scripts, not /app. Make the sibling first-party email module visible
+# without depending on PYTHONPATH, inside both Railway and local operator shells.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 SANDBOX_PROJECT_ID = "b64c32a3-e7d0-4f5c-8482-c0f43bc1f3f4"
 SANDBOX_ENVIRONMENT_ID = "d3e2f4a8-582d-4c3d-b6c8-cc919b2dac78"
 SANDBOX_SERVICE_ID = "7d61ddbd-d1c3-40d2-ac57-09c4f0c2cdcf"
