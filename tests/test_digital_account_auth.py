@@ -5,8 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from minjaz_account_auth import (clean_phone,valid_password,hash_password,
-    verify_password,token_digest,secure_config,register,request_password_reset,
-    reset_password,consume_email_link)
+    verify_password,token_digest,valid_public_base,secure_config,register,
+    resend_verification,request_password_reset,reset_password,consume_email_link)
 from minjaz_email_auth import normalize_email
 
 class UnexpectedDatabase:
@@ -60,6 +60,43 @@ class AccountRegistrationTests(unittest.TestCase):
                         ("EMAIL_MODE","off"),("EMAIL_FROM",""),("RESEND_API_KEY","")):
             with self.subTest(key=key):
                 self.assertFalse(secure_config({**good,key:bad}))
+    def test_activation_and_password_reset_links_require_a_safe_https_origin(self):
+        self.assertTrue(valid_public_base("https://minjaz.example.com"))
+        self.assertTrue(valid_public_base("https://minjaz.example.com/"))
+        for value in ("", "https://", "http://minjaz.example.com",
+                      "https://username:password@minjaz.example.com",
+                      "https://minjaz.example.com/redirect",
+                      "https://minjaz.example.com/?next=https://evil.example",
+                      "https://minjaz.example.com/#reset-password=fake",
+                      "https://minjaz.example.com:invalid"):
+            with self.subTest(base=value):
+                self.assertFalse(valid_public_base(value))
+        good={"AUTH_SECRET":"x"*50,"PUBLIC_BASE_URL":"https://minjaz.example.com",
+              "EMAIL_MODE":"resend","EMAIL_FROM":"hello@example.com",
+              "RESEND_API_KEY":"re_"+"x"*22}
+        for base in ("https://", "https://minjaz.example.com/path",
+                     "https://user@minjaz.example.com",
+                     "https://minjaz.example.com?url=elsewhere"):
+            self.assertFalse(secure_config({**good,"PUBLIC_BASE_URL":base}))
+
+    def test_deleted_accounts_cannot_reactivate_or_reset_password(self):
+        activation=inspect.getsource(consume_email_link)
+        self.assertIn("a.used_at IS NULL AND u.deleted_at IS NULL",activation)
+        resend=inspect.getsource(resend_verification)
+        self.assertIn("WHERE email=%s AND deleted_at IS NULL",resend)
+        reset=inspect.getsource(reset_password)
+        self.assertIn("u.email_verified_at IS NOT NULL AND u.deleted_at IS NULL",reset)
+
+    def test_signup_hands_off_to_login_and_resend_without_sms(self):
+        from pathlib import Path
+        page=(Path(__file__).resolve().parents[1]/"public/minjaz-account-registration-v1.js").read_text("utf-8")
+        self.assertIn('id="resendActivationLogin"',page)
+        self.assertIn('resendActivationFrom("accountEmail","resendActivationLogin")',page)
+        self.assertIn('resendActivationFrom("signupEmail","resendActivation")',page)
+        self.assertIn('"accountEmail").value=email',page)
+        self.assertIn('show("accountLogin");',page)
+        self.assertNotIn('/api/v1/auth/request-email-otp',page)
+
     def test_unconfigured_email_blocks_signup_without_database(self):
         code,data=register({"name":"أحمد","email":"person@example.com",
             "phone":"0512345678","password":"myPass123456","role":"client"},
