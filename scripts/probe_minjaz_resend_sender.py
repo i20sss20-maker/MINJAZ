@@ -31,14 +31,24 @@ def classify_rejection(response):
     Resend error message strings can include personal addresses and request
     contents. Match only high-signal fragments from a small allowlist.
     """
+    # Do not return or log the raw response: HTML challenges, JSON error
+    # messages, and server headers can contain user-specific request details.
     try:
-        payload=json.loads(response.read(4096).decode("utf-8"))
-        if not isinstance(payload,dict):
-            return "unclassified"
-        message=str(payload.get("message") or "").lower()
-        name=str(payload.get("name") or payload.get("type") or "").lower()
+        body=response.read(4096).decode("utf-8",errors="replace")
+        payload=json.loads(body)
     except (ValueError,UnicodeError,AttributeError):
-        return "unclassified"
+        headers=getattr(response,"headers",None)
+        content_type=(headers.get("Content-Type","") if headers else "").lower()
+        cloudflare_ray=bool(headers and headers.get("cf-ray"))
+        if cloudflare_ray and ("text/html" in content_type or
+                              "cloudflare" in body.lower() or
+                              "access denied" in body.lower()):
+            return "edge_access_block_suspected"
+        return "non_json_403_response"
+    if not isinstance(payload,dict):
+        return "non_object_json_403_response"
+    message=str(payload.get("message") or "").lower()
+    name=str(payload.get("name") or payload.get("type") or "").lower()
     if "only send testing emails to your own email" in message or (
         "only send" in message and "testing" in message and "own email" in message):
         return "test_sender_recipient_mismatch"
