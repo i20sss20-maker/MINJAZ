@@ -1,8 +1,12 @@
 """No domain required to test the provider, but never send to real users."""
 import io
 import json
+import os
+import subprocess
+import sys
 import unittest
 import urllib.error
+from pathlib import Path
 from unittest.mock import patch
 from scripts.probe_minjaz_resend_sender import (readiness, send_test, main,
     SANDBOX_PROJECT_ID, SANDBOX_ENVIRONMENT_ID, SANDBOX_SERVICE_ID)
@@ -79,6 +83,21 @@ class ResendSetupProbeTests(unittest.TestCase):
                 with patch("sys.stdout",new_callable=io.StringIO) as output:
                     self.assertEqual(main([]),0)
                 self.assertTrue(json.loads(output.getvalue())["ready"])
+
+    def test_cli_dry_run_in_subprocess_resolves_sibling_email_module(self):
+        # Reproduces Railway's exact command path, not just importing the
+        # module from pytest/unittest (which masks the /app/scripts sys.path).
+        root=Path(__file__).resolve().parents[1]
+        result=subprocess.run(
+            [sys.executable, "scripts/probe_minjaz_resend_sender.py"],
+            cwd=root, env={**os.environ, **CONFIG},
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertTrue(report["ready"])
+        self.assertFalse(report["has_created_mailbox"])
+        self.assertNotIn(CONFIG["RESEND_API_KEY"],result.stdout)
 
     def test_sending_requires_explicit_confirmation(self):
         with patch("os.environ",CONFIG):
