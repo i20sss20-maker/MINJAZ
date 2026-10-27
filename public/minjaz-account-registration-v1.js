@@ -87,6 +87,7 @@ async function request(path,body){
  let json={};try{json=await response.json()}catch{}
  if(!response.ok){const labels={
   email_not_configured:"خدمة إرسال البريد لم تُجهز بعد. يلزم إعداد بريد الإرسال أولًا.",
+  email_registration_disabled:"التسجيل بالبريد غير مفعّل في هذه البيئة حاليًا.",
   email_delivery_failed:"تعذّر إرسال البريد. جرّب مجددًا أو تحقق من إعدادات بريد الإرسال.",
   invalid_email:"البريد الإلكتروني غير صحيح.",invalid_phone:"اكتب رقم جوال سعودي صحيح.",
   invalid_name:"اكتب اسمًا صحيحًا (حرفان على الأقل).",
@@ -106,10 +107,19 @@ async function request(path,body){
  }
  return json;
 }
+let emailCapability=null;
+function canSubmitEmailForm(form){
+ if(!emailCapability)return true;
+ if(!emailCapability.enabled)return false;
+ return form.id==="existingAccountForm"||form.id==="accountResetForm"
+   ? true : emailCapability.configured===true;
+}
 async function submitForm(event,fn){
- event.preventDefault();const btn=event.currentTarget.querySelector('button[type="submit"]');
+ event.preventDefault();const form=event.currentTarget;
+ const btn=form.querySelector('button[type="submit"]');
  if(btn)btn.disabled=true;
- try{await fn()}catch(err){status(err.message,true)}finally{if(btn)btn.disabled=false}
+ try{await fn()}catch(err){status(err.message,true)}
+ finally{if(btn)btn.disabled=!canSubmitEmailForm(form)}
 }
 $("roleClient").addEventListener("click",()=>{if(typeof setRole==="function")setRole("client")});
 $("roleFreelancer").addEventListener("click",()=>{if(typeof setRole==="function")setRole("freelancer")});
@@ -180,9 +190,32 @@ async function consumeActionLink(){
 }
 if(authQuery.get("auth")==="login"&&!window.location.hash)show("accountLogin");
 consumeActionLink();
-fetch("/api/v1/auth/account-status",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(x=>{
- if(x&&!x.configured&&!window.location.hash&&$("accountStatus").textContent===""){
-   status("التسجيل بالبريد جاهز، لكن إرسال روابط التفعيل يحتاج تهيئة مزود البريد.",true);
+// The UI must not advertise an email-only sign-in path before the API enables it.
+// Keep login usable when the sender is temporarily down: verified users do not
+// need a new email merely to authenticate.
+function applyEmailCapability(info){
+ if(!info || typeof info.enabled!=="boolean" || typeof info.configured!=="boolean")return;
+ emailCapability=info;
+ const enabled=info.enabled===true, senderReady=info.configured===true;
+ const signup=$("newAccountForm").querySelector('button[type="submit"]');
+ const login=$("existingAccountForm").querySelector('button[type="submit"]');
+ const recover=$("accountRecoverForm").querySelector('button[type="submit"]');
+ const reset=$("accountResetForm").querySelector('button[type="submit"]');
+ signup.disabled=!enabled||!senderReady;
+ login.disabled=!enabled;
+ recover.disabled=!enabled||!senderReady;
+ reset.disabled=!enabled;
+ $("resendActivation").disabled=!enabled||!senderReady;
+ $("resendActivationLogin").disabled=!enabled||!senderReady;
+ $("forgotAccountPassword").disabled=!enabled||!senderReady;
+ // Do not overwrite a single-use activation or reset result.
+ if(window.location.hash || resetToken || $("accountStatus").textContent)return;
+ if(!enabled){
+   status("تسجيل الدخول بالبريد غير مفعّل في هذه النسخة. لن يتم إنشاء حساب أو إرسال رسالة تفعيل حتى يكتمل تجهيز النظام.",true);
+ }else if(!senderReady){
+   status("لم تُربط خدمة البريد بعد. إنشاء الحساب والاستعادة غير متاحين، ويمكن لأصحاب الحسابات المفعّلة تسجيل الدخول.",true);
  }
-}).catch(()=>{});
+}
+fetch("/api/v1/auth/account-status",{credentials:"same-origin",headers:{"Accept":"application/json"}})
+ .then(r=>r.ok?r.json():null).then(applyEmailCapability).catch(()=>{});
 })();
