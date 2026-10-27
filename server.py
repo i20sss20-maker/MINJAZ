@@ -2385,6 +2385,7 @@ class H(BaseHTTPRequestHandler):
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
                     {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
                     {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':True},
+                    {'key':'non_test_email_sender','ok':bool(os.getenv('EMAIL_FROM','').strip()) and not os.getenv('EMAIL_FROM','').strip().lower().endswith('@resend.dev'),'value':'test_sender' if os.getenv('EMAIL_FROM','').strip().lower().endswith('@resend.dev') else ('configured' if os.getenv('EMAIL_FROM','').strip() else 'missing'),'required':True},
                     {'key':'verified_email_policy','ok':EMAIL_AUTH_REQUIRED,'value':'enforced' if EMAIL_AUTH_REQUIRED else 'not_enforced','required':True},
                     {'key':'admin_email_configured','ok':bool(os.getenv('ADMIN_EMAIL','').strip()),'value':'configured' if os.getenv('ADMIN_EMAIL','').strip() else 'missing','required':True},
                     {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
@@ -2403,8 +2404,15 @@ class H(BaseHTTPRequestHandler):
                     {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
                 ]
                 commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
+                # Real, non-financial pilot is separate from a commercial launch.
+                # It requires actual identity, storage and approved legal readiness,
+                # and strictly forbids payment mode in this phase.
+                nonpayment_exclusions={'payment_provider','marketplace_payout_settlement'}
+                nonpayment_pilot=(PAYMENT_MODE=='off'
+                                 and all(x['ok'] for x in checks
+                                         if x['required'] and x['key'] not in nonpayment_exclusions))
                 status=503 if IS_PROD and not commercial else 200
-                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
+                return self.sendj(status,{'ready_for_beta':beta,'ready_for_nonfinancial_pilot':nonpayment_pilot,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
                 if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
                 raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
@@ -2536,9 +2544,10 @@ class H(BaseHTTPRequestHandler):
             if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
             if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
             if method=='GET' and p=='/api/v1/auth/account-status':
-                from minjaz_account_auth import secure_config
+                from minjaz_account_auth import secure_config,_shared_test_sender
                 return self.sendj(200,{'registration':'email_link','configured':secure_config(),
                                       'enabled':EMAIL_AUTH_REQUIRED,
+                                      'test_sender_limited':_shared_test_sender(os.environ),
                                       'admin_configured':bool(os.getenv('ADMIN_EMAIL','').strip()),
                                       'fields':['name','email','phone','password']})
             if method=='POST' and p in (
