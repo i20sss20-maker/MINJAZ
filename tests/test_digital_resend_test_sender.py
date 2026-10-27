@@ -76,7 +76,7 @@ class ResendSetupProbeTests(unittest.TestCase):
         def bad(req,timeout):
             raise urllib.error.HTTPError(req.full_url,403,"test",{},None)
         self.assertEqual(send_test(CONFIG,bad),{"result":"provider_rejected","status":403,
-                                                "reason_code":"unclassified"})
+                                                "reason_code":"non_json_403_response"})
 
     def test_classifies_restricted_testing_domain_without_exposing_email(self):
         private_message=("You can only send testing emails to your own email address "
