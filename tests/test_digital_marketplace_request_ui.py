@@ -22,7 +22,6 @@ class MarketplaceRequestUiTests(unittest.TestCase):
         self.assertIn("minjazDraftServices=catalog", self.frontend)
         self.assertIn("minjazSyncRequestCategory()", self.frontend)
         self.assertIn("minjazSyncRequestService()", self.frontend)
-        self.assertIn("request to preserve service choices", "request to preserve service choices")
         self.assertIn("if sid:", self.server)
         self.assertIn("select id,category_id from services", self.server)
         seed = self.server.split("def ensure_services_schema():", 1)[1].split("def ", 1)[0]
@@ -51,6 +50,9 @@ class MarketplaceRequestUiTests(unittest.TestCase):
         self.assertIn("Number(bmin)<49", self.frontend)
         self.assertIn("Number(bmax)<Number(bmin)", self.frontend)
         self.assertIn("await go('tasks')", self.frontend)
+        self.assertIn('id="ntDue" type="datetime-local"', self.frontend)
+        self.assertIn("due_at=parsed.toISOString()", self.frontend)
+        self.assertIn("budget_min:bmin||null,budget_max:bmax||null,due_at", self.frontend)
 
     def test_existing_accounts_and_marketplace_routes_stay_present(self):
         for route in ("/api/v1/tasks", "/api/v1/services", "/api/v1/orders",
