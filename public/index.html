@@ -2708,8 +2708,81 @@ async function renderTasks(){
  const {j}=await api('/api/v1/tasks?'+opportunityQuery());const a=j?.items||[];
  $('tasks').innerHTML=`<div class="sectionHead"><div><h2>الفرص المفتوحة</h2><p>ابحث ورتّب الفرص حسب اللي يناسبك</p></div><span class="pill blue">${a.length} فرصة</span></div><div class="oppToolbar"><div class="field searchWide"><label>بحث</label><input id="oppQ" value="${esc(opportunityFilters.q)}" placeholder="مثال: تصميم، Excel، ترجمة" onkeydown="if(event.key==='Enter')applyOpportunityFilters()"></div><div class="field"><label>القسم</label><select id="oppCat"><option value="">كل الأقسام</option>${categories.map(c=>`<option value="${c.id}" ${String(opportunityFilters.category_id)===String(c.id)?'selected':''}>${esc(c.name_ar)}</option>`).join('')}</select></div><div class="field"><label>الأولوية</label><select id="oppUrg"><option value="">الكل</option><option value="normal" ${opportunityFilters.urgency==='normal'?'selected':''}>عادية</option><option value="urgent" ${opportunityFilters.urgency==='urgent'?'selected':''}>عاجلة</option></select></div><div class="field"><label>العروض</label><select id="oppProposal"><option value="">الكل</option><option value="new" ${opportunityFilters.proposal==='new'?'selected':''}>ما أرسلت عليها</option><option value="sent" ${opportunityFilters.proposal==='sent'?'selected':''}>أرسلت عليها</option></select></div><div class="field"><label>ميزانية من</label><input id="oppMin" inputmode="decimal" value="${esc(opportunityFilters.min_budget)}" placeholder="49"></div><div class="field"><label>الترتيب</label><select id="oppSort"><option value="match" ${opportunityFilters.sort==='match'?'selected':''}>الأكثر ملاءمة</option><option value="latest" ${opportunityFilters.sort==='latest'?'selected':''}>الأحدث</option><option value="budget_desc" ${opportunityFilters.sort==='budget_desc'?'selected':''}>الأعلى ميزانية</option></select></div><div style="display:flex;gap:6px"><button class="btn primary" onclick="applyOpportunityFilters()">تطبيق</button><button class="btn ghost" onclick="resetOpportunityFilters()">مسح</button></div></div><div class="list">${a.map(taskRowFreelancer).join('')||'<div class="card empty"><b>ما لقينا فرص مطابقة</b><span>خفف الفلاتر أو امسحها وشوف كل الفرص المفتوحة.</span><button class="btn ghost" onclick="resetOpportunityFilters()">مسح الفلاتر</button></div>'}</div>`
 }
-function newTaskModal(){openModal(`<div class="modalHead"><h2>إنشاء مهمة جديدة</h2><button class="x" onclick="closeModal()">×</button></div><div class="form2"><div class="field full"><label>عنوان المهمة</label><input id="ntTitle" placeholder="مثال: تصميم 3 منشورات لإنستغرام"></div><div class="field full"><label>الوصف</label><textarea id="ntDesc" placeholder="اشرح المطلوب والملفات والمقاس أو أي تفاصيل مهمة"></textarea></div><div class="field"><label>القسم</label><select id="ntCat">${categories.map(c=>`<option value="${c.id}">${c.icon||''} ${esc(c.name_ar)}</option>`).join('')}</select></div><div class="field"><label>الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div><div class="field"><label>من ميزانية</label><input id="ntMin" inputmode="decimal" placeholder="49"></div><div class="field"><label>إلى ميزانية</label><input id="ntMax" inputmode="decimal" placeholder="149"></div></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="createTask()">نشر المهمة</button></div>`)}
-async function createTask(){const b={title:$('ntTitle').value,description:$('ntDesc').value,category_id:+$('ntCat').value,urgency:$('ntUrg').value,budget_min:+$('ntMin').value||null,budget_max:+$('ntMax').value||null};const {r}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(b)});if(!r.ok)return toast('راجع بيانات المهمة');closeModal();toast('تم نشر المهمة');await renderTasks()}
+let minjazDraftServices=[];
+let minjazPublishingBusy=false;
+let minjazTaskDraftKey='';
+function minjazNewTaskIdempotencyKey(){
+ const rand=typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'
+   ?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
+ return 'minjaz-task-'+rand;
+}
+async function newTaskModal(){
+ if(minjazPublishingBusy)return;
+ minjazTaskDraftKey=minjazNewTaskIdempotencyKey();
+ let catalog=[];
+ try{
+  const response=await api('/api/v1/services');
+  if(response.r.ok&&Array.isArray(response.j?.items))catalog=response.j.items;
+ }catch(e){}
+ minjazDraftServices=catalog;
+ const available=categories.map(c=>({
+   c,items:catalog.filter(s=>Number(s.category_id)===Number(c.id))
+ }));
+ const serviceOptions=available.map(({c,items})=>items.length
+   ?'<optgroup label="'+esc(c.name_ar)+'">'+items.map(s=>'<option value="'+Number(s.id)+'">'+esc(s.name_ar)+'</option>').join('')+'</optgroup>'
+   :'').join('');
+ openModal('<div class="modalHead"><h2>انشر طلب خدمة</h2><button class="x" onclick="closeModal()" aria-label="إغلاق">×</button></div>'
+  +'<p class="muted" style="font-size:12px">اختر من خدمات منجاز الموجودة أو انشر طلبًا عامًا في أحد الأقسام، وسيقدم المنفذون عروضهم.</p>'
+  +'<div class="form2">'
+  +'<div class="field full"><label for="ntSvc">الخدمة المطلوبة (اختياري)</label><select id="ntSvc" onchange="minjazSyncRequestCategory()"><option value="">طلب عام ضمن قسم</option>'+serviceOptions+'</select></div>'
+  +'<div class="field full"><label for="ntTitle">عنوان الطلب</label><input id="ntTitle" maxlength="180" placeholder="مثال: تنسيق بحث وتدقيقه لغويًا"></div>'
+  +'<div class="field full"><label for="ntDesc">تفاصيل الطلب</label><textarea id="ntDesc" maxlength="6000" placeholder="اشرح المطلوب والنتيجة المتوقعة وأي تفاصيل مهمة (20 حرفًا على الأقل)"></textarea></div>'
+  +'<div class="field"><label for="ntCat">القسم</label><select id="ntCat" onchange="minjazSyncRequestService()">'+categories.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name_ar)+'</option>').join('')+'</select></div>'
+  +'<div class="field"><label for="ntUrg">الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div>'
+  +'<div class="field"><label for="ntMin">ميزانية من (ريال)</label><input id="ntMin" inputmode="decimal" placeholder="49"></div>'
+  +'<div class="field"><label for="ntMax">ميزانية إلى (ريال)</label><input id="ntMax" inputmode="decimal" placeholder="149"></div>'
+  +'</div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button id="publishTaskBtn" class="btn primary" onclick="createTask()">نشر الطلب</button></div>');
+}
+function minjazSyncRequestCategory(){
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ if(selected)$('ntCat').value=String(selected.category_id);
+}
+function minjazSyncRequestService(){
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ if(selected&&Number(selected.category_id)!==Number($('ntCat')?.value))$('ntSvc').value='';
+}
+async function createTask(){
+ if(minjazPublishingBusy)return;
+ const title=String($('ntTitle')?.value||'').trim(),description=String($('ntDesc')?.value||'').trim();
+ const service_id=Number($('ntSvc')?.value)||null,category_id=Number($('ntCat')?.value);
+ const bmin=String($('ntMin')?.value||'').trim(),bmax=String($('ntMax')?.value||'').trim();
+ if(title.length<5||title.length>180)return toast('اكتب عنوانًا واضحًا من 5 أحرف على الأقل.');
+ if(description.length<20||description.length>6000)return toast('اكتب تفاصيل الطلب بوضوح (20 حرفًا على الأقل).');
+ if(!category_id)return toast('اختر قسم الطلب.');
+ if((bmin&&(!Number.isFinite(Number(bmin))||Number(bmin)<49))||(bmax&&(!Number.isFinite(Number(bmax))||Number(bmax)<49))
+  ||(bmin&&bmax&&Number(bmax)<Number(bmin)))return toast('أدخل ميزانية صحيحة، تبدأ من 49 ريالًا.');
+ const publish=$('publishTaskBtn');
+ minjazPublishingBusy=true;
+ if(publish){publish.disabled=true;publish.textContent='جارٍ نشر الطلب...'}
+ try{
+  const payload={title,description,category_id,service_id,urgency:$('ntUrg').value,
+    budget_min:bmin||null,budget_max:bmax||null,
+    idempotency_key:minjazTaskDraftKey||minjazNewTaskIdempotencyKey()};
+  const {r,j}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(payload)});
+  if(!r.ok){
+   const errors={legal_acceptance_required:'وافق على الشروط من حسابك قبل نشر الطلب.',
+     budget_below_minimum:'الحد الأدنى للميزانية 49 ريالًا.',
+     task_rate_limited:'وصلت إلى حد نشر الطلبات مؤقتًا، حاول لاحقًا.',
+     invalid_service:'الخدمة غير متاحة حاليًا؛ اختر قسمًا أو خدمة أخرى.'};
+   return toast(errors[j?.error]||'تعذر نشر الطلب؛ تحقق من البيانات وأعد المحاولة.');
+  }
+  closeModal();
+  minjazTaskDraftKey='';
+  toast(j?.idempotent_replay?'الطلب منشور بالفعل، تم فتح قائمة طلباتك.':'تم نشر الطلب بنجاح.');
+  await go('tasks');
+ }catch(e){toast('تعذر الاتصال. يمكنك إعادة المحاولة بدون إنشاء طلب مكرر.')}
+ finally{minjazPublishingBusy=false;if(publish?.isConnected){publish.disabled=false;publish.textContent='نشر الطلب'}}
+}
 function proposalModal(id,title){openModal(`<div class="modalHead"><h2>عرضك على: ${title}</h2><button class="x" onclick="closeModal()">×</button></div><div class="form2"><div class="field"><label>السعر</label><input id="pp" inputmode="decimal" min="1" max="1000000" placeholder="99"></div><div class="field"><label>مدة التسليم بالساعات</label><input id="ph" inputmode="numeric" min="1" max="8760" value="24"></div><div class="field"><label>عدد التعديلات</label><input id="pr" inputmode="numeric" min="0" max="50" value="1"></div><div class="field full"><label>رسالة للعميل</label><textarea id="pm" maxlength="1200" placeholder="وضح وش راح تسوي وليش عرضك مناسب"></textarea></div></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="sendProposal(${id})">إرسال العرض</button></div>`)}
 async function sendProposal(id){const b={price:+$('pp').value,delivery_hours:+$('ph').value||24,revisions:+$('pr').value||1,message:$('pm').value};const {r}=await api(`/api/v1/tasks/${id}/proposals`,{method:'POST',body:JSON.stringify(b)});if(!r.ok)return toast('تعذر إرسال العرض');closeModal();toast('تم إرسال عرضك');renderTasks()}
 function offerRank(items,p){
