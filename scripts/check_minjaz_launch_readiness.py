@@ -28,8 +28,13 @@ def fetch(base,path,expect=200):
 
 def run(base,commercial=False):
     url=urlparse(base)
-    if url.scheme!="https" or not url.hostname or url.username or url.password or url.query or url.fragment:
-        raise RuntimeError("HTTPS base URL without credentials or query required")
+    try:
+        valid_port=(url.port is None or 1<=url.port<=65535)
+    except ValueError:
+        valid_port=False
+    if (url.scheme!="https" or not url.hostname or url.username or url.password
+            or url.query or url.fragment or url.path not in ("","/") or not valid_port):
+        raise RuntimeError("HTTPS origin without path, credentials or query required")
     root=base.rstrip("/")
     health=fetch(root,"/health")
     if health.get("ok") is not True or health.get("database") is not True:
@@ -46,6 +51,12 @@ def run(base,commercial=False):
     # It may lack the new payout gate; a true commercial check cannot omit it.
     if commercial and "marketplace_payout_settlement" not in checks_by_key:
         raise RuntimeError("Commercial readiness contract lacks verified marketplace payouts")
+    # Privacy deletion currently retains email credentials in some cases.
+    # Do not allow an otherwise healthy payments/provider state to disguise
+    # this as a safe commercial release. A future reviewed server release must
+    # expose an explicit positive privacy-deletion readiness check.
+    if commercial and not checks_by_key.get("privacy_account_deletion",{}).get("ok",False):
+        raise RuntimeError("Commercial launch blocked: account-deletion privacy review incomplete")
     cats=fetch(root,"/api/v1/categories").get("items")
     services=fetch(root,"/api/v1/services").get("items")
     if not isinstance(cats,list) or not isinstance(services,list) or len(cats)<5 or len(services)<40:
