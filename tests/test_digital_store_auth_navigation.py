@@ -31,7 +31,7 @@ class DigitalStorefrontAuthTests(unittest.TestCase):
         self.assertNotIn("window.location.assign(destination)",AUTH)
         self.assertNotIn('window.location.assign(authQuery.get(',AUTH)
         self.assertIn("returnToStoreAfterLogin();",AUTH)
-        self.assertIn('POST"',STORE)
+        self.assertIn("method:'POST'",STORE)
 
     def test_no_public_payment_promise(self):
         self.assertIn("لا توجد معاملات دفع حقيقية",STORE)
