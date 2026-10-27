@@ -1,5 +1,6 @@
 """Guest digital-service checkout must require a session before collecting requirements."""
 import re
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ PAGE=(Path(__file__).resolve().parents[1]/"public/digital-services.html").read_t
 SCRIPT=PAGE.split("<script>",1)[1].rsplit("</script>",1)[0]
 
 class GuestServiceOrderTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node.js parser is checked in GitHub CI; unavailable in Python-only release image')
     def test_inline_javascript_parses(self):
         result=subprocess.run(["node","--check"],input=SCRIPT,text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)
