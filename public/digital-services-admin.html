@@ -18,8 +18,8 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
    <p id="accessStatus" class="access-status" role="status">نتحقق من صلاحية حسابك...</p>
    <div id="adminLoginFields" hidden>
     <form id="adminEmailForm"><label for="adminLoginEmail">بريد المدير الإلكتروني</label><input id="adminLoginEmail" type="email" inputmode="email" autocomplete="email" maxlength="254" required placeholder="admin@example.com"><label for="adminLoginPassword">كلمة المرور</label><input id="adminLoginPassword" type="password" autocomplete="current-password" minlength="10" required placeholder="كلمة المرور"><button id="adminLoginBtn" type="submit">دخول لوحة الإدارة</button></form>
-    <p class="muted">ما عندك حساب مدير؟ <a href="/">سجّل في منجاز</a> بالبريد المخصص للإدارة، ثم فعّل الحساب من رابط البريد.</p><p class="muted"><a href="/">نسيت كلمة المرور؟ استعدها من صفحة تسجيل الدخول</a></p>
-    <p id="devOtpHint" class="hint muted" hidden></p>
+    <p class="muted">ما عندك حساب مدير؟ <a href="/?auth=login">سجّل في منجاز</a> بالبريد المخصص للإدارة، ثم فعّل الحساب من رابط البريد.</p><p class="muted"><a href="/?auth=login">نسيت كلمة المرور؟ استعدها من صفحة تسجيل الدخول</a></p>
+    <p id="adminSetupChecklist" class="hint muted" role="status" aria-live="polite">للدخول يلزم بريد إدارة معتمد وحساب مُفعّل مسبقًا.</p>
    </div>
    <div class="row"><button id="recheckAdmin" class="secondary" type="button">التحقق من الجلسة</button><a href="/">العودة إلى موقع منجاز</a></div>
    <p class="muted hint">تتطلب الإدارة بريدًا معتمدًا عبر ADMIN_EMAIL وخدمة إرسال بريد حقيقية. لا يمكن لرمز تجريبي فتح حساب المدير.</p>
@@ -100,12 +100,43 @@ async function loadPackages(){const box=$('packages');box.replaceChildren();pack
 $('packageForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const payload={slug:form.elements.namedItem('slug').value.trim(),category:form.elements.namedItem('category').value,title_ar:form.elements.namedItem('title_ar').value.trim(),description_ar:form.elements.namedItem('description_ar').value.trim(),price_sar:form.elements.namedItem('price_sar').value,delivery_days:Number(form.elements.namedItem('delivery_days').value),revision_limit:Number(form.elements.namedItem('revision_limit').value),active:form.elements.namedItem('active').checked};const btn=$('savePackage');btn.disabled=true;try{const endpoint=editingPackageId?'/api/digital-services/admin/packages/'+editingPackageId:'/api/digital-services/admin/packages';await api(endpoint,{method:editingPackageId?'PATCH':'POST',body:JSON.stringify(payload)});resetPackage();await loadPackages();packageMessage('تم حفظ الباقة بنجاح')}catch(e){packageMessage(e.message,true)}finally{btn.disabled=false}});
 $('resetPackage').addEventListener('click',resetPackage);$('packagesRefresh').addEventListener('click',loadPackages);
 const loginForm=$('adminEmailForm');
-let pendingChallenge=null, adminAuthenticated=false;
+let adminAuthenticated=false, adminLoginAllowed=false;
+function adminLoginState(allowed,message){
+ adminLoginAllowed=allowed;
+ $('adminLoginBtn').disabled=!allowed;
+ $('adminSetupChecklist').textContent=message;
+}
 function showAccess(text,isError=false){
  $('adminAccess').hidden=false;$('adminDashboard').hidden=true;
  $('adminLoginFields').hidden=false;
  $('accessStatus').textContent=text;$('accessStatus').className='access-status '+(isError?'error':'');
  adminAuthenticated=false;
+}
+async function readAdminLoginCapability(){
+ try{
+   const response=await fetch('/api/v1/auth/account-status',{
+     credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}
+   });
+   if(!response.ok)throw Error('HTTP '+response.status);
+   const status=await response.json();
+   if(status.enabled!==true){
+     adminLoginState(false,'التسجيل بالبريد معطّل هنا. يجب تفعيل سياسة البريد بعد مراجعة الحسابات القديمة.');
+     showAccess('دخول الإدارة بالبريد غير مفعّل في إعدادات هذه النسخة.',true);
+   }else if(status.admin_configured!==true){
+     adminLoginState(false,'لم يُحدّد بريد الإدارة ADMIN_EMAIL في إعدادات Railway. يلزم تعيين بريد المالك المعتمد أولًا.');
+     showAccess('لوحة الإدارة تحتاج بريد مدير معتمد قبل محاولة تسجيل الدخول.',true);
+   }else if(status.configured!==true){
+     adminLoginState(true,'إرسال روابط البريد غير مجهز. يستطيع المدير الدخول إن كان حسابه مفعّلًا مسبقًا؛ تفعيل حساب جديد واستعادة كلمة المرور يحتاجان إعداد مزود الإرسال.');
+     showAccess('يمكنك الدخول بحساب المدير المفعّل مسبقًا. إرسال بريد التفعيل متوقف.',true);
+   }else{
+     adminLoginState(true,'بريد المدير معتمد. سجّل الدخول بكلمة المرور بعد تفعيل الحساب من رسالة البريد.');
+     showAccess('أدخل بريد الإدارة المعتمد وكلمة المرور.');
+   }
+ }catch(error){
+   // Network errors are not evidence that the administrator setup is valid.
+   adminLoginState(false,'تعذّر فحص إعدادات الإدارة. تأكد من الاتصال ثم اضغط «التحقق من الجلسة» لإعادة المحاولة.');
+   showAccess('فشل التحقق من جاهزية تسجيل دخول الإدارة.',true);
+ }
 }
 async function checkAdminAccess(){
  try{
@@ -117,12 +148,11 @@ async function checkAdminAccess(){
        await Promise.all([load(),loadPackages()]);
        return;
      }
-     showAccess('حسابك الحالي ليس حساب مدير. سجل الدخول ببريد المدير المعتمد في إعدادات Railway (ADMIN_EMAIL).',true);
+     showAccess('حسابك الحالي ليس حساب مدير. استخدم بريد الإدارة المعتمد (ADMIN_EMAIL).',true);
+     await readAdminLoginCapability();
    }else if(res.status===401){
      showAccess('سجّل الدخول ببريد المدير الإلكتروني لفتح لوحة الإدارة.');
-     try{const ready=await fetch('/api/v1/auth/account-status',{credentials:'same-origin'});
-       if(ready.ok){const status=await ready.json();if(!status.configured){$('accessStatus').textContent='يلزم ربط بريد الإرسال في Railway حتى يمكن تفعيل الحسابات واستعادة كلمة المرور.';}else if(!status.admin_configured){$('accessStatus').textContent='يلزم تحديد بريد الإدارة (ADMIN_EMAIL) في Railway قبل إنشاء حساب المدير.';}}
-     }catch(error){/* Keep login form visible. */}
+     await readAdminLoginCapability();
    }else{
      showAccess('تعذّر التحقق من حسابك (HTTP '+res.status+'). حاول تحديث الصفحة.',true);
    }
@@ -136,6 +166,7 @@ async function authJson(path,payload){
 }
 loginForm.addEventListener('submit',async event=>{
  event.preventDefault();
+ if(!adminLoginAllowed)return showAccess('دخول الإدارة غير مفعّل. راجع متطلبات بريد المدير أعلاه.',true);
  const btn=$('adminLoginBtn');btn.disabled=true;
  $('accessStatus').textContent='جارٍ التحقق من بيانات الدخول...';
  try{
@@ -147,7 +178,7 @@ loginForm.addEventListener('submit',async event=>{
    if(data.user?.role==='admin'){await checkAdminAccess()}
    else showAccess('البريد صحيح ولكن الحساب ليس مديرًا. يلزم اعتماد هذا البريد ضمن ADMIN_EMAIL ثم تفعيله.',true);
  }catch(error){showAccess('تعذر الدخول: '+error.message,true)}
- finally{btn.disabled=false}
+ finally{btn.disabled=!adminLoginAllowed}
 });
 $('recheckAdmin').addEventListener('click',checkAdminAccess);
 $('refresh').addEventListener('click',load);
