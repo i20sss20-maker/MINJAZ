@@ -2741,6 +2741,7 @@ async function newTaskModal(){
   +'<div class="field"><label for="ntUrg">الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div>'
   +'<div class="field"><label for="ntMin">ميزانية من (ريال)</label><input id="ntMin" inputmode="decimal" placeholder="49"></div>'
   +'<div class="field"><label for="ntMax">ميزانية إلى (ريال)</label><input id="ntMax" inputmode="decimal" placeholder="149"></div>'
+  +'<div class="field full"><label for="ntDue">آخر موعد للتسليم (اختياري)</label><input id="ntDue" type="datetime-local" aria-describedby="ntDueHint"><small id="ntDueHint" class="muted">حدده إذا كان الطلب مرتبطًا بموعد محدد.</small></div>'
   +'</div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button id="publishTaskBtn" class="btn primary" onclick="createTask()">نشر الطلب</button></div>');
 }
 function minjazSyncRequestCategory(){
@@ -2761,6 +2762,13 @@ async function createTask(){
  const title=String($('ntTitle')?.value||'').trim(),description=String($('ntDesc')?.value||'').trim();
  const service_id=Number($('ntSvc')?.value)||null,category_id=Number($('ntCat')?.value);
  const bmin=String($('ntMin')?.value||'').trim(),bmax=String($('ntMax')?.value||'').trim();
+ const deadline=String($('ntDue')?.value||'').trim();
+ let due_at=null;
+ if(deadline){
+  const parsed=new Date(deadline);
+  if(!Number.isFinite(parsed.getTime())||parsed.getTime()<=Date.now())return toast('حدد موعد تسليم مستقبليًا.');
+  due_at=parsed.toISOString();
+ }
  if(title.length<5||title.length>180)return toast('اكتب عنوانًا واضحًا من 5 أحرف على الأقل.');
  if(description.length<20||description.length>6000)return toast('اكتب تفاصيل الطلب بوضوح (20 حرفًا على الأقل).');
  if(!category_id)return toast('اختر قسم الطلب.');
@@ -2771,7 +2779,7 @@ async function createTask(){
  if(publish){publish.disabled=true;publish.textContent='جارٍ نشر الطلب...'}
  try{
   const payload={title,description,category_id,service_id,urgency:$('ntUrg').value,
-    budget_min:bmin||null,budget_max:bmax||null,
+    budget_min:bmin||null,budget_max:bmax||null,due_at,
     idempotency_key:minjazTaskDraftKey||minjazNewTaskIdempotencyKey()};
   const {r,j}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(payload)});
   if(!r.ok){
