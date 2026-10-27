@@ -39,9 +39,13 @@ def run(base,commercial=False):
     if not isinstance(checks,list) or not all(isinstance(c,dict) and isinstance(c.get("key"),str) and isinstance(c.get("ok"),bool) for c in checks):
         raise RuntimeError("Malformed readiness response")
     checks_by_key={c["key"]:c for c in checks}
-    for key in ("app_environment","authentication_provider","payment_provider","file_storage","kyc_provider","legal_review","marketplace_payout_settlement"):
+    for key in ("app_environment","authentication_provider","payment_provider","file_storage","kyc_provider","legal_review"):
         if key not in checks_by_key:
             raise RuntimeError(f"Missing required readiness contract: {key}")
+    # PR CI reads the *previous* deployed sandbox before this branch goes live.
+    # It may lack the new payout gate; a true commercial check cannot omit it.
+    if commercial and "marketplace_payout_settlement" not in checks_by_key:
+        raise RuntimeError("Commercial readiness contract lacks verified marketplace payouts")
     cats=fetch(root,"/api/v1/categories").get("items")
     services=fetch(root,"/api/v1/services").get("items")
     if not isinstance(cats,list) or not isinstance(services,list) or len(cats)<5 or len(services)<40:
