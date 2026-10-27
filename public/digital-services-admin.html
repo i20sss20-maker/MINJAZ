@@ -118,14 +118,14 @@ async function readAdminLoginCapability(){
      credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}
    });
    if(!response.ok)throw Error('HTTP '+response.status);
-   const capability=await response.json();
-   if(capability.enabled!==true){
+   const status=await response.json();
+   if(status.enabled!==true){
      adminLoginState(false,'التسجيل بالبريد معطّل هنا. يجب تفعيل سياسة البريد بعد مراجعة الحسابات القديمة.');
      showAccess('دخول الإدارة بالبريد غير مفعّل في إعدادات هذه النسخة.',true);
-   }else if(capability.admin_configured!==true){
+   }else if(status.admin_configured!==true){
      adminLoginState(false,'لم يُحدّد بريد الإدارة ADMIN_EMAIL في إعدادات Railway. يلزم تعيين بريد المالك المعتمد أولًا.');
      showAccess('لوحة الإدارة تحتاج بريد مدير معتمد قبل محاولة تسجيل الدخول.',true);
-   }else if(capability.configured!==true){
+   }else if(status.configured!==true){
      adminLoginState(true,'إرسال روابط البريد غير مجهز. يستطيع المدير الدخول إن كان حسابه مفعّلًا مسبقًا؛ تفعيل حساب جديد واستعادة كلمة المرور يحتاجان إعداد مزود الإرسال.');
      showAccess('يمكنك الدخول بحساب المدير المفعّل مسبقًا. إرسال بريد التفعيل متوقف.',true);
    }else{
