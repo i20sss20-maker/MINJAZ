@@ -58,9 +58,40 @@ const tpl=`
   <button type="submit" class="btn primary wide">حفظ كلمة المرور</button>
  </form>
 </section>
+<a class="minjaz-service-entry minjaz-service-entry-auth" href="/digital-services">استكشف الخدمات الجاهزة <span aria-hidden="true">↗</span></a>
+<p class="account-hint minjaz-service-description">تقدر تتصفح الباقات والأسعار قبل إنشاء الحساب. الطلبات في النسخة التجريبية لا تشمل دفعًا حقيقيًا.</p>
 <div id="accountStatus" role="status" aria-live="polite" class="account-status"></div>
 `;
 panel.innerHTML=tpl;
+// The existing MINJAZ marketplace and standalone digital-services catalog now
+// share an obvious route for guests and logged-in customers, freelancers and
+// administrators. These same-origin anchors do not change account roles,
+// authentication state, checkout, or production payment settings.
+const storeShortcutStyle=document.createElement("style");
+storeShortcutStyle.textContent=`
+.minjaz-service-entry{display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;text-decoration:none;background:#eef0ff;border:1px solid #c7cafa;color:#4539aa;border-radius:12px;font-weight:800;font-size:12px;padding:10px 14px;min-height:42px;box-sizing:border-box;transition:background .15s ease,color .15s ease}
+.minjaz-service-entry:hover{background:#dedfff;color:#302388}
+.minjaz-service-entry:focus-visible{outline:3px solid #887dff;outline-offset:3px}
+.minjaz-service-entry-auth{margin-top:18px;width:100%}
+.minjaz-service-description{margin:9px 0 2px!important;line-height:1.7!important}
+.minjaz-service-entry-app{margin-inline:auto 14px;flex-shrink:0}
+@media(max-width:720px){.minjaz-service-entry-app{font-size:10px;padding:8px 10px;min-height:40px;margin-inline:auto 8px;white-space:normal;text-align:center;max-width:118px}}
+@media(max-width:430px){.minjaz-service-entry-app{max-width:106px;padding:8px;font-size:10px;line-height:1.35}}
+@media(prefers-reduced-motion:reduce){.minjaz-service-entry{transition:none}}
+`;
+document.head.append(storeShortcutStyle);
+const appTopbar=document.querySelector("#app .topbar");
+if(appTopbar&&!document.getElementById("minjazServiceEntryApp")){
+ const link=document.createElement("a");
+ link.id="minjazServiceEntryApp";
+ link.className="minjaz-service-entry minjaz-service-entry-app";
+ link.href="/digital-services";
+ link.textContent="الخدمات الجاهزة";
+ link.setAttribute("aria-label","استكشف متجر الخدمات الجاهزة في منجاز");
+ const chip=appTopbar.querySelector(".userChip");
+ if(chip)appTopbar.insertBefore(link,chip);
+ else appTopbar.append(link);
+}
 const $=id=>document.getElementById(id);
 const sections=["accountSignup","accountLogin","accountRecover","accountNewPassword"];
 let resetToken="";
