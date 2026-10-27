@@ -31,7 +31,8 @@ class PrivacyCommercialReadinessTests(unittest.TestCase):
             self.assertEqual(base,BASE)
             if path=="/api/v1/me":self.assertEqual(expect,401)
             return response(path,privacy)
-        with patch.object(readiness,"fetch",fake_fetch):
+        with patch.object(readiness,"fetch",fake_fetch), patch.object(
+                readiness,"check_public_ui",return_value=True):
             return readiness.run(BASE,commercial=True)
 
     def test_privacy_gate_must_be_present(self):
