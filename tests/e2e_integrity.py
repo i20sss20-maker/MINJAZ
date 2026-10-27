@@ -22,6 +22,9 @@ def call(method,path,body=None,token=None,expected=(200,201)):
     return payload
 
 def login(phone,role,name):
+    if role=="admin" and os.getenv("E2E_CI_ADMIN_FIXTURE")=="1":
+        from ci_admin_fixture import issue_local_admin_session
+        return issue_local_admin_session(phone,name)
     for attempt in range(3):
         try:
             ch=call("POST","/api/v1/auth/request-otp",{"phone":phone})
