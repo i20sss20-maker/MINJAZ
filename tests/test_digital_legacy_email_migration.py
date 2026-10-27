@@ -32,12 +32,16 @@ class LegacyMigrationAuditTests(unittest.TestCase):
         self.schema=[(t,c) for t,cols in REQUIRED_COLUMNS.items() for c in cols]
 
     def test_reports_aggregate_only_and_blocks_legacy_accounts(self):
-        db=FakeConnection(self.schema,[ (5,1,2,1,2,1,1,2), (1,) ])
+        db=FakeConnection(self.schema,[ (5,1,1,1,0,2,1,2,1,1,2), (1,) ])
         report=audit_counts(lambda:db)
         self.assertTrue(db.rolled_back and db.closed)
         self.assertEqual(report["counts"]["active_accounts"],5)
         self.assertEqual(report["counts"]["blocked_by_email_only"],2)
         self.assertEqual(report["counts"]["blocked_with_active_sessions"],1)
+        self.assertEqual(report["counts"]["deleted_accounts_retaining_email"],1)
+        self.assertEqual(report["counts"]["deleted_accounts_retaining_password_hash"],1)
+        self.assertTrue(report["privacy_deletion_review_required"])
+        self.assertEqual(report["privacy_deletion_gate"],"review_required")
         self.assertIsNone(report["counts"]["blocked_with_orders"])
         self.assertTrue(report["account_migration_required"])
         self.assertEqual(report["email_policy_switch_account_gate"],"blocked")
@@ -51,9 +55,11 @@ class LegacyMigrationAuditTests(unittest.TestCase):
 
     def test_includes_order_impact_without_returning_order_ids(self):
         schema=self.schema+[("orders","client_id"),("orders","freelancer_id")]
-        db=FakeConnection(schema,[(5,0,0,0,0,0,0,0),(0,),(0,)])
+        db=FakeConnection(schema,[(5,0,0,0,0,0,0,0,0,0,0),(0,),(0,)])
         report=audit_counts(lambda:db)
         self.assertFalse(report["account_migration_required"])
+        self.assertFalse(report["privacy_deletion_review_required"])
+        self.assertEqual(report["privacy_deletion_gate"],"no_retained_email_credentials_detected")
         self.assertEqual(report["counts"]["blocked_with_orders"],0)
         self.assertEqual(report["email_policy_switch_account_gate"],
                          "no_incompatible_active_accounts_detected")

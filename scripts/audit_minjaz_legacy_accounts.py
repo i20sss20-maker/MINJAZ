@@ -43,6 +43,12 @@ def audit_counts(connect):
             cur.execute("""SELECT
                   count(*) FILTER (WHERE deleted_at IS NULL) AS active_accounts,
                   count(*) FILTER (WHERE deleted_at IS NOT NULL) AS deleted_accounts,
+                  count(*) FILTER (WHERE deleted_at IS NOT NULL AND email IS NOT NULL
+                    AND btrim(email)<>'') AS deleted_accounts_retaining_email,
+                  count(*) FILTER (WHERE deleted_at IS NOT NULL
+                    AND password_hash IS NOT NULL) AS deleted_accounts_retaining_password_hash,
+                  count(*) FILTER (WHERE deleted_at IS NOT NULL
+                    AND email_verified_at IS NOT NULL) AS deleted_accounts_retaining_verified_marker,
                   count(*) FILTER (WHERE deleted_at IS NULL
                     AND (email IS NULL OR btrim(email)='')) AS active_phone_only,
                   count(*) FILTER (WHERE deleted_at IS NULL
@@ -56,7 +62,9 @@ def audit_counts(connect):
                   count(*) FILTER (WHERE deleted_at IS NULL AND role='admin') AS active_admins,
                   count(*) FILTER (WHERE """+BLOCKED.replace("u.","")+""") AS blocked_by_email_only
                 FROM users""")
-            keys=("active_accounts","deleted_accounts","active_phone_only",
+            keys=("active_accounts","deleted_accounts","deleted_accounts_retaining_email",
+                  "deleted_accounts_retaining_password_hash",
+                  "deleted_accounts_retaining_verified_marker","active_phone_only",
                   "active_email_unverified","active_no_password",
                   "active_incomplete_profile","active_admins","blocked_by_email_only")
             totals={name:int(value) for name,value in zip(keys,cur.fetchone())}
@@ -83,11 +91,25 @@ def audit_counts(connect):
             "writes_performed":False,
             "counts":totals,
             "account_migration_required":bool(totals["blocked_by_email_only"]),
+            "privacy_deletion_review_required":bool(
+                totals["deleted_accounts_retaining_email"]
+                or totals["deleted_accounts_retaining_password_hash"]
+                or totals["deleted_accounts_retaining_verified_marker"]
+            ),
+            "privacy_deletion_gate":(
+                "review_required" if (
+                    totals["deleted_accounts_retaining_email"]
+                    or totals["deleted_accounts_retaining_password_hash"]
+                    or totals["deleted_accounts_retaining_verified_marker"]
+                ) else "no_retained_email_credentials_detected"
+            ),
             "email_policy_switch_account_gate":(
                 "blocked" if totals["blocked_by_email_only"] else "no_incompatible_active_accounts_detected"
             ),
-            "caveat":"Only aggregate account-schema audit; email delivery, admin allowlist, KYC, "
-                     "storage, legal and payout readiness require separate verified checks.",
+            "caveat":"Read-only aggregate audit; detected legacy deletion residue must be handled "
+                     "through approved data-retention remediation, not automatic deletion. "
+                     "Email delivery, admin allowlist, KYC, storage, legal and payout "
+                     "readiness require separate verified checks.",
         }
     except Exception:
         db.rollback()
