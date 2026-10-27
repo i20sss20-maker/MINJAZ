@@ -41,6 +41,9 @@ def wait_for_health(timeout_seconds=180):
     raise AssertionError("health_timeout")
 
 def login(phone,role,name):
+    if role=="admin" and os.getenv("E2E_CI_ADMIN_FIXTURE")=="1":
+        from ci_admin_fixture import issue_local_admin_session
+        return issue_local_admin_session(phone,name)
     if not phone: raise AssertionError("missing_phone")
     for attempt in range(3):
         try:
