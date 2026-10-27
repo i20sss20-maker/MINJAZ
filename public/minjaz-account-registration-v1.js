@@ -64,6 +64,22 @@ panel.innerHTML=tpl;
 const $=id=>document.getElementById(id);
 const sections=["accountSignup","accountLogin","accountRecover","accountNewPassword"];
 let resetToken="";
+const authQuery=new URLSearchParams(window.location.search);
+// Only an exact internal destination is supported. Never honor arbitrary redirect URLs.
+const STORE_RETURN_KEY="minjaz_store_auth_return";
+if(authQuery.get("next")==="digital-services"){
+ try{sessionStorage.setItem(STORE_RETURN_KEY,"digital-services")}catch(_){}
+}
+function returnToStoreAfterLogin(){
+ let destination="";
+ try{destination=sessionStorage.getItem(STORE_RETURN_KEY)||""}catch(_){}
+ if(destination!=="digital-services")return;
+ // A successful authentication alone is not enough: boot() must confirm /me.
+ if(typeof me==="undefined" || !me || !me.user)return;
+ try{sessionStorage.removeItem(STORE_RETURN_KEY)}catch(_){}
+ window.location.assign("/digital-services");
+}
+
 function status(message,isError=false){const el=$("accountStatus");el.textContent=message;el.classList.toggle("error",isError);el.classList.toggle("success",!isError)}
 function show(id){for(const section of sections)$(section).hidden=section!==id;$("accountTabSignup").classList.toggle("on",id==="accountSignup");$("accountTabLogin").classList.toggle("on",id==="accountLogin");$("accountTabSignup").setAttribute("aria-selected",String(id==="accountSignup"));$("accountTabLogin").setAttribute("aria-selected",String(id==="accountLogin"));status("")}
 async function request(path,body){
@@ -132,6 +148,7 @@ $("existingAccountForm").addEventListener("submit",e=>submitForm(e,async()=>{
  $("accountPassword").value="";status("تم تسجيل الدخول.");
  if(typeof token!=="undefined"){token="";localStorage.removeItem("minjaz_token")}
  if(typeof boot==="function")await boot();
+ returnToStoreAfterLogin();
 }));
 $("accountRecoverForm").addEventListener("submit",e=>submitForm(e,async()=>{
  const email=$("recoverEmail").value.trim().toLowerCase();
@@ -161,6 +178,7 @@ async function consumeActionLink(){
  try{await request("/api/v1/auth/confirm-email",{token:match[2]});status("تم تفعيل بريدك بنجاح. سجّل دخولك الآن بكلمة المرور.")}
  catch(err){status(err.message,true)}
 }
+if(authQuery.get("auth")==="login"&&!window.location.hash)show("accountLogin");
 consumeActionLink();
 fetch("/api/v1/auth/account-status",{credentials:"same-origin"}).then(r=>r.ok?r.json():null).then(x=>{
  if(x&&!x.configured&&!window.location.hash&&$("accountStatus").textContent===""){
