@@ -2009,7 +2009,7 @@ def session_token_from_headers(headers):
         raw=h[7:].strip()
         if raw:return raw,'bearer'
     cookie=str(headers.get('Cookie') or '')
-    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    m=re.search(r'(?:^|;\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
     return (m.group(1),'cookie') if m else ('','')
 
 def auth(headers):
