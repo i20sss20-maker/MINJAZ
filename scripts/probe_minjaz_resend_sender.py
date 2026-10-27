@@ -107,7 +107,9 @@ def send_test(env, transport=None):
     req=urllib.request.Request(
         TEST_ENDPOINT, data=data, method="POST",
         headers={"Authorization":"Bearer "+env["RESEND_API_KEY"],
-                 "Content-Type":"application/json"},
+                 "Content-Type": "application/json",
+                   "Accept": "application/json",
+                   "User-Agent": "Mozilla/5.0 (compatible; MINJAZ-Mailer/1.0)"},
     )
     connect=transport or urllib.request.urlopen
     try:
