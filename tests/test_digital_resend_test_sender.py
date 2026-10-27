@@ -75,7 +75,47 @@ class ResendSetupProbeTests(unittest.TestCase):
     def test_provider_rejection_has_no_response_body(self):
         def bad(req,timeout):
             raise urllib.error.HTTPError(req.full_url,403,"test",{},None)
-        self.assertEqual(send_test(CONFIG,bad),{"result":"provider_rejected","status":403})
+        self.assertEqual(send_test(CONFIG,bad),{"result":"provider_rejected","status":403,
+                                                "reason_code":"unclassified"})
+
+    def test_classifies_restricted_testing_domain_without_exposing_email(self):
+        private_message=("You can only send testing emails to your own email address "
+                         "(private@example.com). To send emails to other recipients, "
+                         "please verify a domain at resend.com/domains.")
+        payload=json.dumps({"name":"validation_error","message":private_message}).encode()
+        def rejected(req,timeout):
+            return_error=urllib.error.HTTPError(req.full_url,403,"Forbidden",{},
+                                               io.BytesIO(payload))
+            raise return_error
+        result=send_test(CONFIG,rejected)
+        self.assertEqual(result,{"result":"provider_rejected","status":403,
+                                 "reason_code":"test_sender_recipient_mismatch"})
+        self.assertNotIn("private@example.com",json.dumps(result))
+        self.assertNotIn(CONFIG["RESEND_API_KEY"],json.dumps(result))
+
+    def test_classifies_other_restrictions_without_raw_provider_text(self):
+        samples=(
+          ("The domain example.invalid is not verified. Please verify a domain.",
+           "sender_domain_not_verified_or_restricted"),
+          ("API key is restricted to a different domain and not authorized.",
+           "sender_domain_not_verified_or_restricted"),
+          ("API key permission is restricted.",
+           "api_key_restricted_or_invalid"),
+          ("Account is restricted from sending email.",
+           "provider_account_restricted"),
+          ("Unknown error with unexpected@example.com",
+           "unclassified"),
+        )
+        for message,reason in samples:
+            with self.subTest(reason=reason):
+                def rejected(req,timeout):
+                    raise urllib.error.HTTPError(req.full_url,403,"Forbidden",{},
+                        io.BytesIO(json.dumps({"message":message}).encode()))
+                response=send_test(CONFIG,rejected)
+                self.assertEqual(response["reason_code"],reason)
+                self.assertNotIn(message,response.__repr__())
+                self.assertNotIn("example.com",json.dumps(response))
+
 
     def test_dry_run_does_not_contact_external_provider(self):
         with patch("os.environ",CONFIG):
