@@ -34,6 +34,14 @@ python scripts/probe_minjaz_resend_sender.py --send --confirm-sandbox-send
 
 هذه الرسالة لا تحتوي رابط تفعيل حقيقي، ولا تنشئ مستخدمًا. نتيجتها `accepted_by_provider` تعني قبول Resend لطلب الإرسال **وليس إثبات وصوله إلى Inbox**. افتح بريدك وتحقق أيضًا من الرسائل غير المرغوب فيها. إذا رفضت Resend الطلب برمز `403` فتأكد أن عنوان المستلم هو نفس عنوان حساب Resend.
 
+## إذا رفض مزوّد البريد الطلب بخطأ 403
+
+- راجع `reason_code` في سجل فحص sandbox: قد يكون `test_sender_recipient_mismatch` إذا كان البريد المُدخل للاختبار ليس بريد مالك حساب Resend؛ أو `api_key_restricted_or_invalid` إذا كان المفتاح غير صالح أو لا يسمح بالإرسال؛ أو `sender_domain_not_verified_or_restricted` إذا كان النطاق مقيّدًا.
+- **مهم:** صلاحية `Sending access` مع خيار `All domains` لا تثبت وحدها أن المفتاح الموجود داخل Railway يطابق مفتاح الحساب الحالي. قد يكون مفتاحًا قديمًا أو آخر.
+- تحقق من ظهور نشاط المفتاح في لوحة Resend، ومن إعداد `RESEND_TEST_RECIPIENT` داخل **Railway sandbox فقط**. لا تنسخ المفتاح في GitHub أو في سجلات نشر المشروع أو في المحادثة.
+- `provider_rejected` يعني أن API رفض الطلب؛ **نجاح بناء Railway أو نجاح /health لا يعني إرسال رسالة أو وصولها**.
+- اختبر مرة واحدة فقط بعد حفظ مفتاح صحيح واستعادة الأمر الطبيعي `python migrate.py && exec python -u server.py` فورًا، منعًا لإرسال رسائل متكررة عند إعادة تشغيل الخدمة.
+
 ## تجربة تسجيل حساب منجاز من البداية للنهاية
 
 1. بعد إثبات وصول رسالة الاختبار، افتح `/api/v1/auth/account-status` على موقع sandbox، وتأكد من `enabled=true` و`configured=true`.
