@@ -31,7 +31,10 @@ def fetch(base,path,expect=200):
 PUBLIC_UI_CONTRACT={
     "/": ("id=\"auth\"", "id=\"app\"", "/minjaz-account-registration-v1.js"),
     "/digital-services": ("id=\"catalog\"", "id=\"orderForm\"",
-                          "href=\"/?auth=login&amp;next=digital-services\""),
+                          "href=\"/signup?auth=login&amp;next=digital-services\""),
+    "/signup": ("id=\"signup\"", "id=\"login\"", "id=\"recover\""),
+    "/workspace": ("id=\"workspace\"", "id=\"clientAction\"", "id=\"freelancerAction\""),
+    "/workspace-v1.js": ("/api/v1/me", "/api/v1/tasks", "/api/v1/legal/accept"),
     "/minjaz-account-registration-v1.js": ("minjaz-service-entry-app",
                                            "/api/v1/auth/login-email",
                                            "returnToStoreAfterLogin"),
