@@ -122,7 +122,7 @@ def run():
     blocked_processing=raw_call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"processing"},at)
     assert blocked_processing[0]==409 and blocked_processing[1].get("error")=="kyc_required",blocked_processing
     blocked_paid=raw_call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
-    assert blocked_paid[0]==409 and blocked_paid[1].get("error")=="kyc_required",blocked_paid
+    assert blocked_paid[0]==409 and blocked_paid[1].get("error")=="verified_payout_provider_required",blocked_paid
     assert find_payout(at,pid1)["status"]=="pending"
 
     call("PATCH",f"/api/admin/freelancers/{fid}/kyc",{"status":"approved"},at)
@@ -133,12 +133,15 @@ def run():
     assert processing_replay.get("idempotent_replay") is True,processing_replay
     after_processing_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
     assert len(after_processing_notes)==len(before_processing_notes)+1,(before_processing_notes,after_processing_notes)
-    paid=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
-    assert paid["item"]["status"]=="paid",paid
-    paid_replay=call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
-    assert paid_replay.get("idempotent_replay") is True,paid_replay
-    after_paid_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
-    assert len(after_paid_notes)==len(after_processing_notes)+1,(after_processing_notes,after_paid_notes)
+    # Do not record "paid" without a verified PSP payout. This is a safety gate,
+    # not a missing success path for development tests.
+    blocked_unverified=raw_call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
+    assert blocked_unverified[0]==409 and blocked_unverified[1].get("error")=="verified_payout_provider_required",blocked_unverified
+    blocked_retry=raw_call("PATCH",f"/api/admin/payouts/{pid1}",{"status":"paid"},at)
+    assert blocked_retry[0]==409 and blocked_retry[1].get("error")=="verified_payout_provider_required",blocked_retry
+    after_blocked_notes=call("GET","/api/v1/notifications?kind=payout&limit=100",token=ft,expected=(200,)).get("items") or []
+    assert len(after_blocked_notes)==len(after_processing_notes),(after_processing_notes,after_blocked_notes)
+    assert find_payout(at,pid1)["status"]=="processing"
 
     # Second payout: race KYC rejection vs final payout decision.
     payout2=call("POST","/api/v1/freelancer/payouts",{"amount":"25.00","note":"KYC race test"},ft)["item"]
@@ -160,17 +163,14 @@ def run():
         payout_result=fp.result()
 
     assert kyc_result[0]==200,kyc_result
-    assert payout_result[0] in (200,409),payout_result
-    if payout_result[0]==409:
-        assert payout_result[1].get("error")=="kyc_required",payout_result
+    assert payout_result[0]==409 and payout_result[1].get("error")=="verified_payout_provider_required",payout_result
 
     me=call("GET","/api/v1/me",token=ft,expected=(200,))
     assert me.get("freelancer_profile",{}).get("kyc_status")=="rejected",me
     final2=find_payout(at,pid2)
-    assert final2["status"] in ("pending","paid"),final2
-    if final2["status"]=="pending":
-        again=raw_call("PATCH",f"/api/admin/payouts/{pid2}",{"status":"paid"},at)
-        assert again[0]==409 and again[1].get("error")=="kyc_required",again
+    assert final2["status"]=="pending",final2
+    again=raw_call("PATCH",f"/api/admin/payouts/{pid2}",{"status":"paid"},at)
+    assert again[0]==409 and again[1].get("error")=="verified_payout_provider_required",again
 
     final_earnings=call("GET","/api/v1/freelancer/earnings",token=ft,expected=(200,))
     assert float(final_earnings.get("available_balance") or 0)>=0,final_earnings
@@ -182,7 +182,8 @@ def run():
         "payout_requires_current_kyc":True,
         "payout_status_retry_idempotent":True,
         "single_payout_status_notification":True,
-        "kyc_reapproval_allows_payout":True,
+        "kyc_reapproval_allows_processing":True,
+        "unverified_payout_settlement_blocked":True,
         "kyc_payout_race_deadlock_free":True,
         "non_negative_balance":True,
         "race_payout_status":final2["status"],
