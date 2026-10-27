@@ -26,6 +26,36 @@ def fetch(base,path,expect=200):
         raise RuntimeError(f"{path}: HTTP {status} (expected {expect})")
     return data
 
+# HTML and account JavaScript checks are GET-only. They catch broken links and
+# missing frontend deploy assets even when JSON API health looks green.
+PUBLIC_UI_CONTRACT={
+    "/": ("id=\"auth\"", "id=\"app\"", "/minjaz-account-registration-v1.js"),
+    "/digital-services": ("id=\"catalog\"", "id=\"orderForm\"",
+                          "href=\"/?auth=login&amp;next=digital-services\""),
+    "/minjaz-account-registration-v1.js": ("minjaz-service-entry-app",
+                                           "/api/v1/auth/login-email",
+                                           "returnToStoreAfterLogin"),
+}
+
+def check_public_ui(root):
+    for path,markers in PUBLIC_UI_CONTRACT.items():
+        req=urllib.request.Request(root+path,headers={
+            "Accept":"text/html,application/javascript",
+            "User-Agent":"MINJAZ-read-only-launch-gate/1"})
+        try:
+            with urllib.request.urlopen(req,timeout=15) as response:
+                status=response.status
+                content_type=response.headers.get("Content-Type","").lower()
+                body=response.read(1_000_000).decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"{path}: HTTP {exc.code} (expected 200)") from None
+        expected_type="javascript" if path.endswith(".js") else "html"
+        if status!=200 or expected_type not in content_type:
+            raise RuntimeError(f"{path}: missing or incorrect public page/asset response")
+        if any(marker not in body for marker in markers):
+            raise RuntimeError(f"{path}: public interface contract missing")
+    return True
+
 def run(base,commercial=False):
     url=urlparse(base)
     try:
@@ -68,8 +98,9 @@ def run(base,commercial=False):
     if auth.get("registration")!="email_link" or auth.get("fields")!=["name","email","phone","password"]:
         raise RuntimeError("Verified email account contract missing")
     fetch(root,"/api/v1/me",expect=401)
+    check_public_ui(root)
     failed=[c["key"] for c in checks if c.get("required") and not c["ok"]]
-    print(f"MINJAZ {root} | health=OK catalog={len(services)} categories={len(cats)}")
+    print(f"MINJAZ {root} | health=OK catalog={len(services)} categories={len(cats)} public_ui=OK")
     print(f"Email signup enabled={auth.get('enabled')!s} configured={auth.get('configured')!s}")
     print(f"Required commercial blockers ({len(failed)}): {', '.join(failed) if failed else 'none'}")
     if commercial:
