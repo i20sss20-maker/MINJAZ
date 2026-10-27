@@ -72,11 +72,20 @@ def production_blockers():
     from minjaz_email_auth import email_delivery_config
     sms_ready=SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16
     email_ready=email_delivery_config()['enabled']
+    if not EMAIL_AUTH_REQUIRED:
+        blockers.append('VERIFIED_EMAIL_POLICY')
+    if not os.getenv('ADMIN_EMAIL','').strip():
+        blockers.append('ADMIN_EMAIL')
     if EMAIL_AUTH_REQUIRED and not email_ready:
         blockers.append('EMAIL_PROVIDER')
     elif not sms_ready and not email_ready:
         blockers.append('AUTH_PROVIDER')
     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL) or len(PAYMENT_ADAPTER_BEARER)<16 or len(PAYMENT_WEBHOOK_SECRET)<32: blockers.append('PAYMENT_ADAPTER')
+    # A generic payment gateway is not a marketplace payout adapter. This code
+    # currently supports only manually updating payout-request statuses; no
+    # verified transfer receipt or split-settlement webhook has been implemented.
+    # Never approve a live financial launch using a manual "paid" status.
+    blockers.append('MARKETPLACE_PAYOUT_SETTLEMENT_NOT_IMPLEMENTED')
     if STORAGE_MODE!='railway_bucket' or not BUCKET_READY: blockers.append('STORAGE_MODE')
     if KYC_MODE!='adapter' or not _https_url(KYC_START_URL) or len(KYC_ADAPTER_BEARER)<16 or len(KYC_WEBHOOK_SECRET)<32: blockers.append('KYC_ADAPTER')
     if DB_PERSISTENCE!='persistent': blockers.append('DB_PERSISTENCE')
@@ -2375,9 +2384,12 @@ class H(BaseHTTPRequestHandler):
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
                     {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
-                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':False},
+                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':True},
+                    {'key':'verified_email_policy','ok':EMAIL_AUTH_REQUIRED,'value':'enforced' if EMAIL_AUTH_REQUIRED else 'not_enforced','required':True},
+                    {'key':'admin_email_configured','ok':bool(os.getenv('ADMIN_EMAIL','').strip()),'value':'configured' if os.getenv('ADMIN_EMAIL','').strip() else 'missing','required':True},
                     {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
+                    {'key':'marketplace_payout_settlement','ok':False,'value':'no_verified_payout_adapter','required':True},
                     {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
                     {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
@@ -3867,6 +3879,11 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
                     if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
+                    # Only sandbox simulations may mark a payout as paid without
+                    # a confirmed provider transfer event. Production must use
+                    # a licensed marketplace-capable provider, not a manual flag.
+                    if st=='paid' and APP_ENV!='preview':
+                        return self.sendj(409,{'error':'verified_payout_provider_required'})
                     r,pr,changed,err=update_payout_status(pid,st,b.get('admin_note'))
                     if err=='payout_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
