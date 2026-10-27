@@ -29,6 +29,8 @@ RELEASE_COMMIT_SHORT=RELEASE_COMMIT[:12] if RELEASE_COMMIT else ''
 DEPLOYMENT_SERVICE=os.getenv('RAILWAY_SERVICE_NAME','').strip()
 DEPLOYMENT_ENVIRONMENT=os.getenv('RAILWAY_ENVIRONMENT_NAME','').strip()
 APP_ENV=os.getenv('APP_ENV','beta').strip().lower()
+# Disabled by default outside preview; enable only after verifying live email delivery.
+EMAIL_AUTH_REQUIRED=(APP_ENV=='preview' or os.getenv('EMAIL_AUTH_REQUIRED','0').strip()=='1')
 SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
@@ -69,7 +71,10 @@ def production_blockers():
     if SECRET=='dev-secret-change-me' or len(SECRET)<32: blockers.append('AUTH_SECRET')
     from minjaz_email_auth import email_delivery_config
     sms_ready=SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16
-    if not sms_ready and not email_delivery_config()['enabled']:
+    email_ready=email_delivery_config()['enabled']
+    if EMAIL_AUTH_REQUIRED and not email_ready:
+        blockers.append('EMAIL_PROVIDER')
+    elif not sms_ready and not email_ready:
         blockers.append('AUTH_PROVIDER')
     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL) or len(PAYMENT_ADAPTER_BEARER)<16 or len(PAYMENT_WEBHOOK_SECRET)<32: blockers.append('PAYMENT_ADAPTER')
     if STORAGE_MODE!='railway_bucket' or not BUCKET_READY: blockers.append('STORAGE_MODE')
@@ -2021,7 +2026,7 @@ def auth(headers):
              from sessions s join users u on u.id=s.user_id
              where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() and u.deleted_at is null limit 1""",
           (sha(raw+SECRET),), 'one')
-    if row and APP_ENV=='preview':
+    if row and EMAIL_AUTH_REQUIRED:
         from minjaz_email_auth import normalize_email
         if (not row.get('email_verified_at') or not row.get('phone')
             or not row.get('password_hash') or len(str(row.get('name') or '').strip())<2):
@@ -2371,7 +2376,7 @@ class H(BaseHTTPRequestHandler):
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
                     {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
                     {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':False},
-                    {'key':'authentication_provider','ok':((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled']),'value':'email_or_sms','required':True},
+                    {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
                     {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
@@ -2506,6 +2511,7 @@ class H(BaseHTTPRequestHandler):
             if method=='GET' and p=='/api/v1/auth/account-status':
                 from minjaz_account_auth import secure_config
                 return self.sendj(200,{'registration':'email_link','configured':secure_config(),
+                                      'enabled':EMAIL_AUTH_REQUIRED,
                                       'admin_configured':bool(os.getenv('ADMIN_EMAIL','').strip()),
                                       'fields':['name','email','phone','password']})
             if method=='POST' and p in (
@@ -2518,8 +2524,8 @@ class H(BaseHTTPRequestHandler):
                 origin=(self.headers.get('Origin') or '').rstrip('/')
                 if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
                     return self.sendj(403,{'error':'origin_not_allowed'})
-                if APP_ENV!='preview':
-                    return self.sendj(403,{'error':'sandbox_only'})
+                if not EMAIL_AUTH_REQUIRED:
+                    return self.sendj(403,{'error':'email_registration_disabled'})
                 body=self.body();ready=secure_config()
                 if p=='/api/v1/auth/register':
                     if not rate_limit_event('registration_ip',self.client_key(),6,3600):
@@ -2557,7 +2563,7 @@ class H(BaseHTTPRequestHandler):
                 return self.sendj(200,{'method':'email','configured':cfg['enabled'],
                      'mode':cfg['mode'],'admin_email_configured':bool(os.getenv('ADMIN_EMAIL','').strip())})
             if method=='POST' and p=='/api/v1/auth/request-email-otp':
-                if APP_ENV=='preview':
+                if EMAIL_AUTH_REQUIRED:
                     return self.sendj(410,{'error':'email_registration_required'})
                 from minjaz_email_auth import request_email_otp,send_email_code,email_delivery_config
                 origin=(self.headers.get('Origin') or '').rstrip('/')
@@ -2569,7 +2575,7 @@ class H(BaseHTTPRequestHandler):
                     config_ready=cfg['enabled'])
                 return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/verify-email-otp':
-                if APP_ENV=='preview':
+                if EMAIL_AUTH_REQUIRED:
                     return self.sendj(410,{'error':'email_registration_required'})
                 from minjaz_email_auth import verify_email_otp,email_delivery_config
                 origin=(self.headers.get('Origin') or '').rstrip('/')
@@ -2586,7 +2592,7 @@ class H(BaseHTTPRequestHandler):
                         'تسجيل دخول بالبريد الإلكتروني',payload.pop('session_id'),{'method':'email'})
                 return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/request-otp':
-                if APP_ENV=='preview':
+                if EMAIL_AUTH_REQUIRED:
                     return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); phone=normalize_phone(b.get('phone',''))
                 if not phone:return self.sendj(400,{'error':'invalid_phone'})
@@ -2608,7 +2614,7 @@ class H(BaseHTTPRequestHandler):
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
-                if APP_ENV=='preview':
+                if EMAIL_AUTH_REQUIRED:
                     return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
                 ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
