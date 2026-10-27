@@ -136,5 +136,58 @@ class AccountRegistrationTests(unittest.TestCase):
         self.assertIn("blockers.append('EMAIL_PROVIDER')",server)
         self.assertIn("'enabled':EMAIL_AUTH_REQUIRED",server)
 
+    def test_shared_resend_sender_never_enables_production_signup(self):
+        from minjaz_account_auth import delivery_recipient_allowed
+        config={"APP_ENV":"preview","AUTH_SECRET":self.SECRET,
+                "PUBLIC_BASE_URL":"https://minjaz.example.com",
+                "EMAIL_MODE":"resend","EMAIL_FROM":"onboarding@resend.dev",
+                "RESEND_API_KEY":"re_"+"x"*22,
+                "RESEND_TEST_RECIPIENT":"owner@example.com"}
+        self.assertTrue(secure_config(config))
+        self.assertTrue(delivery_recipient_allowed("OWNER@EXAMPLE.COM",config))
+        self.assertFalse(delivery_recipient_allowed("stranger@example.com",config))
+        self.assertFalse(secure_config({**config,"APP_ENV":"production"}))
+        self.assertFalse(secure_config({**config,"RESEND_TEST_RECIPIENT":""}))
+        self.assertFalse(delivery_recipient_allowed("owner@example.com",
+                         {**config,"APP_ENV":"production"}))
+        # A separately verified production sender (not Resend's shared test)
+        # can be configured without restricting recipients to one mailbox.
+        owned={**config,"APP_ENV":"production",
+               "EMAIL_FROM":"noreply@minjaz.example.com",
+               "RESEND_TEST_RECIPIENT":""}
+        self.assertTrue(secure_config(owned))
+        self.assertTrue(delivery_recipient_allowed("customer@example.com",owned))
+
+    def test_shared_sender_rejects_unapproved_signup_without_creating_user(self):
+        env={"APP_ENV":"preview","EMAIL_MODE":"resend",
+             "EMAIL_FROM":"onboarding@resend.dev",
+             "RESEND_TEST_RECIPIENT":"owner@example.com"}
+        valid={"name":"Test Client","email":"other@example.com",
+               "phone":"0512345678","password":"StrongPassword123",
+               "role":"client"}
+        with patch.dict(os.environ,env,clear=True):
+            code,response=register(valid,UnexpectedDatabase(),self.SECRET,
+                                   ready=True)
+            self.assertEqual(code,403)
+            self.assertEqual(response["error"],"test_recipient_only")
+            code,response=resend_verification({"email":valid["email"]},
+                                               UnexpectedDatabase(),self.SECRET,ready=True)
+            self.assertEqual((code,response["message"]),
+                             (200,"if_account_needs_verification_email_sent"))
+            code,response=request_password_reset({"email":valid["email"]},
+                                                 UnexpectedDatabase(),self.SECRET,ready=True)
+            self.assertEqual((code,response["message"]),
+                             (200,"if_account_exists_email_sent"))
+
+    def test_shared_resend_sender_refuses_outbound_unapproved_email(self):
+        from minjaz_account_auth import deliver_link
+        env={"APP_ENV":"preview","AUTH_SECRET":self.SECRET,
+             "PUBLIC_BASE_URL":"https://minjaz.example.com",
+             "EMAIL_MODE":"resend","EMAIL_FROM":"onboarding@resend.dev",
+             "RESEND_API_KEY":"re_"+"x"*22,
+             "RESEND_TEST_RECIPIENT":"owner@example.com"}
+        with self.assertRaisesRegex(RuntimeError,"email_test_recipient_only"):
+            deliver_link("customer@example.com","verify","X"*43,config=env)
+
 if __name__=="__main__":
     unittest.main()

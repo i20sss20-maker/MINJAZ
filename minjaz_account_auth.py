@@ -66,9 +66,32 @@ def valid_public_base(raw):
     except ValueError:
         return False
 
+def _email_env(config=None):
+    return os.environ if config is None else config
+
+def _shared_test_sender(env):
+    """Resend's shared test address is not a verified MINJAZ-owned sender."""
+    sender=normalize_email(env.get("EMAIL_FROM",""))
+    return sender.endswith("@resend.dev")
+
+def delivery_recipient_allowed(address,config=None):
+    """Limit shared sender to Resend account owner; never use it for public users."""
+    env=_email_env(config)
+    recipient=normalize_email(address)
+    if not recipient:return False
+    if not _shared_test_sender(env):return True
+    owner=normalize_email(env.get("RESEND_TEST_RECIPIENT",""))
+    return (env.get("APP_ENV","").strip().lower()=="preview"
+            and bool(owner) and recipient==owner)
+
 def secure_config(config=None):
-    env=config or os.environ
+    env=_email_env(config)
     secret=env.get("AUTH_SECRET","")
+    # A shared Resend address must never accidentally enable public onboarding.
+    shared=_shared_test_sender(env)
+    if shared and (env.get("APP_ENV","").strip().lower()!="preview"
+                   or not normalize_email(env.get("RESEND_TEST_RECIPIENT",""))):
+        return False
     return (len(secret)>=32 and secret!="dev-secret-change-me"
             and valid_public_base(env.get("PUBLIC_BASE_URL",""))
             and email_delivery_config(env)["enabled"])
@@ -76,6 +99,8 @@ def secure_config(config=None):
 def deliver_link(address,action,raw,config=None):
     env=config or os.environ
     if not secure_config(env):raise RuntimeError("email_not_configured")
+    if not delivery_recipient_allowed(address,env):
+        raise RuntimeError("email_test_recipient_only")
     base=env["PUBLIC_BASE_URL"].strip().rstrip("/")
     key="verify-email" if action=="verify" else "reset-password"
     # Sandbox email actions use the lightweight self-contained signup page.
@@ -143,6 +168,9 @@ def register(data,connect,secret,deliver=deliver_link,ready=True):
     if not isinstance(name,str) or not 2<=len(name.strip())<=120:return 400,{"error":"invalid_name"}
     if not valid_password(password):return 400,{"error":"invalid_password"}
     if role not in ("client","freelancer"):return 400,{"error":"invalid_role"}
+    # Refuse unsupported shared-sender recipients before creating orphaned DB users.
+    if not delivery_recipient_allowed(email):
+        return 403,{"error":"test_recipient_only"}
     # Hash before opening a DB transaction.
     password_hash=hash_password(password)
     conn=connect()
@@ -212,6 +240,8 @@ def resend_verification(data,connect,secret,deliver=deliver_link,ready=True):
     if not isinstance(data,dict):return 400,{"error":"invalid_payload"}
     email=normalize_email(data.get("email"))
     if not email:return 400,{"error":"invalid_email"}
+    if not delivery_recipient_allowed(email):
+        return 200,{"message":"if_account_needs_verification_email_sent"}
     conn=connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -278,6 +308,7 @@ def request_password_reset(data,connect,secret,deliver=deliver_link,ready=True):
     email=normalize_email(data.get("email"))
     if not email:return 400,{"error":"invalid_email"}
     ok={"message":"if_account_exists_email_sent"}
+    if not delivery_recipient_allowed(email):return 200,ok
     conn=connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
