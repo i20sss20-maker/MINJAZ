@@ -78,7 +78,10 @@ def deliver_link(address,action,raw,config=None):
     if not secure_config(env):raise RuntimeError("email_not_configured")
     base=env["PUBLIC_BASE_URL"].strip().rstrip("/")
     key="verify-email" if action=="verify" else "reset-password"
-    url=base+"/#"+key+"="+raw
+    # Sandbox email actions use the lightweight self-contained signup page.
+    # Production URLs keep the existing marketplace route unchanged.
+    route="/signup#" if env.get("APP_ENV","").strip().lower()=="preview" else "/#"
+    url=base+route+key+"="+raw
     title="تفعيل حساب منجاز" if action=="verify" else "إعادة تعيين كلمة مرور منجاز"
     body=("مرحبًا،\n\nافتح الرابط التالي لتفعيل حسابك في منجاز:\n" if action=="verify"
           else "مرحبًا،\n\nافتح الرابط التالي لإعادة تعيين كلمة مرور حسابك في منجاز:\n")
