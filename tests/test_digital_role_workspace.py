@@ -36,7 +36,6 @@ class RoleWorkspaceTests(unittest.TestCase):
             self.assertIn(endpoint, JS)
         self.assertIn('credentials:"same-origin"', JS)
         self.assertIn("function esc(", JS)
-        self.assertIn("escape", "escape")  # Keep this test independent of Python's HTML parser.
 
     def test_no_fake_money_or_unprotected_admin_access(self):
         # Do not offer mock payment actions, automatic legal acceptance,
