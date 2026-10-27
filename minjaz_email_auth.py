@@ -93,7 +93,9 @@ def send_email_code(email, code, env=None):
         req = urllib.request.Request(
             "https://api.resend.com/emails", data=data, method="POST",
             headers={"Authorization": "Bearer " + env["RESEND_API_KEY"],
-                     "Content-Type": "application/json"},
+                     "Content-Type": "application/json",
+                   "Accept": "application/json",
+                   "User-Agent": "Mozilla/5.0 (compatible; MINJAZ-Mailer/1.0)"},
         )
         with urllib.request.urlopen(req, timeout=12) as response:
             if response.status not in (200, 201):
