@@ -14,6 +14,7 @@ import ssl
 import urllib.request
 import json
 from email.message import EmailMessage
+from urllib.parse import urlsplit
 
 import psycopg2
 import psycopg2.extras
@@ -51,11 +52,26 @@ def verify_password(password,stored):
 def token_digest(secret,raw):
     return hmac.new(secret.encode("utf-8"),raw.encode("ascii"),hashlib.sha256).hexdigest()
 
+def valid_public_base(raw):
+    """Only generate account tokens for a configured HTTPS origin, never a redirect or userinfo URL."""
+    if not isinstance(raw,str):return False
+    try:
+        url=urlsplit(raw.strip())
+        # No paths, credentials, queries or fragments in links containing recovery tokens.
+        # Accessing .port also rejects malformed port specifications.
+        _=url.port
+        return (url.scheme=="https" and bool(url.hostname) and url.username is None
+                and url.password is None and url.path in ("","/")
+                and not url.query and not url.fragment)
+    except ValueError:
+        return False
+
 def secure_config(config=None):
     env=config or os.environ
     secret=env.get("AUTH_SECRET","")
-    base=env.get("PUBLIC_BASE_URL","").strip().rstrip("/")
-    return len(secret)>=32 and secret!="dev-secret-change-me" and base.startswith("https://") and email_delivery_config(env)["enabled"]
+    return (len(secret)>=32 and secret!="dev-secret-change-me"
+            and valid_public_base(env.get("PUBLIC_BASE_URL",""))
+            and email_delivery_config(env)["enabled"])
 
 def deliver_link(address,action,raw,config=None):
     env=config or os.environ
@@ -165,7 +181,7 @@ def consume_email_link(data,connect,secret,admin_email):
                           a.expires_at<=now() AS expired
                           FROM account_email_actions a JOIN users u ON u.id=a.user_id
                           WHERE a.token_hash=%s AND a.action='verify'
-                            AND a.used_at IS NULL FOR UPDATE OF a""",(digest,))
+                            AND a.used_at IS NULL AND u.deleted_at IS NULL FOR UPDATE OF a""",(digest,))
             row=cur.fetchone()
             if not row:return 400,{"error":"invalid_or_used_link"}
             if row["expired"]:return 410,{"error":"email_link_expired"}
@@ -194,7 +210,7 @@ def resend_verification(data,connect,secret,deliver=deliver_link,ready=True):
     conn=connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""SELECT id,email_verified_at FROM users WHERE email=%s""",(email,))
+            cur.execute("""SELECT id,email_verified_at FROM users WHERE email=%s AND deleted_at IS NULL""",(email,))
             user=cur.fetchone()
             if not user or user["email_verified_at"] is not None:
                 return 200,{"message":"if_account_needs_verification_email_sent"}
@@ -292,7 +308,7 @@ def reset_password(data,connect,secret):
             cur.execute("""SELECT a.id,a.user_id,a.expires_at<=now() AS expired
                            FROM account_email_actions a JOIN users u ON u.id=a.user_id
                            WHERE a.token_hash=%s AND a.action='reset' AND a.used_at IS NULL
-                             AND u.email_verified_at IS NOT NULL FOR UPDATE OF a""",
+                             AND u.email_verified_at IS NOT NULL AND u.deleted_at IS NULL FOR UPDATE OF a""",
                         (token_digest(secret,raw),))
             row=cur.fetchone()
             if not row:return 400,{"error":"invalid_or_used_link"}

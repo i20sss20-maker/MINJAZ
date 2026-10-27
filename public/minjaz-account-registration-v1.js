@@ -39,6 +39,7 @@ const tpl=`
  </form>
  <button id="forgotAccountPassword" type="button" class="account-text-button">نسيت كلمة المرور؟</button>
  <p class="account-hint">إذا أنشأت حسابك الآن، فعّله من الرسالة المرسلة إلى بريدك أولًا.</p>
+ <button id="resendActivationLogin" type="button" class="account-text-button">لم يصلك رابط التفعيل؟ أعد إرساله</button>
 </section>
 <section id="accountRecover" class="account-panel" hidden>
  <h2>استعادة كلمة المرور</h2>
@@ -108,14 +109,22 @@ $("newAccountForm").addEventListener("submit",e=>submitForm(e,async()=>{
  if(password!==confirm){status("تأكيد كلمة المرور غير مطابق.",true);return}
  const wantedRole=typeof role!=="undefined"&&role==="freelancer"?"freelancer":"client";
  const info=await request("/api/v1/auth/register",{name,phone,email,password,role:wantedRole});
- if(info.registered){$("signupPassword").value="";$("signupConfirm").value="";status("تم إنشاء حسابك. افتح رسالة التفعيل في بريدك، ثم عد لتسجيل الدخول.")}
+ if(info.registered){
+   $("signupPassword").value="";$("signupConfirm").value="";
+   $("accountEmail").value=email;$("recoverEmail").value=email;
+   show("accountLogin");
+   status("تم إنشاء حسابك. افتح رسالة التفعيل في بريدك، وبعدها سجّل الدخول من هنا.");
+ }
 }));
-$("resendActivation").addEventListener("click",async()=>{
- const email=$("signupEmail").value.trim().toLowerCase();if(!email){status("اكتب بريدك في نموذج التسجيل أولًا.",true);return}
- const btn=$("resendActivation");btn.disabled=true;
+async function resendActivationFrom(emailInput,buttonId){
+ const field=$(emailInput),email=field.value.trim().toLowerCase();
+ if(!email||!field.checkValidity()){status("أدخل بريدًا إلكترونيًا صحيحًا لإعادة إرسال رابط التفعيل.",true);return}
+ const btn=$(buttonId);btn.disabled=true;
  try{await request("/api/v1/auth/resend-verification",{email});status("إذا كان الحساب يحتاج تفعيلًا، سيتم إرسال رابط جديد إلى بريده.")}
  catch(err){status(err.message,true)}finally{btn.disabled=false}
-});
+}
+$("resendActivation").addEventListener("click",()=>resendActivationFrom("signupEmail","resendActivation"));
+$("resendActivationLogin").addEventListener("click",()=>resendActivationFrom("accountEmail","resendActivationLogin"));
 $("existingAccountForm").addEventListener("submit",e=>submitForm(e,async()=>{
  const email=$("accountEmail").value.trim().toLowerCase(),password=$("accountPassword").value;
  if(!$("accountEmail").checkValidity()||!password){status("أدخل بريدك وكلمة المرور.",true);return}

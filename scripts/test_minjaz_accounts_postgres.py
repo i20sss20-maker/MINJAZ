@@ -177,5 +177,38 @@ def main():
             assert_true(cur.fetchone()[0]==1,"freelancer profile missing")
     print("PASS client, freelancer, administrator verified email-password lifecycle")
 
+    # Deleted account links must never be able to re-enable or modify an account.
+    archived={"name":"حساب محذوف","email":"archived@example.com",
+              "phone":"0561234567","password":"ArchivedPassphrase123!","role":"client"}
+    assert_true(register(archived,connect,SECRET,deliver=send)[0]==201,
+                "deleted account fixture registration failed")
+    archived_link=MAILED[-1][2]
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("UPDATE users SET deleted_at=now() WHERE email=%s",
+                        (archived["email"],))
+    assert_true(consume_email_link({"token":archived_link},connect,SECRET,"")[0]==400,
+                "deleted account was reactivated using a verification link")
+    messages_before=len(MAILED)
+    assert_true(resend_verification({"email":archived["email"]},connect,SECRET,deliver=send)[0]==200
+                and len(MAILED)==messages_before,
+                "deleted account received an activation email")
+    assert_true(request_password_reset({"email":archived["email"]},
+                connect,SECRET,deliver=send)[0]==200 and len(MAILED)==messages_before,
+                "deleted account password recovery exposed or sent email")
+
+    assert_true(request_password_reset({"email":freelancer["email"]},
+                connect,SECRET,deliver=send)[0]==200,
+                "freelancer password reset fixture failed")
+    pending_reset=MAILED[-1][2]
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("UPDATE users SET deleted_at=now() WHERE email=%s",
+                        (freelancer["email"],))
+    assert_true(reset_password({"token":pending_reset,"password":"AReallyNewPassword123!"},
+                connect,SECRET)[0]==400,
+                "deleted account password changed with a stale reset link")
+    print("PASS deleted users cannot activate, resend verification, or reset passwords")
+
 if __name__=="__main__":
     main()
