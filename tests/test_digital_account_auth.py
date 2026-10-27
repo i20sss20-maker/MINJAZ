@@ -92,7 +92,12 @@ class AccountRegistrationTests(unittest.TestCase):
         self.assertIn("/api/v1/auth/login-email",server)
         self.assertIn("email_verified_at",server)
         self.assertIn("email_registration_required",server)
-        self.assertIn("if APP_ENV=='preview'",server)
+        self.assertIn("EMAIL_AUTH_REQUIRED=(APP_ENV=='preview'",server)
+        self.assertIn("if row and EMAIL_AUTH_REQUIRED:",server)
+        self.assertIn("if not EMAIL_AUTH_REQUIRED:",server)
+        self.assertIn("if EMAIL_AUTH_REQUIRED:",server)
+        self.assertIn("blockers.append('EMAIL_PROVIDER')",server)
+        self.assertIn("'enabled':EMAIL_AUTH_REQUIRED",server)
 
 if __name__=="__main__":
     unittest.main()
