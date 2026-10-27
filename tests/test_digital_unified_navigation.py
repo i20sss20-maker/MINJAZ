@@ -31,11 +31,13 @@ class UnifiedDigitalStoreNavigationTests(unittest.TestCase):
         self.assertIn("@media(max-width:430px)",AUTH)
         self.assertIn("prefers-reduced-motion:reduce",AUTH)
 
-    def test_existing_account_and_store_signin_unmodified(self):
+    def test_existing_auth_api_kept_but_store_uses_fast_onboarding(self):
         self.assertIn('returnToStoreAfterLogin();',AUTH)
         self.assertIn('"/api/v1/auth/login-email"',AUTH)
         self.assertIn('"/api/v1/auth/register"',AUTH)
-        self.assertIn('a.href=\'/?auth=login&next=digital-services\'',STORE)
+        self.assertIn('a.href=\'/signup?auth=login&next=digital-services\'',STORE)
+        self.assertIn('href="/workspace"',STORE)
+        self.assertNotIn('href="/?auth=login&amp;next=digital-services"',STORE)
         self.assertNotIn('window.location.assign(link.href)',AUTH)
 
 if __name__=="__main__":unittest.main()
