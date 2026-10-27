@@ -121,7 +121,7 @@ async function checkAdminAccess(){
    }else if(res.status===401){
      showAccess('سجّل الدخول ببريد المدير الإلكتروني لفتح لوحة الإدارة.');
      try{const ready=await fetch('/api/v1/auth/account-status',{credentials:'same-origin'});
-       if(ready.ok){const status=await ready.json();if(!status.configured){$('accessStatus').textContent='يلزم ربط بريد الإرسال في Railway حتى يمكن تفعيل الحسابات واستعادة كلمة المرور.';}else if(!status.admin_email_configured){$('accessStatus').textContent='يلزم تحديد بريد الإدارة (ADMIN_EMAIL) في Railway قبل إنشاء حساب المدير.';}}
+       if(ready.ok){const status=await ready.json();if(!status.configured){$('accessStatus').textContent='يلزم ربط بريد الإرسال في Railway حتى يمكن تفعيل الحسابات واستعادة كلمة المرور.';}else if(!status.admin_configured){$('accessStatus').textContent='يلزم تحديد بريد الإدارة (ADMIN_EMAIL) في Railway قبل إنشاء حساب المدير.';}}
      }catch(error){/* Keep login form visible. */}
    }else{
      showAccess('تعذّر التحقق من حسابك (HTTP '+res.status+'). حاول تحديث الصفحة.',true);
