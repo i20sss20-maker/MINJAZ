@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#161f3e">
+<title>مِنجاز | مركز العمل</title>
+<style>
+:root{font-family:system-ui,Tahoma,Arial,sans-serif;--bg:#f5f7fd;--paper:white;--ink:#1b2844;--muted:#6d7b93;--line:#e0e6f1;--blue:#4b50d5;--soft:#edf0ff;--green:#137554}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);line-height:1.8}button,input,textarea,select{font:inherit}a{color:inherit;text-decoration:none}button{cursor:pointer}button:disabled{cursor:wait;opacity:.62}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #aca8ff;outline-offset:3px}
+.site{max-width:1210px;margin:auto;padding:22px 22px 65px}header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px;font-weight:850;font-size:23px}.brand-mark{display:grid;place-items:center;width:43px;height:43px;background:linear-gradient(135deg,#4a50d9,#7989f8);color:white;border-radius:14px}
+header nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}header nav a,header nav button,.btn-lite{background:#fff;border:1px solid var(--line);padding:9px 13px;border-radius:12px;font-weight:700;font-size:13px;color:#344263}
+.primary{background:var(--blue);color:#fff;border:0;padding:11px 16px;border-radius:12px;font-weight:800}.primary:hover{background:#383fb8}
+.hero{background:linear-gradient(115deg,#182443,#384d9a);color:#fff;border-radius:23px;padding:30px;display:flex;gap:16px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.hero h1{font-size:clamp(25px,3vw,35px);line-height:1.45;margin:3px 0 5px}.hero p{margin:0;color:#d6dfff;font-size:14px}.eyebrow{font-size:12px;color:#a9c7ff;font-weight:800}.hero-actions{display:flex;gap:10px;flex-wrap:wrap}.hero-actions a,.hero-actions button{padding:10px 13px;color:#fff;border:1px solid #a0b2ff80;background:#ffffff16;border-radius:11px;font-weight:750}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin-top:18px}.summary>article{border:1px solid var(--line);border-radius:17px;background:#fff;padding:17px}.summary b{display:block;font-size:25px;line-height:1.5}.summary small{color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-top:20px}.panel{border:1px solid var(--line);border-radius:19px;padding:23px;background:var(--paper);min-width:0;box-shadow:0 10px 30px #1b305508}.panel h2{font-size:19px;line-height:1.5;margin:0 0 7px}.panel .subtitle{color:var(--muted);font-size:13px;margin:0 0 15px}
+.field{display:block;font-size:12px;font-weight:750;margin-top:13px}.field input,.field select,.field textarea{display:block;width:100%;margin-top:5px;border:1px solid #dce4f0;background:#fbfcff;border-radius:11px;padding:10px 12px;outline-offset:2px;font-size:14px;color:#26334c}
+.field textarea{min-height:105px;resize:vertical}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-actions{display:flex;gap:10px;justify-content:flex-start;align-items:center;margin-top:16px;flex-wrap:wrap}
+.items{display:grid;gap:12px}.item{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff}.item strong{display:block;font-size:15px;margin-bottom:2px;overflow-wrap:anywhere}.item p{font-size:12px;color:var(--muted);margin:4px 0 9px;overflow-wrap:anywhere}.item-meta{font-size:12px;color:#687791;display:flex;gap:8px;flex-wrap:wrap}.chip{padding:3px 9px;border-radius:999px;background:var(--soft);color:#374bb2;font-size:11px;font-weight:800}.item-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.item-actions button{border:1px solid #d7dcf8;background:#f0f2ff;color:#414ac6;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:750}
+.empty{border:1px dashed #d9e2f0;color:var(--muted);padding:19px;border-radius:13px;font-size:13px}
+.note{color:var(--muted);font-size:12px}.notice{margin-top:15px;padding:13px 15px;border-radius:13px;border:1px solid #cbd7f8;background:#f0f4ff;font-size:13px;color:#30417c}
+.notice.error{background:#fff0f0;border-color:#ffc9c9;color:#a42626}.notice.success{background:#edf9f1;border-color:#b9e7c8;color:var(--green)}
+#legalWrap{background:#fff7e9;border:1px solid #f2dbad;padding:18px;border-radius:15px;margin-top:18px}#legalWrap h2{font-size:16px;margin:0}#legalWrap p{font-size:12px}#legalDocs{display:grid;gap:9px;margin:12px 0}#legalDocs label{display:flex;gap:10px;align-items:flex-start;font-size:13px}#legalDocs input{margin-top:8px}#legalDocs small{display:block;color:#786e54;font-size:11px;line-height:1.6}
+dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(480px,calc(100% - 28px));max-height:90vh;overflow:auto;color:var(--ink)}dialog::backdrop{background:#07163099}dialog h2{margin:0 0 9px}.dialog-x{float:left;border:0;background:#edf0fc;padding:4px 10px;border-radius:8px;font-size:22px}
+#loading{margin-top:20px}.full{grid-column:1/-1}.hidden,[hidden]{display:none!important}
+@media(max-width:760px){.site{padding:15px 14px 50px}.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.panel{padding:17px}.hero{padding:22px}.hero-actions{width:100%}.row2{grid-template-columns:1fr}}
+</style>
+<script src="/workspace-v1.js" defer></script>
+</head>
+<body><div class="site">
+<header><a class="brand" href="/workspace"><span class="brand-mark">م</span><span>مِنجاز <small style="color:#7786a1;font-size:11px">مركز العمل</small></span></a>
+<nav><a href="/digital-services">الخدمات الجاهزة</a><a href="/" title="الواجهة الكاملة">المنصة الكاملة</a><a href="/privacy">الخصوصية</a><button id="logout" type="button" class="hidden">تسجيل الخروج</button></nav>
+</header>
+<div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
+<div id="loginRequired" class="panel hidden"><h1>أهلًا بك في مِنجاز</h1><p>حتى تبدأ العمل وتتابع الطلبات، سجّل دخولك بالبريد المفعّل.</p><a class="primary" href="/signup?auth=login">تسجيل الدخول</a></div>
+<div id="loading" class="panel">جاري تجهيز مساحة العمل...</div>
+<div id="workspace" class="hidden">
+<section class="hero"><div><div class="eyebrow">النسخة التجريبية · الحساب الموثق</div><h1 id="welcome">مرحبًا بك</h1><p id="who">مساحة عملك داخل منجاز</p></div>
+<div class="hero-actions"><a href="/digital-services">استعرض الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">حسابي</a></div></section>
+<section id="summary" class="summary" aria-label="ملخص الحساب"></section>
+<section id="legalWrap" class="hidden" aria-label="المستندات القانونية"><h2>الشروط والخصوصية التجريبية</h2><p>راجع المستندات والإصدارات أدناه قبل إنشاء المهام أو إرسال العروض. هذه مسودات تجريبية وليست نصوصًا تجارية معتمدة.</p><div id="legalDocs"></div><button id="acceptLegal" class="primary" type="button">أوافق على المستندات المحددة</button></section>
+<div class="grid">
+ <section class="panel"><h2 id="mainTitle">مساحة العمل</h2><p class="subtitle" id="mainSubtitle"></p>
+ <div id="clientAction" class="hidden">
+   <form id="newTask"><label class="field">عنوان المهمة <input name="title" required minlength="5" maxlength="180" placeholder="مثل تصميم شعار أو تجهيز موقع"></label>
+   <label class="field">وصف المطلوب <textarea name="description" required minlength="20" maxlength="6000" placeholder="اكتب تفاصيل طلبك والنتيجة المتوقعة"></textarea></label>
+   <label class="field">القسم <select name="category_id" id="categories" required><option value="">اختر القسم</option></select></label>
+   <div class="row2"><label class="field">الحد الأدنى (ريال) <input name="budget_min" type="number" min="49" max="1000000" step=".01" placeholder="49"></label><label class="field">الحد الأعلى (ريال) <input name="budget_max" type="number" min="49" max="1000000" step=".01" placeholder="300"></label></div>
+   <div class="form-actions"><button type="submit" class="primary">نشر المهمة</button><span class="note">لا يوجد دفع حقيقي في التجربة.</span></div></form>
+ </div>
+ <div id="freelancerAction" class="hidden"><p class="note">هذه المهام المتاحة يمكنك تقديم عروض عليها. يراجع العميل العروض ويختار المناسب.</p></div>
+ <div id="adminAction" class="hidden"><p class="note">ملخص تشغيل للمدير فقط، والصلاحيات مفروضة على واجهات البرمجة.</p><a class="primary" href="/digital-services/admin">إدارة الخدمات الرقمية</a></div>
+ </section>
+ <section class="panel"><h2 id="sideTitle">آخر النشاط</h2><p class="subtitle" id="sideSubtitle">البيانات من حسابك الفعلي</p><div id="sideItems" class="items"></div></section>
+ <section class="panel"><h2 id="tasksTitle">المهام</h2><p class="subtitle" id="tasksSubtitle"></p><div id="taskItems" class="items"></div></section>
+ <section class="panel"><h2>الطلبات</h2><p class="subtitle">متابعة الطلبات ومراحلها دون دفع تجريبي مضلل.</p><div id="orderItems" class="items"></div></section>
+ <section id="profile" class="panel full"><h2>بيانات الحساب</h2><p class="subtitle">حدّث بياناتك التي تظهر داخل المنصة.</p>
+ <form id="nameForm"><div class="row2"><label class="field">الاسم الظاهر <input id="myName" required minlength="2" maxlength="120" autocomplete="name"></label><label class="field">البريد الموثق <input id="myEmail" disabled></label></div><div class="form-actions"><button class="primary" type="submit">تحديث الاسم</button></div></form>
+ <form id="freelancerProfile" class="hidden"><label class="field">نبذة عن مهاراتك <textarea id="freelancerBio" maxlength="500" placeholder="خبرتك ونوع أعمالك"></textarea></label><label class="field">مهاراتك (افصل بفواصل) <input id="freelancerSkills" placeholder="تصميم، تطوير، كتابة"></label><label class="field"><input id="available" type="checkbox" style="width:auto;min-height:0;margin-left:7px">متاح لاستقبال طلبات العمل</label><div class="form-actions"><button class="primary" type="submit">حفظ ملف المستقل</button></div></form>
+ <div class="note">تغيير كلمة المرور: استخدم «نسيت كلمة المرور؟» من <a style="color:#4b50d5;text-decoration:underline" href="/signup?auth=login">صفحة الدخول</a>.</div>
+ </section>
+</div></div>
+</div>
+<dialog id="offerDialog" aria-labelledby="offerTitle"><button id="closeOffer" class="dialog-x" type="button" aria-label="إغلاق">×</button><h2 id="offerTitle">تقديم عرض</h2><p class="note" id="offerTaskTitle"></p>
+<form id="offerForm"><input type="hidden" name="task_id" id="offerTaskId"><label class="field">السعر (ريال) <input type="number" required name="price" min="1" max="1000000" step=".01"></label><div class="row2"><label class="field">مدة التنفيذ (بالساعات) <input type="number" required name="delivery_hours" value="24" min="1" max="8760"></label><label class="field">التعديلات <input type="number" name="revisions" value="1" min="0" max="50"></label></div><label class="field">رسالة للعميل <textarea name="message" maxlength="1200"></textarea></label><div class="form-actions"><button class="primary" type="submit">إرسال العرض</button></div></form></dialog>
+<dialog id="offersDialog"><button id="closeOffers" class="dialog-x" type="button" aria-label="إغلاق">×</button><h2>العروض المستلمة</h2><p class="note">مقارنة العروض متاحة هنا. اختيار العرض والدفع الحقيقي سيكونان في المرحلة الأخيرة.</p><div id="receivedOffers" class="items"></div></dialog>
+</body>
+</html>

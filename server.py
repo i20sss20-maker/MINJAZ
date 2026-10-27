@@ -2475,6 +2475,16 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'signup.html'),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
+            if method=='GET' and p in ('/workspace','/workspace/'):
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'workspace.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/workspace-v1.js':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'workspace-v1.js'),'rb').read()
+                self._headers(200,'application/javascript; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/','/index.html'):
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
             if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):

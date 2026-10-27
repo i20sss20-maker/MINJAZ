@@ -10,9 +10,9 @@ AUTH=(ROOT/"public/minjaz-account-registration-v1.js").read_text("utf-8")
 class DigitalStorefrontAuthTests(unittest.TestCase):
     def test_catalog_has_visible_login_route_on_all_screen_sizes(self):
         self.assertIn('class="auth-link"',STORE)
-        self.assertIn('href="/?auth=login&amp;next=digital-services"',STORE)
+        self.assertIn('href="/signup?auth=login&amp;next=digital-services"',STORE)
         self.assertIn("display:none}.auth-link{margin-inline-start:auto",STORE)
-        self.assertIn('href="/?auth=login&amp;next=digital-services">سجّل لطلب الخدمة',STORE)
+        self.assertIn('href="/signup?auth=login&amp;next=digital-services">سجّل لطلب الخدمة',STORE)
 
     def test_unauthorized_guest_gets_action_not_only_error(self):
         self.assertIn("function signInLink()",STORE)

@@ -4,14 +4,14 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
 <div class="hero-shell">
 <nav class="site-nav container" aria-label="القائمة الرئيسية">
   <a class="brand" href="/" aria-label="منجاز الرئيسية"><span class="brand-icon">≋</span><span>منجاز<span class="brand-caption">حلول رقمية لأعمالك</span></span></a>
-  <div class="nav-links"><a href="#services">استكشف الخدمات</a><a href="#how-it-works">كيف نعمل</a><a href="#myOrders">طلباتي</a></div>
-  <a class="auth-link" href="/?auth=login&amp;next=digital-services">دخول / حساب جديد</a>
+  <div class="nav-links"><a href="#services">استكشف الخدمات</a><a href="#how-it-works">كيف نعمل</a><a href="#myOrders">طلباتي</a><a href="/workspace">مركز العمل</a></div>
+  <a class="auth-link" href="/signup?auth=login&amp;next=digital-services">دخول / حساب جديد</a>
 </nav>
 <header class="hero container">
   <div><span class="eyebrow">الخدمات الرقمية من منجاز • إصدار تجريبي</span>
   <h1>من فكرتك إلى مشروع <em>جاهز للانطلاق.</em></h1>
   <p class="lead">مواقع إلكترونية، متاجر، هوية بصرية وخدمات رقمية تُطلب بخطوات واضحة. اختر ما يناسبك وتابع رحلة التنفيذ من مكان واحد.</p>
-  <div class="hero-actions"><a class="button-link" href="#services">استكشف الخدمات <span aria-hidden="true"> ←</span></a><a class="button-link ghost" href="/?auth=login&amp;next=digital-services">سجّل لطلب الخدمة</a></div>
+  <div class="hero-actions"><a class="button-link" href="#services">استكشف الخدمات <span aria-hidden="true"> ←</span></a><a class="button-link ghost" href="/signup?auth=login&amp;next=digital-services">سجّل لطلب الخدمة</a></div>
   <div class="hero-points"><span>تفاصيل واضحة</span><span>متابعة لكل مرحلة</span><span>تسليم منظّم</span></div>
   </div>
   <aside class="journey" aria-label="مراحل الخدمة"><div class="minilabel">رحلة خدمتك</div><h2>كل مرحلة قدامك بوضوح</h2>
@@ -45,12 +45,12 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
 </section>
 <section id="myOrders" class="section" aria-labelledby="ordersHeading"><div class="account-section">
  <div class="section-head"><div><span class="section-kicker">مساحة العميل</span><h2 id="ordersHeading">طلباتك في مكان واحد</h2><p>شاهد التفاصيل والمتطلبات وملاحظات التسليم.</p></div><button id="ordersBtn" type="button">عرض طلباتي</button></div>
- <section id="orders" class="order-items" aria-live="polite"><p class="muted">لعرض طلباتك، <a href="/?auth=login&amp;next=digital-services">سجّل دخولك أو أنشئ حسابًا</a>.</p></section>
+ <section id="orders" class="order-items" aria-live="polite"><p class="muted">لعرض طلباتك، <a href="/signup?auth=login&amp;next=digital-services">سجّل دخولك أو أنشئ حسابًا</a>.</p></section>
  <div class="section-head" style="margin-top:28px"><div><h2 style="font-size:21px">آخر تحديثات طلباتك</h2><p>تعرف على التغييرات أولًا بأول.</p></div><button id="activityBtn" type="button">تحديث المتابعة</button></div>
  <section id="activity" class="activity-items" aria-live="polite"><p class="muted">سجّل دخولك ثم اعرض طلباتك لمتابعة تحديثاتها.</p></section>
 </div></section>
 </main>
-<footer class="footer"><div class="footer-inner container"><div class="brand"><span class="brand-icon">≋</span><span>منجاز<span class="brand-caption">الخدمات الرقمية</span></span></div><p>نسخة تجريبية لتجربة الخدمات • لا توجد معاملات دفع حقيقية</p><a href="/">العودة إلى منجاز</a></div></footer>
+<footer class="footer"><div class="footer-inner container"><div class="brand"><span class="brand-icon">≋</span><span>منجاز<span class="brand-caption">الخدمات الرقمية</span></span></div><p>نسخة تجريبية لتجربة الخدمات • لا توجد معاملات دفع حقيقية</p><a href="/workspace">الذهاب إلى مركز العمل</a></div></footer>
 <dialog id="orderDialog" aria-labelledby="orderTitle"><form id="orderForm"><h2 id="orderTitle">طلب خدمة</h2><label for="requirements">متطلبات المشروع (10 أحرف على الأقل)</label><textarea id="requirements" required minlength="10" maxlength="10000" placeholder="صف فكرتك، صفحات المشروع، والنتيجة اللي تتوقعها..."></textarea><p class="muted">سيُحفظ الطلب كمسودة فقط، ولن يُحصَّل أي مبلغ في هذه النسخة.</p><p id="formError" class="error" role="alert"></p><button type="submit" id="submitOrder">إنشاء مسودة الطلب</button> <button type="button" id="cancel">إلغاء</button></form></dialog>
 
 <script>
@@ -59,7 +59,7 @@ const labels={website:'مواقع',mobile_app:'تطبيقات',ecommerce:'متا
 const orderStates={created:'إنشاء الطلب',draft:'مسودة',awaiting_payment:'بانتظار الدفع',paid:'تم الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',refunded:'مسترد'};
 const errorLabels={unauthorized:'سجّل دخولك أولًا',admin_only:'هذه العملية للمدير فقط',sandbox_only:'هذه العملية متاحة في البيئة التجريبية فقط',invalid_order:'بيانات الطلب غير صحيحة',invalid_requirements:'متطلبات المشروع غير صحيحة',invalid_delivery_url:'رابط التسليم يجب أن يكون HTTPS عامًا وصحيحًا',invalid_title:'أدخل اسمًا واضحًا للملف',invalid_deliverable:'بيانات ملف التسليم غير مكتملة',duplicate_delivery_url:'هذا الرابط مضاف مسبقًا',delivery_link_limit_reached:'وصل الطلب إلى الحد الأقصى للروابط',order_not_in_progress:'يجب بدء تنفيذ الطلب أولًا',pending_link_not_found:'الرابط غير موجود أو تم تسليمه ولا يمكن سحبه',invalid_status_transition:'لا يمكن تنفيذ هذا الإجراء في الحالة الحالية',order_not_found:'الطلب غير موجود أو لا تملك صلاحية الوصول إليه',package_unavailable:'الباقة غير متاحة حاليًا',idempotency_key_reused:'تغيّرت بيانات الطلب؛ أعد فتح نافذة الطلب لإنشاء محاولة جديدة',origin_not_allowed:'تعذّر التحقق من مصدر الطلب؛ حدّث الصفحة وحاول مجددًا'};
 function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
-function signInLink(){const a=element('a','سجّل الدخول أو أنشئ حسابًا','auth-inline-link');a.href='/?auth=login&next=digital-services';return a}
+function signInLink(){const a=element('a','سجّل الدخول أو أنشئ حسابًا','auth-inline-link');a.href='/signup?auth=login&next=digital-services';return a}
 // Remember only the chosen public package ID; never persist private requirements
 // or customer input to web storage before sign-in.
 const PENDING_SERVICE_KEY='minjaz_store_pending_package';
