@@ -35,7 +35,7 @@ class RoleWorkspaceTests(unittest.TestCase):
                          "/api/v1/auth/logout"):
             self.assertIn(endpoint, JS)
         self.assertIn('credentials:"same-origin"', JS)
-        self.assertIn("function esc(", JS)
+        self.assertIn("const esc=value=>", JS)
 
     def test_no_fake_money_or_unprotected_admin_access(self):
         # Do not offer mock payment actions, automatic legal acceptance,
