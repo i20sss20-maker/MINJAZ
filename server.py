@@ -3927,7 +3927,7 @@ class H(BaseHTTPRequestHandler):
                     if changed:
                         admin_audit(u['id'],'support_updated','support_ticket',tid,{'status':st,'previous_status':prev.get('status')})
                         notify(prev['user_id'],'تحديث من دعم مِنجاز',
-                               ('رد جديد على تذكرتك #'+str(tid)+': '+str(b.get('admin_reply') or '')[:170]).strip()[:220]
+                               'يوجد رد جديد على التذكرة #'+str(tid)+'، افتح مركز العمل لقراءته'
                                if str(b.get('admin_reply') or '').strip() else 'تغيّرت حالة تذكرة الدعم #'+str(tid),
                                'support')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
