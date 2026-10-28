@@ -89,7 +89,7 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
   <label for="taskStatusFilter"><span>تصفية حسب الحالة</span><select id="taskStatusFilter" aria-controls="taskItems"><option value="all">جميع المشاريع</option></select></label>
  </div>
  <div id="tasksResultCount" class="list-count" role="status" aria-live="polite"></div>
- <div id="taskItems" class="items" aria-live="polite"></div></section>
+ <div id="taskItems" class="items" aria-live="polite"></div><button id="moreTasks" class="list-more hidden" type="button">عرض مشاريع أخرى ↓</button></section>
  <section id="proposalPanel" class="panel hidden"><h2>عروضي المقدّمة</h2><p class="subtitle">عرض كل العروض المرسلة وحالتها وسحب العرض المفتوح فقط.</p><div id="proposalItems" class="items"></div></section>
  <section id="orders-section" class="panel"><h2>الطلبات والمحادثات</h2><p class="subtitle">طلبات مرتبطة بحسابك، وسجل رسائلها ومرفقاتها. الدفع غير متاح إلى حين اعتماد النظام المالي.</p>
  <div id="orderTools" class="list-tools">
@@ -97,7 +97,7 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
   <label for="orderStatusFilter"><span>حالة الطلب</span><select id="orderStatusFilter" aria-controls="orderItems"><option value="all">جميع الحالات</option><option value="awaiting_payment">بانتظار الدفع</option><option value="in_progress">قيد التنفيذ</option><option value="delivered">تم التسليم</option><option value="revision_requested">بانتظار تعديل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select></label>
  </div>
  <div id="ordersResultCount" class="list-count" role="status" aria-live="polite"></div>
- <div id="orderItems" class="items" aria-live="polite"></div></section>
+ <div id="orderItems" class="items" aria-live="polite"></div><button id="moreOrders" class="list-more hidden" type="button">عرض طلبات أخرى ↓</button></section>
  <section id="profile" class="panel full"><h2>بيانات الحساب</h2><p class="subtitle">حدّث بياناتك التي تظهر داخل المنصة.</p>
  <form id="nameForm"><div class="row2"><label class="field">الاسم الظاهر <input id="myName" required minlength="2" maxlength="120" autocomplete="name"></label><label class="field">البريد الموثق <input id="myEmail" disabled></label></div><div class="form-actions"><button class="primary" type="submit">تحديث الاسم</button></div></form>
  <form id="clientProfile" class="hidden"><h3>ملف العميل</h3><div class="row2"><label class="field">اسم المنشأة (اختياري)<input id="clientCompany" maxlength="160" placeholder="منشأتك أو مشروعك"></label><label class="field">المدينة<input id="clientCity" maxlength="120" placeholder="الرياض، جدة..."></label></div><label class="field">مجال العمل<input id="clientSector" maxlength="120" placeholder="التقنية، التجارة، التصميم"></label><label class="field">نبذة <textarea id="clientBio" maxlength="1000" placeholder="معلومات تظهر في ملف العميل"></textarea></label><div class="form-actions"><button class="primary" type="submit">حفظ ملف العميل</button></div></form>
