@@ -1,0 +1,44 @@
+"""The backup cron must be read-only, private, and refuse unsafe targets."""
+from pathlib import Path
+import re
+import subprocess
+import unittest
+
+ROOT=Path(__file__).resolve().parents[1]
+SH=(ROOT/'scripts'/'backup_minjaz_sandbox.sh').read_text(encoding='utf-8')
+DOCKER=(ROOT/'Dockerfile.backup').read_text(encoding='utf-8')
+
+
+class BackupContract(unittest.TestCase):
+    def test_shell_valid(self):
+        subprocess.run(['sh','-n',str(ROOT/'scripts'/'backup_minjaz_sandbox.sh')],
+                       check=True)
+
+    def test_postgres_major_matches_sandbox(self):
+        self.assertIn('FROM postgres:18-alpine',DOCKER)
+        self.assertIn('aws-cli',DOCKER)
+        self.assertIn('backup_minjaz_sandbox.sh',DOCKER)
+        self.assertIn('pg_dump --version',SH)
+
+    def test_read_only_private_verified(self):
+        for needle in ('APP_ENV" != "preview"', 'https://*',
+                       'pg_dump --dbname=', '--format=custom',
+                       '--no-owner --no-privileges', 'pg_restore --list',
+                       's3api put-object', 's3api head-object',
+                       'sha256sum', 'BACKUP_OK', 'BACKUP_REFUSED',
+                       'remote_size" != "$size"', 'remote_sha" != "$sha"'):
+            self.assertIn(needle,SH)
+        self.assertIn('umask 077',SH)
+        self.assertIn('mktemp',SH)
+        self.assertIn('No automatic deletion',SH)
+
+    def test_no_drop_or_live_restore_or_exposed_credentials(self):
+        self.assertNotRegex(SH,r'\\b(?:dropdb|createdb|psql|pg_restore\\s+--dbname|rm\\s+-rf)\\b')
+        self.assertNotIn('AWS_SECRET_ACCESS_KEY}',SH.split('echo "BACKUP_OK')[1])
+        self.assertNotIn('s3api delete-object',SH)
+        self.assertNotIn('http://',SH)
+        self.assertNotIn('--acl public-read',SH)
+
+
+if __name__=='__main__':
+    unittest.main()
