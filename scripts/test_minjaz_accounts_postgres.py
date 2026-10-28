@@ -6,6 +6,7 @@ Only accepts 127.0.0.1:5432/account_test when CI=true.
 """
 import os
 import sys
+from unittest.mock import patch
 from pathlib import Path
 from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,6 +19,7 @@ from minjaz_account_auth import (
     request_password_reset,reset_password
 )
 from minjaz_email_auth import normalize_email
+from minjaz_admin_claim import request_owner_claim,confirm_owner_claim
 
 DATABASE=os.getenv("MINJAZ_ACCOUNT_TEST_DATABASE_URL","")
 SECRET="this-is-only-for-ephemeral-ci-auth-fixtures-not-real"
@@ -65,7 +67,12 @@ def make_database():
               token_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,
               user_agent TEXT,device_label TEXT,ip_hash TEXT,
               last_seen_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ)""")
-        for file in ("034_verified_email_login.sql","035_verified_password_accounts.sql"):
+            cur.execute("""CREATE TABLE account_activity(
+              id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(id),
+              session_id BIGINT REFERENCES sessions(id),event_type TEXT NOT NULL,
+              label TEXT NOT NULL,meta JSONB NOT NULL DEFAULT '{}'::jsonb)""")
+        for file in ("034_verified_email_login.sql","035_verified_password_accounts.sql",
+                     "036_verified_admin_claim.sql"):
             with db.cursor() as cur:
                 cur.execute((ROOT/"database/migrations"/file).read_text(encoding="utf-8"))
             print("PASS migration",file)
@@ -143,22 +150,57 @@ def main():
                 connect,SECRET,"",30,"CI","")[0]==200,"new password fails")
     print("PASS password recovery, single-use link, expired sessions and password rotation")
 
-    # Email allowlisting only upgrades the verified admin address.
+    # Owning the admin email must NEVER automatically grant administrator rights.
     admin={"name":"مدير منجاز","email":"owner@example.com","phone":"0534567890",
            "password":"OwnerPassword123!","role":"client"}
     assert_true(register(admin,connect,SECRET,deliver=send)[0]==201,
-                "admin registration failed")
+                "owner registration failed")
     token=MAILED[-1][2]
-    assert_true(consume_email_link({"token":token},connect,SECRET,"owner@example.com")[0]==200,
-                "admin email activation failed")
-    code,data=login({"email":"owner@example.com","password":admin["password"]},
-        connect,SECRET,"owner@example.com",30,"CI","")
+    assert_true(consume_email_link({"token":token},connect,SECRET,admin["email"])[0]==200,
+                "owner email activation failed")
+    code,data=login({"email":admin["email"],"password":admin["password"]},
+        connect,SECRET,admin["email"],30,"CI","")
+    assert_true(code==200 and data["user"]["role"]=="client",
+                "owner verification silently elevated a user to administrator")
+    owner_id,session_id=data["user"]["id"],data["session_id"]
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("SELECT count(*) FROM user_roles WHERE user_id=%s AND role='admin'",
+                        (owner_id,))
+            assert_true(cur.fetchone()[0]==0,"owner verification inserted privileged role")
+    with patch.dict(os.environ,{"APP_ENV":"preview"}):
+        with patch("minjaz_admin_claim.secure_config",return_value=True):
+            status,claim=request_owner_claim(owner_id,"WrongPassword123!",connect,SECRET,admin["email"],deliver=send)
+            assert_true(status==403 and claim["error"]=="invalid_credentials",
+                        "admin claim accepted wrong password")
+            status,claim=request_owner_claim(owner_id,admin["password"],connect,SECRET,admin["email"],deliver=send)
+            assert_true(status==200 and claim["email_confirmation_required"],
+                        "owner two-factor enrollment was not requested")
+            claim_token=MAILED[-1][2]
+            assert_true(MAILED[-1][1]=="admin_claim","incorrect action challenge sent")
+            assert_true(confirm_owner_claim(owner_id,session_id,admin["password"],
+                        "bad",connect,SECRET,admin["email"])[0]==400,
+                        "malformed admin challenge accepted")
+            status,result=confirm_owner_claim(owner_id,session_id,admin["password"],
+                        claim_token,connect,SECRET,admin["email"])
+            assert_true(status==200 and result["admin_activated"],
+                        "owner two-factor enrollment failed")
+            assert_true(confirm_owner_claim(owner_id,session_id,admin["password"],
+                        claim_token,connect,SECRET,admin["email"])[0]==400,
+                        "admin challenge token was reusable")
+    code,data=login({"email":admin["email"],"password":admin["password"]},
+        connect,SECRET,admin["email"],30,"CI","")
     assert_true(code==200 and data["user"]["role"]=="admin",
-                "allowlisted admin cannot sign in")
-    assert_true(login({"email":"owner@example.com","password":admin["password"]},
+                "confirmed owner cannot sign in as admin")
+    assert_true(login({"email":admin["email"],"password":admin["password"]},
         connect,SECRET,"another@example.com",30,"CI","")[0]==403,
                 "admin role accessible when allowlist changes")
-    print("PASS owner-only admin email role and allowlist enforcement")
+    with connect() as db:
+        with db.cursor() as cur:
+            cur.execute("SELECT count(*) FROM account_activity WHERE user_id=%s AND event_type='owner_admin_claim'",
+                        (owner_id,))
+            assert_true(cur.fetchone()[0]==1,"admin elevation not added to activity trail")
+    print("PASS no implicit admin, explicit password plus email claim, token replay protection and audit")
 
     freelancer={"name":"مستقل منجاز","email":"freelancer@example.com",
                 "phone":"0551234567","password":"FreelancePassword12!","role":"freelancer"}
