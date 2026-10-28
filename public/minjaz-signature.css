@@ -143,6 +143,42 @@ body.minjaz-legacy{--bg:#f6f5f2;--blue:#6653d8;--navy:#10182c;--line:#e8e7ec;--s
 .minjaz-legacy .navBtn.on{box-shadow:inset -3px 0 #c5ab82}
 .minjaz-legacy .authPanel{padding-block:55px}
 .minjaz-legacy .authArt .artCard{border-radius:15px}
+/* Administrative console: same system, stricter information density */
+body.minjaz-ops{--ink:#182239;--muted:#707c90;--brand:#6652ce;--brand-hover:#4a37b0;--navy:#11182c;--line:#e5e5eb;--bg:#f6f5f2;background:#f6f5f2;color:#1a2537;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif}
+.minjaz-ops h1,.minjaz-ops h2,.minjaz-ops h3{font-family:Alexandria,"IBM Plex Sans Arabic",sans-serif;letter-spacing:-.045em}
+.minjaz-ops .site-topbar{background:#fff;border-bottom:1px solid #e8e8eb;box-shadow:0 8px 20px #12192d08}
+.minjaz-ops .admin-brand{font-family:Alexandria,sans-serif;color:#18223b;font-weight:700}
+.minjaz-ops .brand-mark{background:transparent;box-shadow:none}
+.minjaz-ops .brand-mark img{width:43px;height:43px;border-radius:13px}
+.minjaz-ops .site-topbar .badge{background:#f7f1e6;color:#7c653f;border:1px solid #ecdfc7}
+.minjaz-ops .sidebar{background:linear-gradient(160deg,#11182d,#201b3d);color:#e8e5f4}
+.minjaz-ops .sidebar a.active{background:#ffffff13;color:#fff}
+.minjaz-ops .sidebar-note{background:#fff9ee;color:#806741;border-radius:12px}
+.minjaz-ops .access-art{background:linear-gradient(130deg,#12182d,#25204a)}
+.minjaz-ops .card,.minjaz-ops .panel-section,.minjaz-ops .package-editor{border-radius:18px;border-color:#e7e6eb;box-shadow:0 12px 37px #11192d09}
+.minjaz-ops button:not(.danger):not(.secondary){background:#6954d2}
+.minjaz-ops button:not(.danger):not(.secondary):hover{background:#503cb9}
+.minjaz-ops .badge{background:#f0edfc;color:#5a47b6}
+.minjaz-ops :is(input,select,textarea):focus{border-color:#7565de;box-shadow:0 0 0 3px #6954d221;outline:0}
+/* Legal and account-deletion pages: understated document surface. */
+body.minjaz-doc{font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;background:#f6f5f2;color:#1b253a}
+.minjaz-doc :is(h1,h2,h3){font-family:Alexandria,sans-serif;letter-spacing:-.055em}
+.minjaz-doc .wrap{max-width:920px;padding-top:38px}
+.minjaz-doc header,.minjaz-doc .card{border:1px solid #e7e5e9;box-shadow:0 14px 40px #19203908;border-radius:17px;background:#fff;padding:29px}
+.minjaz-doc header{background:linear-gradient(120deg,#141b31,#29204d);color:#fff;padding:38px}
+.minjaz-doc header h1,.minjaz-doc header p{color:#fff}
+.minjaz-doc header .muted{color:#d6d3e5}
+.minjaz-doc .badge{background:#ffffff15;color:#e9d5a6;border:1px solid #ffffff35}
+.minjaz-doc h1{font-size:clamp(25px,3.5vw,37px)}
+.minjaz-doc h2{font-size:18px;color:#293047}
+.minjaz-doc p,.minjaz-doc li{line-height:2;color:#667387}
+.minjaz-doc a{color:#5844bc}
+.minjaz-doc .primary{background:#6752d0;color:#fff;border-radius:10px}
+.minjaz-doc .ghost{background:#f0edf9;color:#5746a4;border-radius:10px}
+.minjaz-doc .danger{border-radius:10px}
+.minjaz-doc .warn{border-color:#e9dbba;background:#fbf7ec;color:#776039;border-radius:12px}
+.minjaz-doc .doc-nav{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.minjaz-doc .doc-nav a{color:#5140ab;font-weight:750}
 /* Responsive and reduced motion: no forced hover animations on touch. */
 @media (max-width:1070px){
  .minjaz-auth .auth-layout{grid-template-columns:minmax(0,1fr) minmax(360px,1fr)}
