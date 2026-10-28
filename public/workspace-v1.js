@@ -422,7 +422,8 @@ $("offerForm").addEventListener("submit",async e=>{
 $("closeOffer").addEventListener("click",()=>$("offerDialog").close());
 $("closeOffers").addEventListener("click",()=>$("offersDialog").close());
 $("closeOrder").addEventListener("click",()=>{
- activeOrderId=0;$("orderDialog").close();
+ activeOrderId=0;pendingMessageKey="";stagedMessageAttachments=null;
+ $("messageFiles").value="";$("messageBody").value="";$("orderDialog").close();
 });
 function displayDate(value){
  if(!value)return "";
@@ -437,6 +438,10 @@ async function showOrder(id,openDialog=true){
   request("/api/v1/orders/"+id+"/timeline"),
   request("/api/v1/orders/"+id+"/cancellation")
  ]);
+ if(activeOrderId!==id){
+  pendingMessageKey="";stagedMessageAttachments=null;
+  $("messageFiles").value="";$("messageBody").value="";
+ }
  activeOrderId=id;
  $("orderTitle").textContent=order.title||("طلب #"+id);
  $("reportOrderButton").disabled=false;
