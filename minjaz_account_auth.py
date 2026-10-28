@@ -227,16 +227,12 @@ def consume_email_link(data,connect,secret,admin_email):
             row=cur.fetchone()
             if not row:return 400,{"error":"invalid_or_used_link"}
             if row["expired"]:return 410,{"error":"email_link_expired"}
-            new_role="admin" if (admin_email and row["email"]==normalize_email(admin_email)) else row["role"]
-            if new_role=="admin":
-                cur.execute("""UPDATE users SET email_verified_at=now(),is_verified=true,role='admin'
-                               WHERE id=%s""",(row["user_id"],))
-                cur.execute("""INSERT INTO user_roles(user_id,role,enabled)
-                               VALUES (%s,'admin',true)
-                               ON CONFLICT(user_id,role) DO UPDATE SET enabled=true""",(row["user_id"],))
-            else:
-                cur.execute("""UPDATE users SET email_verified_at=now(),is_verified=true
-                               WHERE id=%s""",(row["user_id"],))
+            # Email ownership verification must never elevate authorization.
+            # Even the configured owner's email remains a client/freelancer until
+            # the explicit password + time-limited admin_claim challenge succeeds.
+            # Existing admin accounts keep their role; no roles change here.
+            cur.execute("""UPDATE users SET email_verified_at=now(),is_verified=true
+                           WHERE id=%s""",(row["user_id"],))
             cur.execute("UPDATE account_email_actions SET used_at=now() WHERE id=%s",(row["id"],))
         conn.commit()
         return 200,{"verified":True}
