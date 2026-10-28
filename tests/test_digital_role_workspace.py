@@ -123,7 +123,7 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn('idempotency_key:privacyRequestKey', JS)
         self.assertIn('idempotency_key:portfolioRequestKey', JS)
         self.assertIn('idempotency_key:reportRequestKey', JS)
-        self.assertIn('const payload=await request("/api/v1/privacy/export")', JS)
+        self.assertIn('const payload=await request("/api/v1/privacy/export",{timeoutMs:45000})', JS)
         self.assertIn('URL.createObjectURL(blob)', JS)
         self.assertIn('window.confirm(', JS)
         self.assertIn('loadExtraPanels()', JS)
