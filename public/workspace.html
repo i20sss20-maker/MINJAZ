@@ -36,7 +36,7 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <div id="loginRequired" class="panel hidden"><h1>أهلًا بك في مِنجاز</h1><p>حتى تبدأ العمل وتتابع الطلبات، سجّل دخولك بالبريد المفعّل.</p><a class="primary" href="/signup?auth=login">تسجيل الدخول</a></div>
 <div id="loading" class="panel">جاري تجهيز مساحة العمل...</div>
 <div id="workspace" class="hidden">
-<section class="hero"><div><div class="eyebrow">النسخة التجريبية · الحساب الموثق</div><h1 id="welcome">مرحبًا بك</h1><p id="who">مساحة عملك داخل منجاز</p></div>
+<section class="hero"><div><div class="eyebrow">مِنجاز · تشغيل حقيقي بمرحلة اختبار مغلقة · لا مدفوعات</div><h1 id="welcome">مرحبًا بك</h1><p id="who">مساحة عملك داخل منجاز</p></div>
 <div class="hero-actions"><a href="/digital-services">استعرض الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">حسابي</a></div></section>
 <section id="summary" class="summary" aria-label="ملخص الحساب"></section>
 <section id="legalWrap" class="hidden" aria-label="المستندات القانونية"><h2>الشروط والخصوصية التجريبية</h2><p>راجع المستندات والإصدارات أدناه قبل إنشاء المهام أو إرسال العروض. هذه مسودات تجريبية وليست نصوصًا تجارية معتمدة.</p><div id="legalDocs"></div><button id="acceptLegal" class="primary" type="button">أوافق على المستندات المحددة</button></section>
@@ -60,10 +60,35 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
  <form id="nameForm"><div class="row2"><label class="field">الاسم الظاهر <input id="myName" required minlength="2" maxlength="120" autocomplete="name"></label><label class="field">البريد الموثق <input id="myEmail" disabled></label></div><div class="form-actions"><button class="primary" type="submit">تحديث الاسم</button></div></form>
  <form id="clientProfile" class="hidden"><h3>ملف العميل</h3><div class="row2"><label class="field">اسم المنشأة (اختياري)<input id="clientCompany" maxlength="160" placeholder="منشأتك أو مشروعك"></label><label class="field">المدينة<input id="clientCity" maxlength="120" placeholder="الرياض، جدة..."></label></div><label class="field">مجال العمل<input id="clientSector" maxlength="120" placeholder="التقنية، التجارة، التصميم"></label><label class="field">نبذة <textarea id="clientBio" maxlength="1000" placeholder="معلومات تظهر في ملف العميل"></textarea></label><div class="form-actions"><button class="primary" type="submit">حفظ ملف العميل</button></div></form>
  <form id="freelancerProfile" class="hidden"><label class="field">نبذة عن مهاراتك <textarea id="freelancerBio" maxlength="500" placeholder="خبرتك ونوع أعمالك"></textarea></label><label class="field">مهاراتك (افصل بفواصل) <input id="freelancerSkills" placeholder="تصميم، تطوير، كتابة"></label><label class="field"><input id="available" type="checkbox" style="width:auto;min-height:0;margin-left:7px">متاح لاستقبال طلبات العمل</label><div class="form-actions"><button class="primary" type="submit">حفظ ملف المستقل</button></div></form>
+ <div id="portfolioPanel" class="hidden"><h3>معرض أعمال المستقل</h3><p class="note">أضف أعمالًا تمتلك حقوق عرضها، وستظهر في ملفك العام. لا تضع روابط خاصة أو بيانات عميل.</p>
+ <form id="portfolioForm"><label class="field">اسم العمل <input id="portfolioTitle" required minlength="3" maxlength="160" placeholder="تصميم واجهة متجر"></label>
+ <label class="field">وصف العمل <textarea id="portfolioDescription" maxlength="1500" placeholder="ماذا نفذت؟"></textarea></label>
+ <label class="field">رابط العمل (HTTPS اختياري) <input id="portfolioUrl" type="url" placeholder="https://example.com/portfolio"></label>
+ <div class="form-actions"><button type="submit" class="primary">إضافة العمل</button></div></form><div id="portfolioItems" class="items"></div></div>
  <div class="note">تغيير كلمة المرور: استخدم «نسيت كلمة المرور؟» من <a style="color:#4b50d5;text-decoration:underline" href="/signup?auth=login">صفحة الدخول</a>.</div>
  </section>
+ <section class="panel"><h2>حماية الحساب والأجهزة</h2><p class="subtitle">أجهزة سجلت الدخول فعلًا إلى حسابك. يمكن إنهاء الجلسات الأخرى دون تغيير كلمة المرور.</p>
+ <div id="sessionsItems" class="items"></div><div class="form-actions"><button id="refreshSessions" class="btn-lite" type="button">تحديث الأجهزة</button><button id="revokeOtherSessions" class="primary" type="button">تسجيل خروج الأجهزة الأخرى</button></div>
+ <h3>بياناتي وخصوصيتي</h3><p class="note">يمكنك تنزيل نسخة JSON من بيانات حسابك على جهازك. احتفظ بها في مكان آمن ولا تشاركها.</p><button id="downloadMyData" class="btn-lite" type="button">تنزيل بياناتي (JSON)</button>
+ </section>
+ <section class="panel"><h2>الدعم الفني</h2><p class="subtitle">تذاكر محفوظة في حسابك ويطّلع عليها فريق الإدارة المصرح له.</p>
+ <form id="supportForm"><label class="field">نوع الطلب <select id="supportCategory"><option value="general">استفسار عام</option><option value="technical">مشكلة تقنية</option><option value="order">مشكلة في طلب</option><option value="account">مشكلة في الحساب</option></select></label>
+ <label class="field">العنوان<input id="supportSubject" minlength="3" maxlength="180" required placeholder="اكتب موضوع الطلب"></label>
+ <label class="field">التفاصيل<textarea id="supportMessage" minlength="8" maxlength="5000" required placeholder="صف المشكلة دون ذكر كلمة المرور أو أسرار الحساب"></textarea></label>
+ <button type="submit" class="primary">إرسال طلب دعم</button></form>
+ <h3>طلباتي للدعم</h3><div id="supportItems" class="items"></div></section>
+ <section class="panel full"><h2>طلبات الخصوصية</h2><p class="subtitle">طلب الوصول أو التصحيح أو حذف الحساب يخضع للمراجعة والتحقق، ولا يُنفّذ بمجرد الضغط على إرسال.</p>
+ <form id="privacyForm"><div class="row2"><label class="field">نوع الطلب <select id="privacyType"><option value="access">الاطلاع على البيانات</option><option value="export">طلب نسخة من البيانات</option><option value="correct">تصحيح بيانات</option><option value="restrict">تقييد المعالجة</option><option value="delete">طلب حذف الحساب</option></select></label>
+ <label class="field">شرح الطلب <textarea id="privacyDetails" maxlength="2500" placeholder="التفاصيل اللازمة لمعالجة الطلب"></textarea></label></div>
+ <div class="form-actions"><button type="submit" class="primary">تقديم طلب خصوصية</button></div></form><div id="privacyItems" class="items"></div></section>
+ <section id="adminQueuesPanel" class="panel full hidden"><h2>لوحة العمليات والإدارة</h2><p class="subtitle">بيانات مباشرة للإدارة المصرّح بها فقط، دون إعلان جاهزية قانونية أو تسويات مالية.</p>
+ <div id="adminStats" class="summary" style="margin-bottom:12px"></div><div id="adminQueues" class="items"></div><button id="adminRefresh" type="button" class="btn-lite">تحديث بيانات الإدارة</button></section>
 </div></div>
 </div>
+<dialog id="reportDialog" aria-labelledby="reportTitle"><button id="closeReport" class="dialog-x" type="button">×</button><h2 id="reportTitle">الإبلاغ عن مخالفة</h2>
+<form id="reportForm"><input id="reportOrder" type="hidden"><input id="reportTask" type="hidden">
+<label class="field">السبب <select id="reportCategory"><option value="fraud">احتيال</option><option value="spam">رسائل مزعجة</option><option value="harassment">إساءة أو مضايقة</option><option value="impersonation">انتحال</option><option value="prohibited_service">خدمة ممنوعة</option><option value="unsafe">سلوك غير آمن</option><option value="other">أخرى</option></select></label>
+<label class="field">تفاصيل البلاغ<textarea id="reportDetails" minlength="8" maxlength="3000" required placeholder="اشرح الواقعة، ولا تشارك معلومات حساسة"></textarea></label><div class="form-actions"><button type="submit" class="primary">إرسال البلاغ للفريق</button></div></form></dialog>
 <dialog id="offerDialog" aria-labelledby="offerTitle"><button id="closeOffer" class="dialog-x" type="button" aria-label="إغلاق">×</button><h2 id="offerTitle">تقديم عرض</h2><p class="note" id="offerTaskTitle"></p>
 <form id="offerForm"><input type="hidden" name="task_id" id="offerTaskId"><label class="field">السعر (ريال) <input type="number" required name="price" min="1" max="1000000" step=".01"></label><div class="row2"><label class="field">مدة التنفيذ (بالساعات) <input type="number" required name="delivery_hours" value="24" min="1" max="8760"></label><label class="field">التعديلات <input type="number" name="revisions" value="1" min="0" max="50"></label></div><label class="field">رسالة للعميل <textarea name="message" maxlength="1200"></textarea></label><div class="form-actions"><button class="primary" type="submit">إرسال العرض</button></div></form></dialog>
 <dialog id="offersDialog"><button id="closeOffers" class="dialog-x" type="button" aria-label="إغلاق">×</button><h2>العروض المستلمة</h2><div class="warning">اختيار عرض حقيقي ينشئ طلبًا محفوظًا ويغلق بقية العروض، لكنه يبقى «بانتظار الدفع» ولا يبدأ التنفيذ أو تُحوّل أموال حتى اعتماد مزود الدفع والتسويات.</div><div id="receivedOffers" class="items"></div></dialog>
