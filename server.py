@@ -3924,7 +3924,12 @@ class H(BaseHTTPRequestHandler):
                     tid=int(m.group(1));r,prev,changed,err=update_support_ticket(tid,st,b.get('admin_reply'))
                     if err=='support_ticket_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    if changed:admin_audit(u['id'],'support_updated','support_ticket',tid,{'status':st,'previous_status':prev.get('status')})
+                    if changed:
+                        admin_audit(u['id'],'support_updated','support_ticket',tid,{'status':st,'previous_status':prev.get('status')})
+                        notify(prev['user_id'],'تحديث من دعم مِنجاز',
+                               'يوجد رد جديد على التذكرة #'+str(tid)+'، افتح مركز العمل لقراءته'
+                               if str(b.get('admin_reply') or '').strip() else 'تغيّرت حالة تذكرة الدعم #'+str(tid),
+                               'support')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
                 if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
@@ -3945,7 +3950,12 @@ class H(BaseHTTPRequestHandler):
                     r,pr,changed,err=update_privacy_request(pid,st,b.get('admin_note'))
                     if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    if changed:admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})
+                    if changed:
+                        admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})
+                        notify(pr['user_id'],'تحديث طلب الخصوصية #'+str(pid),
+                               'حالة الطلب: '+{'in_progress':'قيد المراجعة','completed':'مكتمل','rejected':'لم يُقبل'}.get(st,st)+
+                               (' · '+str(b.get('admin_note') or '')[:150] if b.get('admin_note') else ''),
+                               'privacy')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
             return self.sendj(404,{'error':'not_found'})
         except ValueError as e:

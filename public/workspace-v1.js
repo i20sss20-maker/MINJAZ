@@ -467,7 +467,8 @@ async function loadPrivacyRequests(){
       access:"الاطلاع على البيانات",export:"تصدير",correct:"تصحيح",
       delete:"حذف الحساب",restrict:"تقييد المعالجة"
     }[x.request_type]||x.request_type),x.details||"",
-    [ticketStatus(x.status),safeDate(x.created_at)],"")
+    [ticketStatus(x.status),safeDate(x.created_at)],
+    x.admin_note?'<p class="warning">ملاحظة الإدارة: '+esc(x.admin_note)+'</p>':"")
   ).join(""):empty("ما عندك طلبات خصوصية حتى الآن.");
  }catch(e){$("privacyItems").innerHTML=empty("تعذر عرض طلبات الخصوصية: "+e.message)}
 }
@@ -490,13 +491,13 @@ async function loadPortfolio(){
   ).join(""):empty("لا توجد نماذج أعمال. أضف عملًا حقيقيًا لتقوية ملفك المهني.");
  }catch(e){$("portfolioItems").innerHTML=empty("تعذر تحميل معرض أعمالك: "+e.message)}
 }
-let adminSupportTickets=[],adminCancellations=[];
+let adminSupportTickets=[],adminCancellations=[],adminSafetyReports=[],adminPrivacyRequests=[];
 async function loadAdminQueues(){
  if(currentUser?.role!=="admin")return;
  try{
   const [oper,help,privacy,safety,cancels]=await Promise.all([
    request("/api/admin/operations"),request("/api/admin/support"),
-   request("/api/admin/privacy"),request("/api/admin/safety/reports?status=open"),
+   request("/api/admin/privacy"),request("/api/admin/safety/reports"),
    request("/api/admin/cancellations")
   ]);
   const metrics=oper.metrics||{};
@@ -513,10 +514,12 @@ async function loadAdminQueues(){
   $("adminStats").innerHTML=pairs.map(x=>'<article><b>'+Number(x[1]||0)+'</b><small>'+esc(x[0])+'</small></article>').join("");
   adminSupportTickets=help.items||[];
   adminCancellations=cancels.items||[];
+  adminSafetyReports=safety.items||[];
+  adminPrivacyRequests=privacy.items||[];
   const groups=[
    ["تذاكر الدعم",help.items||[],"subject",["open","in_progress"]],
-   ["طلبات الخصوصية",privacy.items||[],"request_type",["pending","in_progress"]],
-   ["بلاغات السلامة",safety.items||[],"category",["open","in_review"]],
+   ["طلبات الخصوصية",adminPrivacyRequests,"request_type",["pending","in_progress"]],
+   ["بلاغات السلامة",adminSafetyReports,"category",["open","in_review"]],
    ["إلغاءات العقود",adminCancellations,"reason",["pending","in_review"]]
   ];
   const counters=groups.map(([name,rows,field,statuses])=>{
@@ -534,7 +537,17 @@ async function loadAdminQueues(){
      [ticketStatus(x.status),x.payment_status==="paid"?"تم الدفع · يلزم إثبات استرداد":"غير مدفوع"],
      '<button type="button" data-action="review-cancel" data-id="'+Number(x.id)+'">مراجعة الطلب</button>')
   ).join("");
-  $("adminQueues").innerHTML=counters+urgentSupport+urgentCancels;
+  const urgentSafety=adminSafetyReports.filter(x=>["open","in_review"].includes(x.status)).slice(0,12).map(x=>
+    entry("بلاغ أمان #"+Number(x.id)+" · "+(x.category||"مخالفة"),x.details||"",
+      [ticketStatus(x.status),"المهمة: "+(x.task_title||"-"),"المستخدم المُبلغ عنه: "+(x.reported_user_name||"-")],
+      '<button type="button" data-action="review-safety" data-id="'+Number(x.id)+'">مراجعة الأمان</button>')
+  ).join("");
+  const urgentPrivacy=adminPrivacyRequests.filter(x=>["pending","in_progress"].includes(x.status)).slice(0,12).map(x=>
+    entry("طلب خصوصية #"+Number(x.id)+" · "+(x.request_type||"طلب"),x.details||"",
+      [ticketStatus(x.status),"مقدم الطلب: "+(x.name||"مستخدم")],
+      '<button type="button" data-action="review-privacy" data-id="'+Number(x.id)+'">فرز الطلب</button>')
+  ).join("");
+  $("adminQueues").innerHTML=counters+urgentSupport+urgentCancels+urgentSafety+urgentPrivacy;
  }catch(e){$("adminQueues").innerHTML=empty("تعذر تحديث بيانات الإدارة: "+e.message)}
 }
 async function loadExtraPanels(){
@@ -652,6 +665,74 @@ $("reportForm").addEventListener("submit",async e=>{
  finally{loadingButton(form,false)}
 });
 $("adminRefresh").addEventListener("click",loadAdminQueues);
+
+$("adminQueues").addEventListener("click",e=>{
+ const b=e.target.closest('button[data-action="review-safety"]');
+ if(!b||currentUser?.role!=="admin")return;
+ const id=Number(b.dataset.id),r=adminSafetyReports.find(x=>Number(x.id)===id);
+ if(!Number.isSafeInteger(id)||id<1||!r)return;
+ $("adminSafetyId").value=String(id);
+ $("adminSafetyTitle").textContent="مراجعة بلاغ الأمان #"+id;
+ $("adminSafetyDetails").textContent=(r.details||"")+" · مهمة: "+(r.task_title||"-")+" · المستهدف: "+(r.reported_user_name||"-");
+ $("adminSafetyStatus").value=r.status==="in_review"?"in_review":"in_review";
+ $("adminSafetyNote").value=r.admin_note||"";
+ $("adminSafetyTaskAction").value="";
+ $("adminSafetyUserAction").value="";
+ $("adminSafetyTaskAction").disabled=!Number(r.task_id);
+ $("adminSafetyUserAction").disabled=!Number(r.reported_user_id);
+ $("adminSafetyDialog").showModal();
+});
+$("closeAdminSafety").addEventListener("click",()=>$("adminSafetyDialog").close());
+$("adminSafetyForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="admin")return;
+ const form=e.currentTarget,id=Number($("adminSafetyId").value),report=adminSafetyReports.find(x=>Number(x.id)===id);
+ const status=$("adminSafetyStatus").value,task_action=$("adminSafetyTaskAction").disabled?"":$("adminSafetyTaskAction").value,
+  user_action=$("adminSafetyUserAction").disabled?"":$("adminSafetyUserAction").value,
+  admin_note=$("adminSafetyNote").value.trim();
+ if(!report||!Number.isSafeInteger(id)||id<1||!["in_review","resolved","dismissed"].includes(status))return;
+ if((task_action||user_action||status!=="in_review")&&admin_note.length<8){
+  notice("اكتب سبب القرار والأدلة في 8 أحرف على الأقل.","error");return;
+ }
+ if((task_action||user_action)&&!window.confirm("هذا الإجراء سيؤثر فورًا على حساب أو مهمة حقيقية. هل راجعت الأدلة وتأكدت من القرار؟"))return;
+ if(status==="dismissed"&&(task_action||user_action)){
+  notice("لا تجمع إغلاق البلاغ دون إجراء مع تقييد أو إخفاء فعلي.","error");return;
+ }
+ form.querySelector('button[type="submit"]').disabled=true;
+ try{
+  const r=await request("/api/admin/safety/reports/"+id,{method:"PATCH",data:{status,task_action,user_action,admin_note}});
+  $("adminSafetyDialog").close();await loadAdminQueues();
+  notice(r.idempotent_replay?"البلاغ مراجع مسبقًا، لم تتغير حالته.":"تم حفظ قرار الأمان في السجل وإبلاغ الأطراف حسب التغيير.","success");
+ }catch(err){notice("تعذرت مراجعة البلاغ: "+err.message,"error")}
+ finally{form.querySelector('button[type="submit"]').disabled=false}
+});
+$("adminQueues").addEventListener("click",e=>{
+ const b=e.target.closest('button[data-action="review-privacy"]');
+ if(!b||currentUser?.role!=="admin")return;
+ const id=Number(b.dataset.id),r=adminPrivacyRequests.find(x=>Number(x.id)===id);
+ if(!Number.isSafeInteger(id)||id<1||!r)return;
+ $("adminPrivacyId").value=String(id);
+ $("adminPrivacyTitle").textContent="فرز طلب الخصوصية #"+id+" · "+(r.request_type||"");
+ $("adminPrivacyDetails").textContent=(r.details||"")+" · مقدم الطلب: "+(r.name||"مستخدم");
+ $("adminPrivacyStatus").value="in_progress";
+ $("adminPrivacyNote").value=r.admin_note||"";
+ $("adminPrivacyDialog").showModal();
+});
+$("closeAdminPrivacy").addEventListener("click",()=>$("adminPrivacyDialog").close());
+$("adminPrivacyForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="admin")return;
+ const form=e.currentTarget,id=Number($("adminPrivacyId").value),req=adminPrivacyRequests.find(x=>Number(x.id)===id);
+ const status=$("adminPrivacyStatus").value,note=$("adminPrivacyNote").value.trim();
+ if(!req||!Number.isSafeInteger(id)||id<1||!["in_progress","rejected"].includes(status)||note.length<5)return;
+ if(status==="rejected"&&!window.confirm("سيُرفض طلب الخصوصية ويصل إشعار لصاحبه. هل راجعت سبب الرفض والمتطلبات القانونية؟"))return;
+ form.querySelector('button[type="submit"]').disabled=true;
+ try{
+  const r=await request("/api/admin/privacy/"+id,{method:"PATCH",data:{status,admin_note:note}});
+  $("adminPrivacyDialog").close();await loadAdminQueues();
+  notice(r.idempotent_replay?"حالة الخصوصية لم تتغير.":"تم تسجيل مراجعة طلب الخصوصية وإشعار صاحبه.","success");
+ }catch(err){notice("تعذرت مراجعة طلب الخصوصية: "+err.message,"error")}
+ finally{form.querySelector('button[type="submit"]').disabled=false}
+});
+
 
 let orderCancelKey="";
 $("orderCancelForm").addEventListener("input",()=>{orderCancelKey=""});
