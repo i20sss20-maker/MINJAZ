@@ -38,6 +38,19 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <div id="workspace" class="hidden">
 <section class="hero"><div><div class="eyebrow">مِنجاز · تشغيل حقيقي بمرحلة اختبار مغلقة · لا مدفوعات</div><h1 id="welcome">مرحبًا بك</h1><p id="who">مساحة عملك داخل منجاز</p></div>
 <div class="hero-actions"><a href="/digital-services">استعرض الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">حسابي</a></div></section>
+<section id="ownerAdminPanel" class="panel hidden" aria-label="تأكيد صلاحيات مدير مِنجاز" style="margin-top:16px">
+<h2>تفعيل الإدارة الرئيسية بطريقة آمنة</h2>
+<p class="subtitle">يُتاح هذا الإجراء فقط لبريد المالك الموثّق والمحدد على الخادم. لا يتم تغيير دور الحساب بمجرد إضافة البريد إلى الإعدادات؛ يلزم كلمة المرور ورابط تأكيد يُرسل إلى بريد المالك وينتهي خلال 15 دقيقة.</p>
+<form id="ownerAdminRequestForm">
+<label class="field">كلمة مرور حسابك الحالي<input id="ownerAdminRequestPassword" type="password" autocomplete="current-password" minlength="10" required></label>
+<div class="form-actions"><button type="submit" class="primary">إرسال رابط تأكيد الإدارة إلى بريدي</button></div>
+</form>
+<form id="ownerAdminConfirmForm" class="hidden">
+<label class="field">رمز التأكيد من رابط البريد<input id="ownerAdminToken" type="text" autocomplete="off" maxlength="160" minlength="35" spellcheck="false" required placeholder="يُعبأ تلقائيًا عند فتح رابط البريد"></label>
+<label class="field">أعد كتابة كلمة المرور لتأكيد الترقية<input id="ownerAdminConfirmPassword" type="password" autocomplete="current-password" minlength="10" required></label>
+<div class="warning">هذا تأكيد لصلاحيات مدير قادر على مراجعة بيانات المستخدمين وإجراءات الإدارة. لا تستخدم حسابًا مشتركًا.</div>
+<div class="form-actions"><button type="submit" class="primary">تأكيد تفعيل الإدارة</button></div>
+</form></section>
 <section id="summary" class="summary" aria-label="ملخص الحساب"></section>
 <section id="legalWrap" class="hidden" aria-label="المستندات القانونية"><h2>الشروط والخصوصية التجريبية</h2><p>راجع المستندات والإصدارات أدناه قبل إنشاء المهام أو إرسال العروض. هذه مسودات تجريبية وليست نصوصًا تجارية معتمدة.</p><div id="legalDocs"></div><button id="acceptLegal" class="primary" type="button">أوافق على المستندات المحددة</button></section>
 <div class="grid">

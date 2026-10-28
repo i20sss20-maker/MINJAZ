@@ -67,6 +67,7 @@ function showRole(){
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
  show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");
+ show("ownerAdminPanel",Boolean(u.admin_eligible));
  if(role==="freelancer")$("kycStatus").textContent=(window.__freelancerProfile?.kyc_status==="approved")?"الهوية موثّقة لدى المزود":"الهوية غير معتمدة. لن تظهر شارة موثّق قبل اكتمال تحقق فعلي."
  const switcher=$("switchRole");
  show("switchRole",role!=="admin");
@@ -183,6 +184,18 @@ async function load(){
   window.__freelancerProfile=me.freelancer_profile||{};
   show("workspace",true);show("loginRequired",false);show("logout",true);
   showRole();
+  const hash=window.location.hash||"";
+  if(hash.startsWith("#admin-claim=")){
+   try{
+    const token=decodeURIComponent(hash.slice("#admin-claim=".length));
+    if(currentUser.admin_eligible&&/^[A-Za-z0-9_-]{35,160}$/.test(token)){
+     $("ownerAdminToken").value=token;
+     show("ownerAdminConfirmForm",true);
+     notice("وصل رابط تأكيد الإدارة. أدخل كلمة مرورك الحالية لتفعيل الصلاحيات.","success");
+    }
+   }catch(e){}
+   history.replaceState(null,"",location.pathname+location.search);
+  }
   const results=await Promise.allSettled([
    request("/api/v1/legal/status"),request("/api/v1/legal/documents"),loadCategories()
   ]);
@@ -207,6 +220,37 @@ $("switchRole").addEventListener("click",async()=>{
   await request("/api/v1/me/active-role",{method:"PATCH",data:{role:target}});
   notice("تم تغيير وضع الحساب بنجاح.","success");await load();
  }catch(e){notice(e.message,"error")}finally{btn.disabled=false}
+});
+$("ownerAdminRequestForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(!currentUser?.admin_eligible)return;
+ const f=e.currentTarget,pass=$("ownerAdminRequestPassword").value;
+ if(pass.length<10){notice("كلمة المرور غير صالحة.","error");return}
+ loadingButton(f,true);
+ try{
+  const r=await request("/api/v1/auth/admin-claim/request",{method:"POST",data:{password:pass}});
+  $("ownerAdminRequestPassword").value="";
+  if(r.already_admin){notice("هذا الحساب لديه صلاحيات الإدارة بالفعل.","success");await load();return}
+  show("ownerAdminConfirmForm",true);
+  notice("أرسلنا رابط تأكيد الإدارة إلى البريد الموثّق. افتحه على نفس المتصفح أو الصق الرمز هنا، ثم أعد كتابة كلمة المرور.","success");
+ }catch(err){notice(err.code==="admin_claim_rate_limited"?"محاولات كثيرة، حاول لاحقًا.":err.message,"error")}
+ finally{loadingButton(f,false)}
+});
+$("ownerAdminConfirmForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(!currentUser?.admin_eligible)return;
+ const f=e.currentTarget,token=$("ownerAdminToken").value.trim(),password=$("ownerAdminConfirmPassword").value;
+ if(!/^[A-Za-z0-9_-]{35,160}$/.test(token)||password.length<10){
+  notice("تحقق من رمز البريد وكلمة المرور.","error");return;
+ }
+ loadingButton(f,true);
+ try{
+  const r=await request("/api/v1/auth/admin-claim/confirm",{method:"POST",data:{token,password}});
+  $("ownerAdminConfirmPassword").value="";$("ownerAdminToken").value="";
+  if(r.admin_activated){
+   notice("تم تفعيل الإدارة بعد التحقق من ملكية البريد وكلمة المرور. خرجت الأجهزة الأخرى.","success");
+   await load();
+  }
+ }catch(err){notice(err.message,"error")}
+ finally{loadingButton(f,false)}
 });
 $("logout").addEventListener("click",async()=>{
  const b=$("logout");b.disabled=true;
