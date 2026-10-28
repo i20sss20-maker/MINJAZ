@@ -103,6 +103,65 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertNotIn("payment_mode=mock", JS)
         self.assertNotIn("مقبول ومدفوع", JS)
 
+    def test_real_account_safety_and_support_workflows(self):
+        for endpoint in (
+            "/api/v1/account/sessions",
+            "/api/v1/account/sessions/revoke-others",
+            "/api/v1/account/sessions/"+'"+id',
+            "/api/v1/privacy/export",
+            "/api/v1/privacy/requests",
+            "/api/v1/support/tickets",
+            "/api/v1/safety/reports",
+            "/api/v1/freelancer/portfolio",
+            "/api/admin/operations",
+            "/api/admin/support",
+            "/api/admin/privacy",
+            "/api/admin/safety/reports",
+        ):
+            self.assertIn(endpoint, JS)
+        self.assertIn('idempotency_key:supportRequestKey', JS)
+        self.assertIn('idempotency_key:privacyRequestKey', JS)
+        self.assertIn('idempotency_key:portfolioRequestKey', JS)
+        self.assertIn('idempotency_key:reportRequestKey', JS)
+        self.assertIn('const payload=await request("/api/v1/privacy/export")', JS)
+        self.assertIn('URL.createObjectURL(blob)', JS)
+        self.assertIn('window.confirm(', JS)
+        self.assertIn('loadExtraPanels()', JS)
+        self.assertNotIn('payment_mode=mock', JS)
+
+    def test_account_panels_are_role_gated_and_present(self):
+        for id_ in (
+            "sessionsItems", "refreshSessions", "revokeOtherSessions",
+            "downloadMyData", "portfolioPanel", "portfolioForm", "portfolioTitle",
+            "portfolioDescription", "portfolioUrl", "portfolioItems", "kycStatus",
+            "supportForm", "supportCategory", "supportSubject", "supportMessage",
+            "supportItems", "safetyItems", "privacyForm", "privacyType",
+            "privacyDetails", "privacyItems", "adminQueuesPanel", "adminStats",
+            "adminQueues", "adminRefresh", "reportDialog", "reportForm",
+            "reportTask", "reportOrder", "reportDetails", "reportCategory",
+            "closeReport", "reportOrderButton"
+        ):
+            self.assertIn('id="'+id_+'"', HTML)
+        self.assertIn('show("portfolioPanel",role==="freelancer")', JS)
+        self.assertIn('show("adminQueuesPanel",role==="admin")', JS)
+        self.assertIn('if(currentUser?.role!=="freelancer")return;', JS)
+        self.assertIn('if(currentUser?.role!=="admin")return;', JS)
+        self.assertIn('if(activeOrderId)openReportDialog({order_id:activeOrderId})', JS)
+        self.assertNotIn("KYC_MODE=manual", JS)
+        self.assertNotIn("role==='admin'", HTML)
+
+    def test_server_restricts_account_data_and_admin_requests(self):
+        # Every sensitive endpoint uses server-side identity and a SQL user ID,
+        # not a client-supplied target ID.
+        self.assertIn("if p=='/api/v1/account/sessions' and method=='GET':", SERVER)
+        self.assertIn("if p=='/api/v1/support/tickets':", SERVER)
+        self.assertIn("if p=='/api/v1/privacy/requests':", SERVER)
+        self.assertIn("if p=='/api/v1/freelancer/portfolio':", SERVER)
+        self.assertIn("if p.startswith('/api/admin'):", SERVER)
+        self.assertIn("u=self.require('admin');", SERVER)
+        self.assertIn("u=self.require('freelancer');", SERVER)
+        self.assertIn("where user_id=%s", SERVER)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
