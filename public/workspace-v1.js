@@ -123,7 +123,7 @@ function showRole(){
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
- show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");
+ show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");show("launchReadinessPanel",role==="admin");
  show("ownerAdminPanel",Boolean(u.admin_eligible));
  if(role==="freelancer")$("kycStatus").textContent=(window.__freelancerProfile?.kyc_status==="approved")?"الهوية موثّقة لدى المزود":"الهوية غير معتمدة. لن تظهر شارة موثّق قبل اكتمال تحقق فعلي."
  const switcher=$("switchRole");
@@ -607,6 +607,77 @@ async function loadPortfolio(){
   ).join(""):empty("لا توجد نماذج أعمال. أضف عملًا حقيقيًا لتقوية ملفك المهني.");
  }catch(e){$("portfolioItems").innerHTML=empty("تعذر تحميل معرض أعمالك: "+e.message)}
 }
+const commercialGateLabels={
+ app_environment:"إعداد بيئة تشغيل إنتاجية",
+ database_persistence:"استمرارية قاعدة البيانات",
+ sms_provider:"مزود رسائل الجوال (اختياري)",
+ email_provider:"الإرسال البريدي الحقيقي",
+ non_test_email_sender:"عنوان بريد من دومين مملوك",
+ verified_email_policy:"تفعيل بريد المستخدم قبل الدخول",
+ admin_email_configured:"تعريف مسؤول النظام",
+ authentication_provider:"التحقق من الحسابات",
+ payment_provider:"تحصيل مدفوعات حقيقي ومؤكد",
+ marketplace_payout_settlement:"تسويات وتحويلات المستقلين من مزود مالي معتمد",
+ file_storage:"ملفات خاصة مرتبطة بالمنصة",
+ kyc_provider:"التحقق الحقيقي من هوية المستقل",
+ source_control:"التحديث من مستودع المصدر",
+ legal_versions:"توفر نسخ العقود والسياسات",
+ legal_review:"اعتماد العقود والسياسات القانونية",
+ public_base_url:"رابط HTTPS الرسمي",
+ cors_origins:"حماية مصادر الوصول المسموح بها",
+ runtime_schema_ensure:"إيقاف تغييرات البنية التلقائية غير المراجعة",
+ operational_telemetry:"سجل أحداث التشغيل",
+ privacy_account_deletion:"حذف بيانات الحساب والملفات دون بقايا",
+ push_provider:"مزود الإشعارات (اختياري)",
+ launch_guard:"حاجز الحماية من إطلاق غير معتمد"
+};
+const commercialMandatoryChecks=[
+ "app_environment","authentication_provider","email_provider","verified_email_policy",
+ "payment_provider","marketplace_payout_settlement","file_storage",
+ "kyc_provider","legal_review","privacy_account_deletion",
+ "database_persistence","public_base_url","cors_origins"
+];
+async function loadLaunchReadiness(){
+ if(currentUser?.role!=="admin")return;
+ const summary=$("launchReadinessSummary"),items=$("launchReadinessItems");
+ summary.textContent="جاري فحص حالة نظام مِنجاز الفعلية.";
+ items.innerHTML="";
+ try{
+  const response=await request("/readiness",{timeoutMs:16000});
+  if(!Array.isArray(response.checks))throw Error("استجابة فحص غير مكتملة.");
+  const byKey=new Map(response.checks.filter(c=>c&&typeof c.key==="string").map(c=>[c.key,c]));
+  const required=response.checks.filter(c=>c.required);
+  const allMandatory=commercialMandatoryChecks.every(k=>byKey.has(k)&&byKey.get(k).ok===true);
+  const pass=response.ready_for_commercial_launch===true&&allMandatory&&required.every(c=>c.ok===true);
+  const failed=required.filter(c=>c.ok!==true);
+  const missing=commercialMandatoryChecks.filter(k=>!byKey.has(k));
+  if(pass){
+   summary.textContent="✅ اجتازت إعدادات الخادم فحص متطلبات الإطلاق. يلزم أيضًا اختبار المعاملات الفعلية والاعتماد القانوني التشغيلي قبل أي إعلان.";
+  }else{
+   summary.textContent="🔴 الإطلاق التجاري غير معتمد: "+(failed.length+missing.length)+
+    " متطلب غير مكتمل أو غير موثق. يُمنع التحصيل وتحويل مستحقات المستقلين حتى استيفائها.";
+  }
+  items.innerHTML=response.checks.map(c=>entry(
+   (c.ok===true?"✅ ":"⛔ ")+(commercialGateLabels[c.key]||c.key),
+   c.ok===true?"متحقق وفق الإعدادات الحالية.":"غير متحقق، لا يجوز تجاوزه ببيانات تجريبية.",
+   [c.required?"إلزامي":"اختياري",String(c.value??"لم يتم التحقق")],
+   ""
+  )).join("");
+  if(missing.length){
+   items.innerHTML+=entry("⛔ متطلبات غير معرّفة في استجابة الخادم",
+    "تعذّر التأكد من المتطلبات الأساسية. لا يُقبل الإطلاق.",missing.map(k=>commercialGateLabels[k]||k),"");
+  }
+  if(response.ready_for_nonfinancial_pilot!==true){
+   items.innerHTML+=entry("ملاحظة إطلاق غير مالي",
+    "حتى الإطلاق العام دون دفع يحتاج تحقق الهوية والخصوصية والعقود والتخزين. النسخة الحالية ليست تصريح تشغيل تجاري.",[],"");
+  }
+ }catch(err){
+  summary.textContent="⛔ تعذر فحص جاهزية الإطلاق: "+err.message+
+   ". حالة الإطلاق غير معتمدة حتى عودة الفحص.";
+  items.innerHTML=empty("لا تُفعّل الدفع بناءً على حالة قديمة.");
+ }
+}
+
 let adminSupportTickets=[],adminCancellations=[],adminSafetyReports=[],adminPrivacyRequests=[];
 async function loadAdminQueues(){
  if(currentUser?.role!=="admin")return;
@@ -669,7 +740,7 @@ async function loadAdminQueues(){
 async function loadExtraPanels(){
  const jobs=[loadSessions(),loadSupport(),loadPrivacyRequests(),loadSafetyReports()];
  if(currentUser?.role==="freelancer")jobs.push(loadPortfolio());
- if(currentUser?.role==="admin")jobs.push(loadAdminQueues());
+ if(currentUser?.role==="admin")jobs.push(loadAdminQueues(),loadLaunchReadiness());
  await Promise.allSettled(jobs);
 }
 $("refreshSessions").addEventListener("click",loadSessions);
@@ -781,6 +852,7 @@ $("reportForm").addEventListener("submit",async e=>{
  finally{loadingButton(form,false)}
 });
 $("adminRefresh").addEventListener("click",loadAdminQueues);
+$("refreshLaunchReadiness").addEventListener("click",loadLaunchReadiness);
 
 $("adminQueues").addEventListener("click",e=>{
  const b=e.target.closest('button[data-action="review-safety"]');
