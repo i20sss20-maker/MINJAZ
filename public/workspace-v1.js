@@ -3,6 +3,8 @@
 const $=id=>document.getElementById(id);
 let currentUser=null,currentTasks=[],currentOrders=[],currentProposals=[],legalInfo=null,documents=[],pendingTaskKey="",pendingMessageKey="",activeOrderId=0,activeOfferTaskId=0,loading=false;
 const loadErrors={tasks:false,orders:false,proposals:false};
+const TASK_PAGE_SIZE=20,ORDER_PAGE_SIZE=15;
+let taskVisibleCount=TASK_PAGE_SIZE,orderVisibleCount=ORDER_PAGE_SIZE;
 const ERROR={
  unauthorized:"انتهت جلستك. سجّل الدخول مجددًا.",
  legal_acceptance_required:"راجع مستندات الشروط والخصوصية ووافق عليها قبل تنفيذ الطلب.",
@@ -127,9 +129,11 @@ function matchesSearch(query,values){
  const q=normalizeSearch(query);
  return !q||normalizeSearch(values.join(" ")).includes(q);
 }
-function updateListCount(nodeId,shown,total,label){
+function updateListCount(nodeId,shown,total,label,matching){
+ const result=matching===undefined?shown:matching;
  $(nodeId).textContent=total===0?"لا توجد "+label+" حاليًا":
-  shown===total?"عرض "+total+" من "+label:"عرض "+shown+" من أصل "+total+" "+label;
+  result===0?"لا توجد نتائج مطابقة في "+label:
+  "عرض "+shown+" من أصل "+total+" "+label+(result>shown?" · يمكنك عرض المزيد":"");
 }
 function setTaskFilterOptions(role){
  const input=$("taskStatusFilter");
@@ -173,7 +177,7 @@ function showRole(){
  show("taskTools",role!=="admin");show("orderTools",role!=="admin");
  setTaskFilterOptions(role);
  $("taskSearch").value="";$("orderSearch").value="";
- $("orderStatusFilter").value="all";
+ $("orderStatusFilter").value="all";taskVisibleCount=TASK_PAGE_SIZE;orderVisibleCount=ORDER_PAGE_SIZE;
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
  show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");show("launchReadinessPanel",role==="admin");
  show("ownerAdminPanel",Boolean(u.admin_eligible));
@@ -202,10 +206,12 @@ async function loadCategories(){
 }
 function renderTasks(){
  const role=currentUser.role;
- if(role==="admin"){$("taskItems").innerHTML=empty("تتوفر تفاصيل المهام من الواجهة الإدارية الكاملة.");$("tasksResultCount").textContent="";return}
- if(loadErrors.tasks){$("taskItems").innerHTML=empty("تعذّر الاتصال بالمشاريع الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("tasksResultCount").textContent="البيانات غير متاحة مؤقتًا";return}
- const tasks=filteredTasks();updateListCount("tasksResultCount",tasks.length,currentTasks.length,"مشروع");
- $("taskItems").innerHTML=tasks.length?tasks.slice(0,40).map(t=>{
+ if(role==="admin"){$("taskItems").innerHTML=empty("تتوفر تفاصيل المهام من الواجهة الإدارية الكاملة.");$("tasksResultCount").textContent="";show("moreTasks",false);return}
+ if(loadErrors.tasks){$("taskItems").innerHTML=empty("تعذّر الاتصال بالمشاريع الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("tasksResultCount").textContent="البيانات غير متاحة مؤقتًا";show("moreTasks",false);return}
+ const tasks=filteredTasks();
+ updateListCount("tasksResultCount",Math.min(taskVisibleCount,tasks.length),currentTasks.length,"المشاريع",tasks.length);
+ show("moreTasks",tasks.length>taskVisibleCount);
+ $("taskItems").innerHTML=tasks.length?tasks.slice(0,taskVisibleCount).map(t=>{
   const canOffer=role==="freelancer"&&t.status==="open"&&!t.has_proposal;
   const mine=role==="client";
   const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>'+(t.status==="open"?'<button type="button" data-action="close-task" data-id="'+Number(t.id)+'">إغلاق المهمة</button>':""):
@@ -217,10 +223,12 @@ function renderTasks(){
 }
 function renderOrders(){
  const role=currentUser.role;
- if(role==="admin"){$("orderItems").innerHTML=empty("راجع طلبات العملاء من لوحة إدارة الخدمات.");$("ordersResultCount").textContent="";return}
- if(loadErrors.orders){$("orderItems").innerHTML=empty("تعذّر تحميل طلباتك الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("ordersResultCount").textContent="البيانات غير متاحة مؤقتًا";return}
- const orders=filteredOrders();updateListCount("ordersResultCount",orders.length,currentOrders.length,"طلب");
- $("orderItems").innerHTML=orders.length?orders.slice(0,25).map(o=>
+ if(role==="admin"){$("orderItems").innerHTML=empty("راجع طلبات العملاء من لوحة إدارة الخدمات.");$("ordersResultCount").textContent="";show("moreOrders",false);return}
+ if(loadErrors.orders){$("orderItems").innerHTML=empty("تعذّر تحميل طلباتك الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("ordersResultCount").textContent="البيانات غير متاحة مؤقتًا";show("moreOrders",false);return}
+ const orders=filteredOrders();
+ updateListCount("ordersResultCount",Math.min(orderVisibleCount,orders.length),currentOrders.length,"الطلبات",orders.length);
+ show("moreOrders",orders.length>orderVisibleCount);
+ $("orderItems").innerHTML=orders.length?orders.slice(0,orderVisibleCount).map(o=>
   entry(o.title||("طلب #"+o.id),role==="client"?(o.freelancer_name||"المستقل"):(o.client_name||"العميل"),
   [humanStatus(o.status),money(o.amount),o.payment_status==="paid"?"الدفع مؤكد":o.payment_status==="unpaid"?"لم يُدفع":(o.payment_status||"")],
   '<button type="button" data-action="open-order" data-id="'+Number(o.id)+'">المحادثة والتفاصيل</button>')
@@ -331,11 +339,13 @@ async function load(){
   notice(e.status===401?"انتهت الجلسة، ادخل من جديد.":"تعذر تحديث مساحة العمل: "+e.message,"error");
  }finally{$("loading").classList.add("hidden");$("workspace").removeAttribute("aria-busy");$("refreshWorkspace").disabled=false;loading=false}
 }
-$("taskSearch").addEventListener("input",()=>{if(currentUser&&currentUser.role!=="admin")renderTasks()});
-$("taskStatusFilter").addEventListener("change",()=>{if(currentUser&&currentUser.role!=="admin")renderTasks()});
-$("orderSearch").addEventListener("input",()=>{if(currentUser&&currentUser.role!=="admin")renderOrders()});
-$("orderStatusFilter").addEventListener("change",()=>{if(currentUser&&currentUser.role!=="admin")renderOrders()});
+$("taskSearch").addEventListener("input",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderTasks()});
+$("taskStatusFilter").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderTasks()});
+$("orderSearch").addEventListener("input",()=>{orderVisibleCount=ORDER_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderOrders()});
+$("orderStatusFilter").addEventListener("change",()=>{orderVisibleCount=ORDER_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderOrders()});
 $("refreshWorkspace").addEventListener("click",()=>{if(!loading)load()});
+$("moreTasks").addEventListener("click",()=>{taskVisibleCount+=TASK_PAGE_SIZE;renderTasks()});
+$("moreOrders").addEventListener("click",()=>{orderVisibleCount+=ORDER_PAGE_SIZE;renderOrders()});
 $("switchRole").addEventListener("click",async()=>{
  if(!currentUser||currentUser.role==="admin")return;
  const target=currentUser.role==="client"?"freelancer":"client";
