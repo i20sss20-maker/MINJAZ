@@ -8,6 +8,7 @@ COPY scripts /app/scripts
 COPY database /app/database
 COPY public /app/public
 COPY tests /app/tests
+COPY Dockerfile.backup /app/Dockerfile.backup
 
 RUN set -eux; \
     test "$(wc -c < server.py)" -gt 160000; \
