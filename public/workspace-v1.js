@@ -309,6 +309,85 @@ $("offerForm").addEventListener("submit",async e=>{
 });
 $("closeOffer").addEventListener("click",()=>$("offerDialog").close());
 $("closeOffers").addEventListener("click",()=>$("offersDialog").close());
+$("closeOrder").addEventListener("click",()=>{
+ activeOrderId=0;$("orderDialog").close();
+});
+function displayDate(value){
+ if(!value)return "";
+ const date=new Date(value);
+ return Number.isNaN(date.getTime())?"":date.toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"});
+}
+async function showOrder(id,openDialog=true){
+ if(!Number.isSafeInteger(id)||id<1)return;
+ const [order,messages,timeline]=await Promise.all([
+  request("/api/v1/orders/"+id),
+  request("/api/v1/orders/"+id+"/messages"),
+  request("/api/v1/orders/"+id+"/timeline")
+ ]);
+ activeOrderId=id;
+ $("orderTitle").textContent=order.title||("طلب #"+id);
+ const pending=order.status==="awaiting_payment";
+ $("orderInfo").innerHTML=entry("الطلب #"+id,order.description||"",
+  [humanStatus(order.status),"المبلغ المتفق عليه: "+money(order.amount),
+   order.payment_status==="paid"?"الدفع مؤكد":"لم يتم دفع أي مبلغ",
+   "العميل: "+(order.client_name||"-"),"المستقل: "+(order.freelancer_name||"-")],"")+
+  (pending?'<div class="warning">هذا طلب حقيقي مسجّل، لكنه لا يسمح ببدء تنفيذ مدفوع قبل ربط بوابة الدفع الرسمية وتسويات المستقلين. لا ترسل أي مبالغ خارج المنصة.</div>':"");
+ $("orderMessages").innerHTML=(messages.items||[]).length?(messages.items||[]).map(m=>
+  entry(m.sender_name||"عضو",m.body||"مرفق",["بتاريخ "+displayDate(m.created_at)],"")
+ ).join(""):empty("ما فيه رسائل حتى الآن. ابدأ محادثة مع الطرف الآخر.");
+ $("orderTimeline").innerHTML=(timeline.items||[]).length?(timeline.items||[]).map(t=>
+  entry(t.title||"تحديث",t.details||"",[displayDate(t.created_at),t.actor_name||"المنصة"],"")
+ ).join(""):empty("لا توجد أحداث مسجلة.");
+ if(openDialog&&!$("orderDialog").open)$("orderDialog").showModal();
+}
+$("orderItems").addEventListener("click",async e=>{
+ const b=e.target.closest('button[data-action="open-order"]');if(!b)return;
+ const id=Number(b.dataset.id);
+ if(!currentOrders.some(o=>Number(o.id)===id))return;
+ b.disabled=true;
+ try{await showOrder(id)}catch(err){notice("تعذر فتح الطلب: "+err.message,"error")}
+ finally{b.disabled=false}
+});
+$("refreshOrder").addEventListener("click",async()=>{
+ if(!activeOrderId)return;
+ const btn=$("refreshOrder");btn.disabled=true;
+ try{await showOrder(activeOrderId,false)}catch(err){notice(err.message,"error")}
+ finally{btn.disabled=false}
+});
+$("messageBody").addEventListener("input",()=>{pendingMessageKey=""});
+$("messageForm").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const id=activeOrderId,form=e.currentTarget,body=$("messageBody").value.trim();
+ if(!id||!body){notice("اكتب رسالة أولًا.","error");return}
+ loadingButton(form,true);
+ pendingMessageKey=pendingMessageKey||"message-"+(crypto.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2));
+ try{
+  await request("/api/v1/orders/"+id+"/messages",{method:"POST",data:{body,idempotency_key:pendingMessageKey}});
+  pendingMessageKey="";$("messageBody").value="";
+  notice("أُرسلت الرسالة وحُفظت في محادثة الطلب.","success");
+  await showOrder(id,false);
+ }catch(err){
+  if(err.code==="idempotency_key_reused")pendingMessageKey="";
+  notice("تعذر إرسال الرسالة: "+err.message,"error");
+ }finally{loadingButton(form,false)}
+});
+$("markAllRead").addEventListener("click",async()=>{
+ const b=$("markAllRead");b.disabled=true;
+ try{
+  await request("/api/v1/notifications/read-all",{method:"POST",data:{}});
+  await loadUserData();notice("تم تعليم إشعاراتك كمقروءة.","success");
+ }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+});
+$("clientProfile").addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget;loadingButton(form,true);
+ try{
+  await request("/api/v1/client/profile",{method:"PATCH",data:{
+   company_name:$("clientCompany").value.trim(),city:$("clientCity").value.trim(),
+   sector:$("clientSector").value.trim(),bio:$("clientBio").value.trim()
+  }});
+  notice("تم حفظ ملف العميل في قاعدة البيانات.","success");
+ }catch(err){notice(err.message,"error")}finally{loadingButton(form,false)}
+});
 $("nameForm").addEventListener("submit",async e=>{
  e.preventDefault();const f=e.currentTarget;loadingButton(f,true);
  try{
