@@ -220,7 +220,13 @@ footer a{color:#463cbd;text-decoration:none}
     try{await call("/api/v1/auth/confirm-email",{token:match[2]});status("تم تفعيل البريد بنجاح. يمكنك تسجيل الدخول.","good")}
     catch(error){status(error.message,"error")}
   }
-  if(new URLSearchParams(window.location.search).get("auth")==="login")show("login");
+  const entryQuery=new URLSearchParams(window.location.search);
+  const chosenRole=entryQuery.get("role");
+  if(chosenRole==="client"||chosenRole==="freelancer"){
+    const roleInput=document.querySelector('input[name="role"][value="'+chosenRole+'"]');
+    if(roleInput)roleInput.checked=true;
+  }
+  if(entryQuery.get("auth")==="login")show("login");
   handleActionLink();
   call("/api/v1/auth/account-status",undefined,"GET").then(info=>{
     const enabled=info.enabled===true && info.configured===true;
