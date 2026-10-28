@@ -2,6 +2,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 let currentUser=null,currentTasks=[],currentOrders=[],currentProposals=[],legalInfo=null,documents=[],pendingTaskKey="",pendingMessageKey="",activeOrderId=0,activeOfferTaskId=0,loading=false;
+const loadErrors={tasks:false,orders:false,proposals:false};
 const ERROR={
  unauthorized:"انتهت جلستك. سجّل الدخول مجددًا.",
  legal_acceptance_required:"راجع مستندات الشروط والخصوصية ووافق عليها قبل تنفيذ الطلب.",
@@ -110,6 +111,45 @@ function attachmentLinks(items){
 function humanStatus(v){
  return {open:"مفتوحة",matched:"اختير عرض",awaiting_payment:"بانتظار الدفع",in_progress:"قيد التنفيذ",delivered:"تم التسليم",completed:"مكتملة",cancelled:"ملغاة",revision_requested:"تعديل مطلوب",disputed:"نزاع"}[v]||String(v||"جديد");
 }
+function normalizeSearch(value){
+ return String(value||"").toLocaleLowerCase("ar").normalize("NFKC")
+  .replace(/[\u064b-\u065f\u0670\u0640]/g,"").replace(/[أإآ]/g,"ا")
+  .replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/\s+/g," ").trim();
+}
+function matchesSearch(query,values){
+ const q=normalizeSearch(query);
+ return !q||normalizeSearch(values.join(" ")).includes(q);
+}
+function updateListCount(nodeId,shown,total,label){
+ $(nodeId).textContent=total===0?"لا توجد "+label+" حاليًا":
+  shown===total?"عرض "+total+" من "+label:"عرض "+shown+" من أصل "+total+" "+label;
+}
+function setTaskFilterOptions(role){
+ const input=$("taskStatusFilter");
+ const options=role==="freelancer"?
+  [["all","كل فرص العمل"],["not-offered","لم أقدّم عليها"],["offered","قدّمت عرضًا"]]:
+  [["all","كل المشاريع"],["open","تستقبل عروضًا"],["matched","تم اختيار مستقل"],["closed","مغلقة"]];
+ input.replaceChildren();
+ options.forEach(([value,label])=>{
+  const option=document.createElement("option");option.value=value;option.textContent=label;input.append(option);
+ });
+}
+function filteredTasks(){
+ const term=$("taskSearch").value,choice=$("taskStatusFilter").value,role=currentUser.role;
+ return currentTasks.filter(t=>{
+  if(!matchesSearch(term,[t.title,t.description,t.category_name,t.category_slug]))return false;
+  if(choice==="all")return true;
+  if(role==="freelancer")return choice==="offered"?Boolean(t.has_proposal):!t.has_proposal;
+  return t.status===choice;
+ });
+}
+function filteredOrders(){
+ const term=$("orderSearch").value,choice=$("orderStatusFilter").value;
+ return currentOrders.filter(o=>
+  (choice==="all"||o.status===choice)&&
+  matchesSearch(term,[o.title,o.client_name,o.freelancer_name,String(o.id||"")])
+ );
+}
 function empty(text){return '<div class="empty">'+esc(text)+'</div>'}
 function entry(title,description,meta,buttonHtml){
  return '<article class="item"><strong>'+esc(title)+'</strong><p>'+esc(description||"")+'</p><div class="item-meta">'+meta.map(x=>'<span class="chip">'+esc(x)+'</span>').join("")+'</div>'+
@@ -122,6 +162,11 @@ function showRole(){
  $("myName").value=u.name||"";
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
+ show("navCreate",role==="client");show("navProposals",role==="freelancer");
+ show("taskTools",role!=="admin");show("orderTools",role!=="admin");
+ setTaskFilterOptions(role);
+ $("taskSearch").value="";$("orderSearch").value="";
+ $("orderStatusFilter").value="all";
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
  show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");show("launchReadinessPanel",role==="admin");
  show("ownerAdminPanel",Boolean(u.admin_eligible));
@@ -150,8 +195,10 @@ async function loadCategories(){
 }
 function renderTasks(){
  const role=currentUser.role;
- if(role==="admin"){$("taskItems").innerHTML=empty("تتوفر تفاصيل المهام من الواجهة الإدارية الكاملة.");return}
- $("taskItems").innerHTML=currentTasks.length?currentTasks.slice(0,40).map(t=>{
+ if(role==="admin"){$("taskItems").innerHTML=empty("تتوفر تفاصيل المهام من الواجهة الإدارية الكاملة.");$("tasksResultCount").textContent="";return}
+ if(loadErrors.tasks){$("taskItems").innerHTML=empty("تعذّر الاتصال بالمشاريع الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("tasksResultCount").textContent="البيانات غير متاحة مؤقتًا";return}
+ const tasks=filteredTasks();updateListCount("tasksResultCount",tasks.length,currentTasks.length,"مشروع");
+ $("taskItems").innerHTML=tasks.length?tasks.slice(0,40).map(t=>{
   const canOffer=role==="freelancer"&&t.status==="open"&&!t.has_proposal;
   const mine=role==="client";
   const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>'+(t.status==="open"?'<button type="button" data-action="close-task" data-id="'+Number(t.id)+'">إغلاق المهمة</button>':""):
@@ -159,18 +206,21 @@ function renderTasks(){
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
   const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
   return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
- }).join(""):empty(role==="client"?"ما عندك مهام إلى الآن. ابدأ بنشر أول مهمة من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
+ }).join(""):empty(currentTasks.length?"لا توجد مشاريع مطابقة للبحث أو التصفية. جرّب تغيير الكلمات أو الحالة.":role==="client"?"ما نشرت مشاريع بعد. ابدأ بنشر أول مشروع من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
 }
 function renderOrders(){
  const role=currentUser.role;
- if(role==="admin"){$("orderItems").innerHTML=empty("راجع طلبات العملاء من لوحة إدارة الخدمات.");return}
- $("orderItems").innerHTML=currentOrders.length?currentOrders.slice(0,25).map(o=>
+ if(role==="admin"){$("orderItems").innerHTML=empty("راجع طلبات العملاء من لوحة إدارة الخدمات.");$("ordersResultCount").textContent="";return}
+ if(loadErrors.orders){$("orderItems").innerHTML=empty("تعذّر تحميل طلباتك الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("ordersResultCount").textContent="البيانات غير متاحة مؤقتًا";return}
+ const orders=filteredOrders();updateListCount("ordersResultCount",orders.length,currentOrders.length,"طلب");
+ $("orderItems").innerHTML=orders.length?orders.slice(0,25).map(o=>
   entry(o.title||("طلب #"+o.id),role==="client"?(o.freelancer_name||"المستقل"):(o.client_name||"العميل"),
   [humanStatus(o.status),money(o.amount),o.payment_status==="paid"?"الدفع مؤكد":o.payment_status==="unpaid"?"لم يُدفع":(o.payment_status||"")],
   '<button type="button" data-action="open-order" data-id="'+Number(o.id)+'">المحادثة والتفاصيل</button>')
- ).join(""):empty("لا توجد طلبات بعد. تختار عرضًا من عروض المهمة ثم يصبح الطلب بانتظار دفع معتمد.");
+ ).join(""):empty(currentOrders.length?"لا توجد طلبات مطابقة للبحث أو التصفية.":"لا توجد طلبات بعد. عندما تختار عرضًا محفوظًا يصبح الطلب بانتظار الدفع المعتمد.");
 }
 function renderProposals(){
+ if(loadErrors.proposals){$("proposalItems").innerHTML=empty("تعذّر تحميل عروضك الآن. جرّب تحديث البيانات.");return}
  $("proposalItems").innerHTML=currentProposals.length?currentProposals.slice(0,60).map(p=>{
   const canWithdraw=p.proposal_status==="sent"&&p.task_status==="open"&&!p.order_id;
   const meta=[p.proposal_status==="sent"?"بانتظار رد العميل":p.proposal_status==="accepted"?"تم اختيار عرضك":p.proposal_status==="rejected"?"لم يتم اختيار العرض":p.proposal_status||"عرض",
@@ -198,12 +248,15 @@ async function loadUserData(){
   role==="freelancer"?request("/api/v1/freelancer/proposals"):Promise.resolve({items:[]}),
   role==="client"?request("/api/v1/client/profile"):Promise.resolve(null)
  ]);
- if(t.status==="fulfilled"){currentTasks=t.value.items||[]}
- else{currentTasks=[];notice("تعذر تحميل المهام: "+t.reason.message,"error")}
- if(o.status==="fulfilled"){currentOrders=o.value.items||[]}
+ loadErrors.tasks=t.status!=="fulfilled";
+ if(!loadErrors.tasks)currentTasks=t.value.items||[];
+ else{currentTasks=[];notice("تعذر تحميل المشاريع: "+t.reason.message,"error")}
+ loadErrors.orders=o.status!=="fulfilled";
+ if(!loadErrors.orders)currentOrders=o.value.items||[];
  else{currentOrders=[];notice("تعذر تحميل الطلبات: "+o.reason.message,"error")}
  renderTasks();renderOrders();
- currentProposals=proposals.status==="fulfilled"?(proposals.value.items||[]):[];
+ loadErrors.proposals=proposals.status!=="fulfilled";
+ currentProposals=loadErrors.proposals?[]:(proposals.value.items||[]);
  if(role==="freelancer"){renderProposals();if(proposals.status==="rejected")notice("تعذر تحميل عروضك: "+proposals.reason.message,"error")}
  if(role==="client"&&profileResult.status==="fulfilled"&&profileResult.value){
   const c=profileResult.value;$("clientCompany").value=c.company_name||"";$("clientCity").value=c.city||"";
@@ -218,9 +271,9 @@ async function loadUserData(){
  }else{$("sideItems").innerHTML=empty("تعذر تحميل الإشعارات. جرّب تحديث الصفحة.");show("markAllRead",false)}
  const open=role==="client"?currentTasks.filter(x=>x.status==="open").length:currentTasks.filter(x=>!x.has_proposal).length;
  $("summary").innerHTML=[
-  [role==="client"?"مهامي":"الفرص",currentTasks.length],
-  [role==="client"?"المهام المفتوحة":"تستقبل عروضًا",open],
-  ["الطلبات",currentOrders.length],
+  [role==="client"?"مشاريعي":"الفرص",loadErrors.tasks?"—":currentTasks.length],
+  [role==="client"?"المشاريع المفتوحة":"فرص جديدة",loadErrors.tasks?"—":open],
+  ["الطلبات",loadErrors.orders?"—":currentOrders.length],
   ["الإشعارات",n.status==="fulfilled"?Number(n.value.unread||0):"—"]
  ].map(p=>'<article><b>'+esc(p[1])+'</b><small>'+esc(p[0])+'</small></article>').join("");
  const profile=$("freelancerProfile");
