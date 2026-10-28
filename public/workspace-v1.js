@@ -29,7 +29,14 @@ const ERROR={
 const money=value=>Number(value||0).toLocaleString("ar-SA",{maximumFractionDigits:2})+" ر.س";
 const esc=value=>String(value===undefined||value===null?"":value).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 function show(id,yes){$(id).classList.toggle("hidden",!yes)}
-function notice(msg,type){const n=$("notice");n.textContent=msg;n.className="notice "+(type||"");n.classList.toggle("hidden",!msg)}
+let toastTimer=null;
+function notice(msg,type){
+ const n=$("notice"),toast=$("actionToast"),text=String(msg||"");
+ n.textContent=text;n.className="notice "+(type||"");n.classList.toggle("hidden",!text);
+ clearTimeout(toastTimer);toast.textContent=text;toast.className="action-toast"+(type?" "+type:"");
+ toast.classList.toggle("visible",Boolean(text));
+ if(text)toastTimer=setTimeout(()=>toast.classList.remove("visible"),type==="error"?8500:5200);
+}
 async function request(path,options={}){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),options.timeoutMs||12000);
  try{
@@ -287,6 +294,8 @@ async function loadUserData(){
 async function load(){
  if(loading)return;loading=true;
  $("loading").classList.remove("hidden");
+ $("workspace").setAttribute("aria-busy","true");
+ $("refreshWorkspace").disabled=true;
  try{
   const me=await request("/api/v1/me");
   if(!me.user){throw Error("تعذر معرفة صاحب الجلسة.")}
@@ -320,8 +329,13 @@ async function load(){
   show("loginRequired",!currentUser);
   show("logout",Boolean(currentUser));
   notice(e.status===401?"انتهت الجلسة، ادخل من جديد.":"تعذر تحديث مساحة العمل: "+e.message,"error");
- }finally{$("loading").classList.add("hidden");loading=false}
+ }finally{$("loading").classList.add("hidden");$("workspace").removeAttribute("aria-busy");$("refreshWorkspace").disabled=false;loading=false}
 }
+$("taskSearch").addEventListener("input",()=>{if(currentUser&&currentUser.role!=="admin")renderTasks()});
+$("taskStatusFilter").addEventListener("change",()=>{if(currentUser&&currentUser.role!=="admin")renderTasks()});
+$("orderSearch").addEventListener("input",()=>{if(currentUser&&currentUser.role!=="admin")renderOrders()});
+$("orderStatusFilter").addEventListener("change",()=>{if(currentUser&&currentUser.role!=="admin")renderOrders()});
+$("refreshWorkspace").addEventListener("click",()=>{if(!loading)load()});
 $("switchRole").addEventListener("click",async()=>{
  if(!currentUser||currentUser.role==="admin")return;
  const target=currentUser.role==="client"?"freelancer":"client";
