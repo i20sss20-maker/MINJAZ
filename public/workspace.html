@@ -91,7 +91,7 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
  <div id="taskItems" class="items" aria-live="polite"></div></section>
  <section id="proposalPanel" class="panel hidden"><h2>عروضي المقدّمة</h2><p class="subtitle">عرض كل العروض المرسلة وحالتها وسحب العرض المفتوح فقط.</p><div id="proposalItems" class="items"></div></section>
  <section id="orders-section" class="panel"><h2>الطلبات والمحادثات</h2><p class="subtitle">طلبات مرتبطة بحسابك، وسجل رسائلها ومرفقاتها. الدفع غير متاح إلى حين اعتماد النظام المالي.</p>
- <div class="list-tools">
+ <div id="orderTools" class="list-tools">
   <label for="orderSearch"><span>البحث في الطلبات</span><input id="orderSearch" type="search" autocomplete="off" aria-controls="orderItems" placeholder="اسم المشروع أو الطرف الآخر"></label>
   <label for="orderStatusFilter"><span>حالة الطلب</span><select id="orderStatusFilter" aria-controls="orderItems"><option value="all">جميع الحالات</option><option value="awaiting_payment">بانتظار الدفع</option><option value="in_progress">قيد التنفيذ</option><option value="delivered">تم التسليم</option><option value="revision_requested">بانتظار تعديل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select></label>
  </div>
