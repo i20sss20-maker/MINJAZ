@@ -6,6 +6,7 @@ confirms it with the account password again. Only the configured owner is allowe
 This is intentionally disabled outside the isolated preview environment.
 """
 import os
+import psycopg2.extras
 from minjaz_email_auth import normalize_email
 from minjaz_account_auth import (valid_password, verify_password, new_action,
                                  token_digest, deliver_link, secure_config)
@@ -32,7 +33,7 @@ def request_owner_claim(user_id, password, connect, secret, admin_email,
         return 403, {"error": "invalid_credentials"}
     conn = connect()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""SELECT email,password_hash,email_verified_at,role
                            FROM users WHERE id=%s AND deleted_at IS NULL""", (int(user_id),))
             record = cur.fetchone()
@@ -78,7 +79,7 @@ def confirm_owner_claim(user_id, session_id, password, raw, connect, secret, adm
     digest = token_digest(secret, raw)
     conn = connect()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""SELECT id,email,password_hash,email_verified_at,role
                            FROM users WHERE id=%s AND deleted_at IS NULL
                            FOR UPDATE""", (int(user_id),))
