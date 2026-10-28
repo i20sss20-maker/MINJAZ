@@ -39,6 +39,16 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <div id="workspace" class="hidden">
 <section class="hero"><div><div class="eyebrow">MINJAZ WORKSPACE / مساحة عمل متصلة ببياناتك</div><h1 id="welcome">أهلًا بك في مِنجاز</h1><p id="who">مشاريعك، عروضك، وتفاصيل إنجازك في لوحة واحدة.</p></div>
 <div class="hero-actions"><a href="/digital-services">اكتشف الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">إدارة الحساب</a></div></section>
+<nav class="work-nav" aria-label="أقسام مساحة العمل">
+ <a class="work-nav-link" href="#overview">نظرة عامة</a>
+ <a id="navCreate" class="work-nav-link" href="#create-section">نشر مشروع</a>
+ <a class="work-nav-link" href="#tasks-section">الفرص والمشاريع</a>
+ <a id="navProposals" class="work-nav-link hidden" href="#proposalPanel">عروضي</a>
+ <a class="work-nav-link" href="#orders-section">الطلبات</a>
+ <a class="work-nav-link" href="#profile">الملف الشخصي</a>
+ <a class="work-nav-link" href="#support-section">الدعم</a>
+ <button id="refreshWorkspace" class="work-nav-refresh" type="button" aria-label="تحديث بيانات مساحة العمل">↻ <span>تحديث البيانات</span></button>
+</nav>
 <section id="ownerAdminPanel" class="panel hidden" aria-label="تأكيد صلاحيات مدير مِنجاز" style="margin-top:16px">
 <h2>تفعيل الإدارة الرئيسية بطريقة آمنة</h2>
 <p class="subtitle">يُتاح هذا الإجراء فقط لبريد المالك الموثّق والمحدد على الخادم. لا يتم تغيير دور الحساب بمجرد إضافة البريد إلى الإعدادات؛ يلزم كلمة المرور ورابط تأكيد يُرسل إلى بريد المالك وينتهي خلال 15 دقيقة.</p>
@@ -52,12 +62,12 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <div class="warning">هذا تأكيد لصلاحيات مدير قادر على مراجعة بيانات المستخدمين وإجراءات الإدارة. لا تستخدم حسابًا مشتركًا.</div>
 <div class="form-actions"><button type="submit" class="primary">تأكيد تفعيل الإدارة</button></div>
 </form></section>
-<div class="work-heading"><span>نظرة عامة</span><p>ملخص مبني على بيانات حسابك — بدون أرقام افتراضية.</p></div>
+<div id="overview" class="work-heading"><span>نظرة عامة</span><p>ملخص مبني على بيانات حسابك — بدون أرقام افتراضية.</p></div>
 <section id="summary" class="summary" aria-label="ملخص الحساب"></section>
 <section id="legalWrap" class="hidden" aria-label="المستندات القانونية"><h2>الشروط والخصوصية التجريبية</h2><p>راجع المستندات والإصدارات أدناه قبل إنشاء المهام أو إرسال العروض. هذه مسودات تجريبية وليست نصوصًا تجارية معتمدة.</p><div id="legalDocs"></div><button id="acceptLegal" class="primary" type="button">أوافق على المستندات المحددة</button></section>
 <div class="work-heading"><span>المشاريع والتواصل</span><p>كل خطوة محفوظة في سجل الطلبات والنشاط.</p></div>
 <div class="grid">
- <section class="panel"><h2 id="mainTitle">مساحة العمل</h2><p class="subtitle" id="mainSubtitle"></p>
+ <section id="create-section" class="panel"><h2 id="mainTitle">مساحة العمل</h2><p class="subtitle" id="mainSubtitle"></p>
  <div id="clientAction" class="hidden">
    <form id="newTask"><label class="field">عنوان المشروع <input name="title" required minlength="5" maxlength="180" placeholder="مثال: تصميم واجهة متجر إلكتروني متكاملة"></label>
    <label class="field">تفاصيل المشروع <textarea name="description" required minlength="20" maxlength="6000" placeholder="اشرح الهدف، نطاق العمل، الملفات المطلوبة والنتيجة التي تتوقع تسلّمها"></textarea></label>
@@ -71,10 +81,22 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
  <div id="freelancerAction" class="hidden"><p class="note">تصفّح فرص العمل المناسبة لك، وقدّم عرضًا يوضح السعر والمدة ونطاق التنفيذ. يراجع العميل العروض ويختار الأنسب.</p></div>
  <div id="adminAction" class="hidden"><p class="note">إدارة العمليات الفعلية محمية بصلاحيات الخادم، ويمكن متابعة طلبات المستخدمين ومراجعتها من اللوحة.</p><a class="primary" href="/digital-services/admin">فتح إدارة الخدمات الرقمية</a></div>
  </section>
- <section class="panel"><h2 id="sideTitle">آخر النشاط</h2><p class="subtitle" id="sideSubtitle">البيانات من حسابك الفعلي</p><div id="sideItems" class="items"></div><div class="form-actions"><button id="markAllRead" type="button" class="btn-lite hidden">تحديد الإشعارات كمقروءة</button></div></section>
- <section class="panel"><h2 id="tasksTitle">المهام</h2><p class="subtitle" id="tasksSubtitle"></p><div id="taskItems" class="items"></div></section>
+ <section id="activity-section" class="panel"><h2 id="sideTitle">آخر النشاط</h2><p class="subtitle" id="sideSubtitle">البيانات من حسابك الفعلي</p><div id="sideItems" class="items"></div><div class="form-actions"><button id="markAllRead" type="button" class="btn-lite hidden">تحديد الإشعارات كمقروءة</button></div></section>
+ <section id="tasks-section" class="panel"><h2 id="tasksTitle">المشاريع</h2><p class="subtitle" id="tasksSubtitle"></p>
+ <div id="taskTools" class="list-tools">
+  <label for="taskSearch"><span>ابحث في المشاريع</span><input id="taskSearch" type="search" autocomplete="off" aria-controls="taskItems" placeholder="ابحث بالاسم أو الوصف أو التصنيف"></label>
+  <label for="taskStatusFilter"><span>تصفية حسب الحالة</span><select id="taskStatusFilter" aria-controls="taskItems"><option value="all">جميع المشاريع</option></select></label>
+ </div>
+ <div id="tasksResultCount" class="list-count" role="status" aria-live="polite"></div>
+ <div id="taskItems" class="items" aria-live="polite"></div></section>
  <section id="proposalPanel" class="panel hidden"><h2>عروضي المقدّمة</h2><p class="subtitle">عرض كل العروض المرسلة وحالتها وسحب العرض المفتوح فقط.</p><div id="proposalItems" class="items"></div></section>
- <section class="panel"><h2>الطلبات والمحادثات</h2><p class="subtitle">متابعة الطلبات الحقيقية وحالاتها والتواصل بين الطرفين. التنفيذ مرتبط بدفع معتمد، ولن نعرض دفعًا تجريبيًا.</p><div id="orderItems" class="items"></div></section>
+ <section id="orders-section" class="panel"><h2>الطلبات والمحادثات</h2><p class="subtitle">طلبات مرتبطة بحسابك، وسجل رسائلها ومرفقاتها. الدفع غير متاح إلى حين اعتماد النظام المالي.</p>
+ <div class="list-tools">
+  <label for="orderSearch"><span>البحث في الطلبات</span><input id="orderSearch" type="search" autocomplete="off" aria-controls="orderItems" placeholder="اسم المشروع أو الطرف الآخر"></label>
+  <label for="orderStatusFilter"><span>حالة الطلب</span><select id="orderStatusFilter" aria-controls="orderItems"><option value="all">جميع الحالات</option><option value="awaiting_payment">بانتظار الدفع</option><option value="in_progress">قيد التنفيذ</option><option value="delivered">تم التسليم</option><option value="revision_requested">بانتظار تعديل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select></label>
+ </div>
+ <div id="ordersResultCount" class="list-count" role="status" aria-live="polite"></div>
+ <div id="orderItems" class="items" aria-live="polite"></div></section>
  <section id="profile" class="panel full"><h2>بيانات الحساب</h2><p class="subtitle">حدّث بياناتك التي تظهر داخل المنصة.</p>
  <form id="nameForm"><div class="row2"><label class="field">الاسم الظاهر <input id="myName" required minlength="2" maxlength="120" autocomplete="name"></label><label class="field">البريد الموثق <input id="myEmail" disabled></label></div><div class="form-actions"><button class="primary" type="submit">تحديث الاسم</button></div></form>
  <form id="clientProfile" class="hidden"><h3>ملف العميل</h3><div class="row2"><label class="field">اسم المنشأة (اختياري)<input id="clientCompany" maxlength="160" placeholder="منشأتك أو مشروعك"></label><label class="field">المدينة<input id="clientCity" maxlength="120" placeholder="الرياض، جدة..."></label></div><label class="field">مجال العمل<input id="clientSector" maxlength="120" placeholder="التقنية، التجارة، التصميم"></label><label class="field">نبذة <textarea id="clientBio" maxlength="1000" placeholder="معلومات تظهر في ملف العميل"></textarea></label><div class="form-actions"><button class="primary" type="submit">حفظ ملف العميل</button></div></form>
@@ -90,7 +112,7 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
  <div id="sessionsItems" class="items"></div><div class="form-actions"><button id="refreshSessions" class="btn-lite" type="button">تحديث الأجهزة</button><button id="revokeOtherSessions" class="primary" type="button">تسجيل خروج الأجهزة الأخرى</button></div>
  <h3>بياناتي وخصوصيتي</h3><p class="note">يمكنك تنزيل نسخة JSON من بيانات حسابك على جهازك. احتفظ بها في مكان آمن ولا تشاركها.</p><button id="downloadMyData" class="btn-lite" type="button">تنزيل بياناتي (JSON)</button>
  </section>
- <section class="panel"><h2>الدعم الفني</h2><p class="subtitle">تذاكر محفوظة في حسابك ويطّلع عليها فريق الإدارة المصرح له.</p>
+ <section id="support-section" class="panel"><h2>الدعم الفني</h2><p class="subtitle">تذاكر محفوظة في حسابك ويطّلع عليها فريق الإدارة المصرح له.</p>
  <form id="supportForm"><label class="field">نوع الطلب <select id="supportCategory"><option value="general">استفسار عام</option><option value="technical">مشكلة تقنية</option><option value="order">مشكلة في طلب</option><option value="account">مشكلة في الحساب</option></select></label>
  <label class="field">العنوان<input id="supportSubject" minlength="3" maxlength="180" required placeholder="اكتب موضوع الطلب"></label>
  <label class="field">التفاصيل<textarea id="supportMessage" minlength="8" maxlength="5000" required placeholder="صف المشكلة دون ذكر كلمة المرور أو أسرار الحساب"></textarea></label>
