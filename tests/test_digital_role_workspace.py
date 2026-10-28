@@ -229,6 +229,23 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertNotIn("بداية تنفيذ حذف الحساب", JS)
         self.assertIn("('completed','rejected')", SERVER)
 
+    def test_admin_claim_requires_existing_verified_owner_two_proofs(self):
+        for name in ("ownerAdminPanel", "ownerAdminRequestForm",
+                     "ownerAdminRequestPassword", "ownerAdminConfirmForm",
+                     "ownerAdminToken", "ownerAdminConfirmPassword"):
+            self.assertIn('id="'+name+'"', HTML)
+        self.assertIn('show("ownerAdminPanel",Boolean(u.admin_eligible))', JS)
+        self.assertIn('request("/api/v1/auth/admin-claim/request"', JS)
+        self.assertIn('request("/api/v1/auth/admin-claim/confirm"', JS)
+        self.assertIn('window.location.hash', JS)
+        self.assertIn('history.replaceState(', JS)
+        self.assertIn("user['admin_eligible']", SERVER)
+        self.assertIn("if APP_ENV!='preview' or not EMAIL_AUTH_REQUIRED:", SERVER)
+        self.assertIn("rate_limit_event('admin_claim_ip'", SERVER)
+        self.assertIn("from minjaz_admin_claim import request_owner_claim,confirm_owner_claim", SERVER)
+        self.assertIn("u=self.require()", SERVER)
+        self.assertNotIn('role="admin" value=', HTML)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
