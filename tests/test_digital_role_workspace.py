@@ -194,6 +194,41 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn("admin_transition_cancellation", SERVER)
         self.assertNotIn("mark_refunded", JS)
 
+    def test_real_admin_safety_moderation_and_safe_privacy_triage(self):
+        for el in (
+            "adminSafetyDialog", "adminSafetyTitle", "adminSafetyDetails",
+            "adminSafetyForm", "adminSafetyId", "adminSafetyStatus",
+            "adminSafetyTaskAction", "adminSafetyUserAction", "adminSafetyNote",
+            "closeAdminSafety", "adminPrivacyDialog", "adminPrivacyTitle",
+            "adminPrivacyDetails", "adminPrivacyForm", "adminPrivacyId",
+            "adminPrivacyStatus", "adminPrivacyNote", "closeAdminPrivacy"
+        ):
+            self.assertIn('id="'+el+'"', HTML)
+        self.assertIn('request("/api/admin/safety/reports")', JS)
+        self.assertIn('request("/api/admin/safety/reports/"+id,{method:"PATCH"', JS)
+        self.assertIn('request("/api/admin/privacy/"+id,{method:"PATCH"', JS)
+        self.assertIn('adminSafetyReports.filter(x=>["open","in_review"].includes(x.status))', JS)
+        self.assertIn('adminPrivacyRequests.filter(x=>["pending","in_progress"].includes(x.status))', JS)
+        self.assertIn('if(status==="dismissed"&&(task_action||user_action))', JS)
+        self.assertIn('window.confirm("هذا الإجراء سيؤثر فورًا', JS)
+        self.assertIn('if(currentUser?.role!=="admin")return', JS)
+        self.assertIn("مخصصة لفرز طلبات الخصوصية", HTML)
+        self.assertNotIn('option value="completed"', HTML)
+        self.assertNotIn('option value="delete"', HTML[HTML.index('id="adminPrivacyStatus"'):HTML.index('id="adminPrivacyNote"')])
+        self.assertIn("if p.startswith('/api/admin'):", SERVER)
+        self.assertIn("update_safety_report_admin(rid,u['id']", SERVER)
+        self.assertIn("update_privacy_request(pid,st", SERVER)
+
+    def test_support_and_privacy_replies_notify_actual_user_without_duplicate(self):
+        self.assertIn("notify(prev['user_id'],'تحديث من دعم مِنجاز'", SERVER)
+        self.assertIn("notify(pr['user_id'],'تحديث طلب الخصوصية #'+str(pid)", SERVER)
+        self.assertIn("if changed:\\n                        admin_audit(u['id'],'support_updated'", SERVER)
+        self.assertIn("if changed:\\n                        admin_audit(u['id'],'privacy_request_updated'", SERVER)
+        self.assertIn('x.admin_note?', JS)
+        self.assertIn('ملاحظة الإدارة:', JS)
+        self.assertNotIn("بداية تنفيذ حذف الحساب", JS)
+        self.assertIn("('completed','rejected')", SERVER)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
