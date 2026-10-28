@@ -139,7 +139,9 @@ class RoleWorkspaceTests(unittest.TestCase):
             "privacyDetails", "privacyItems", "adminQueuesPanel", "adminStats",
             "adminQueues", "adminRefresh", "reportDialog", "reportForm",
             "reportTask", "reportOrder", "reportDetails", "reportCategory",
-            "closeReport", "reportOrderButton"
+            "closeReport", "reportOrderButton", "adminTicketDialog", "adminTicketTitle",
+            "adminTicketDetails", "adminTicketForm", "adminTicketId", "adminTicketStatus",
+            "adminTicketReply", "closeAdminTicket"
         ):
             self.assertIn('id="'+id_+'"', HTML)
         self.assertIn('show("portfolioPanel",role==="freelancer")', JS)
@@ -160,6 +162,10 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn("if p.startswith('/api/admin'):", SERVER)
         self.assertIn("u=self.require('admin');", SERVER)
         self.assertIn("u=self.require('freelancer');", SERVER)
+        self.assertIn("if p=='/api/admin/support' and method=='GET':", SERVER)
+        self.assertIn("m=re.fullmatch(r'/api/admin/support/(\\d+)',p)", SERVER)
+        self.assertIn('request("/api/admin/support/"+id,{method:"PATCH"', JS)
+        self.assertIn('request("/api/v1/privacy/export",{timeoutMs:45000})', JS)
         self.assertIn("where user_id=%s", SERVER)
 
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
