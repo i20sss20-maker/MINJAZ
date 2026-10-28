@@ -36,7 +36,7 @@ body.minjaz-auth{min-height:100vh;background:#f6f5f1}
 .minjaz-auth .showcase-footer{display:flex;justify-content:space-between;gap:14px;color:#a4adc7;font-size:12px;align-items:center}
 .minjaz-auth .showcase-footer a{color:#dad9ef;text-decoration:none}
 .minjaz-auth .auth-entry{direction:rtl;padding:42px clamp(22px,5vw,70px) 28px;display:flex;flex-direction:column;justify-content:center;min-width:0}
-.minjaz-auth .auth-entry-main{max-width:460px;width:100%;margin-inline:auto}
+.minjaz-auth .auth-entry-main{width:100%;max-width:460px;margin:auto;background:transparent;border:0;box-shadow:none;border-radius:0;padding:0}
 .minjaz-auth .mobile-brand{display:none}
 .minjaz-auth .auth-overline{font-size:12px;font-weight:800;color:#705ab5;letter-spacing:.02em;margin:0 0 9px}
 .minjaz-auth .auth-entry h1{font-size:clamp(26px,3vw,35px);line-height:1.4;margin:0 0 9px;color:#17223a}
