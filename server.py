@@ -2513,6 +2513,11 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),front),'rb').read() if front else open(HTML_PATH,'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
+            if method=='GET' and p=='/manifest-workspace.webmanifest':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'manifest-workspace.webmanifest'),'rb').read()
+                self._headers(200,'application/manifest+json; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p=='/minjaz-signature.css':
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-signature.css'),'rb').read()
                 self._headers(200,'text/css; charset=utf-8')
