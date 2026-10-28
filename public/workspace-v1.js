@@ -66,6 +66,8 @@ function showRole(){
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
+ show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");
+ if(role==="freelancer")$("kycStatus").textContent=(window.__freelancerProfile?.kyc_status==="approved")?"الهوية موثّقة لدى المزود":"الهوية غير معتمدة. لن تظهر شارة موثّق قبل اكتمال تحقق فعلي."
  const switcher=$("switchRole");
  show("switchRole",role!=="admin");
  switcher.textContent=role==="client"?"العمل كمستقل":role==="freelancer"?"العمل كعميل":"";
@@ -97,7 +99,8 @@ function renderTasks(){
   const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>'+(t.status==="open"?'<button type="button" data-action="close-task" data-id="'+Number(t.id)+'">إغلاق المهمة</button>':""):
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
-  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],actions);
+  const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
+  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
  }).join(""):empty(role==="client"?"ما عندك مهام إلى الآن. ابدأ بنشر أول مهمة من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
 }
 function renderOrders(){
@@ -187,6 +190,7 @@ async function load(){
   documents=results[1].status==="fulfilled"?results[1].value.documents||[]:[];
   await renderLegal();
   await loadUserData();
+  await loadExtraPanels();
  }catch(e){
   if(e.status===401)currentUser=null;
   show("workspace",Boolean(currentUser));
@@ -271,6 +275,9 @@ $("taskItems").addEventListener("click",async e=>{
    await request("/api/v1/tasks/"+id+"/close",{method:"POST",data:{}});
    notice("أغلقت المهمة وأُبلغ أصحاب العروض.","success");await loadUserData();
   }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+ }else if(b.dataset.action==="report-task"){
+  if(currentUser.role!=="freelancer")return;
+  openReportDialog({task_id:id});
  }
 });
 $("receivedOffers").addEventListener("click",async e=>{
@@ -326,6 +333,7 @@ async function showOrder(id,openDialog=true){
  ]);
  activeOrderId=id;
  $("orderTitle").textContent=order.title||("طلب #"+id);
+ $("reportOrderButton").disabled=false;
  const pending=order.status==="awaiting_payment";
  $("orderInfo").innerHTML=entry("الطلب #"+id,order.description||"",
   [humanStatus(order.status),"المبلغ المتفق عليه: "+money(order.amount),
