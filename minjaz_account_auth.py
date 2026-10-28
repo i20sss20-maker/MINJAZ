@@ -102,16 +102,24 @@ def deliver_link(address,action,raw,config=None):
     if not delivery_recipient_allowed(address,env):
         raise RuntimeError("email_test_recipient_only")
     base=env["PUBLIC_BASE_URL"].strip().rstrip("/")
-    key="verify-email" if action=="verify" else "reset-password"
-    # Sandbox email actions use the lightweight self-contained signup page.
-    # Production URLs keep the existing marketplace route unchanged.
-    route="/signup#" if env.get("APP_ENV","").strip().lower()=="preview" else "/#"
+    if action=="admin_claim":
+        key="admin-claim"
+        route="/workspace#"
+        title="تأكيد تفعيل حساب إدارة مِنجاز"
+        body=("مرحبًا،\n\nطُلب تفعيل صلاحيات مدير مِنجاز لهذا البريد. "
+              "افتح الرابط في المتصفح الذي سجلت دخولك فيه إلى مِنجاز، ثم أكّد بكلمة مرور حسابك:\n")
+        ttl="15 دقيقة"
+    else:
+        key="verify-email" if action=="verify" else "reset-password"
+        # Sandbox email actions use the lightweight self-contained signup page.
+        # Production URLs keep the existing marketplace route unchanged.
+        route="/signup#" if env.get("APP_ENV","").strip().lower()=="preview" else "/#"
+        title="تفعيل حساب منجاز" if action=="verify" else "إعادة تعيين كلمة مرور منجاز"
+        body=("مرحبًا،\n\nافتح الرابط التالي لتفعيل حسابك في منجاز:\n" if action=="verify"
+              else "مرحبًا،\n\nافتح الرابط التالي لإعادة تعيين كلمة مرور حسابك في منجاز:\n")
+        ttl="24 ساعة" if action=="verify" else "30 دقيقة"
     url=base+route+key+"="+raw
-    title="تفعيل حساب منجاز" if action=="verify" else "إعادة تعيين كلمة مرور منجاز"
-    body=("مرحبًا،\n\nافتح الرابط التالي لتفعيل حسابك في منجاز:\n" if action=="verify"
-          else "مرحبًا،\n\nافتح الرابط التالي لإعادة تعيين كلمة مرور حسابك في منجاز:\n")
-    body+=url+("\n\nينتهي الرابط خلال 24 ساعة.\n" if action=="verify"
-               else "\n\nينتهي الرابط خلال 30 دقيقة.\n")
+    body+=url+"\n\nينتهي الرابط خلال "+ttl+".\n"
     body+="إذا لم تطلب هذه العملية فتجاهل الرسالة.\n"
     from_email=env["EMAIL_FROM"].strip()
     mode=env["EMAIL_MODE"].strip().lower()
@@ -147,7 +155,8 @@ def deliver_link(address,action,raw,config=None):
 def new_action(cur,user_id,action,secret):
     raw=secrets.token_urlsafe(32)
     digest=token_digest(secret,raw)
-    ttl="24 hours" if action=="verify" else "30 minutes"
+    ttl={"verify":"24 hours","reset":"30 minutes","admin_claim":"15 minutes"}.get(action)
+    if not ttl:raise ValueError("invalid_action")
     cur.execute("""UPDATE account_email_actions SET used_at=now()
                    WHERE user_id=%s AND action=%s AND used_at IS NULL""",(user_id,action))
     cur.execute("""INSERT INTO account_email_actions(user_id,action,token_hash,expires_at)
