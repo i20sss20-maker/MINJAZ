@@ -130,7 +130,7 @@ async function loadAdmin(){
 async function loadUserData(){
  const role=currentUser.role;
  if(role==="admin"){await loadAdmin();return}
- const [t,o,n,proposals,profile]=await Promise.allSettled([
+ const [t,o,n,proposals,profileResult]=await Promise.allSettled([
   request("/api/v1/tasks"),
   request("/api/v1/orders"),
   request("/api/v1/notifications?limit=8"),
@@ -144,8 +144,8 @@ async function loadUserData(){
  renderTasks();renderOrders();
  currentProposals=proposals.status==="fulfilled"?(proposals.value.items||[]):[];
  if(role==="freelancer"){renderProposals();if(proposals.status==="rejected")notice("تعذر تحميل عروضك: "+proposals.reason.message,"error")}
- if(role==="client"&&profile.status==="fulfilled"&&profile.value){
-  const c=profile.value;$("clientCompany").value=c.company_name||"";$("clientCity").value=c.city||"";
+ if(role==="client"&&profileResult.status==="fulfilled"&&profileResult.value){
+  const c=profileResult.value;$("clientCompany").value=c.company_name||"";$("clientCity").value=c.city||"";
   $("clientSector").value=c.sector||"";$("clientBio").value=c.bio||"";
  }
  if(n.status==="fulfilled"){
