@@ -1817,7 +1817,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select pr.*,u.role,u.deleted_at,u.phone original_phone
+            cur.execute("""select pr.*,u.role,u.deleted_at,u.phone original_phone,u.email original_email
                            from privacy_requests pr join users u on u.id=pr.user_id
                            where pr.id=%s for update""",(int(pid),))
             pr=cur.fetchone()
@@ -1832,6 +1832,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                 c.rollback();return {k:as_json(v) for k,v in row.items()},dict(pr),False,{},None
 
             uid=int(pr['user_id']); original_phone=str(pr.get('original_phone') or '')
+            original_email=str(pr.get('original_email') or '').strip().lower()
             blockers={}
             checks=[
                 ('active_orders',"""select count(*)::int n from orders where (client_id=%s or freelancer_id=%s)
@@ -1866,6 +1867,9 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             cur.execute("delete from account_activity where user_id=%s",(uid,))
             cur.execute("delete from legal_acceptances where user_id=%s",(uid,))
             cur.execute("delete from kyc_adapter_events where user_id=%s",(uid,))
+            cur.execute("delete from account_email_actions where user_id=%s",(uid,))
+            if original_email:
+                cur.execute("delete from email_login_challenges where email=%s",(original_email,))
             cur.execute("delete from task_idempotency_keys where client_id=%s",(uid,))
             cur.execute("delete from message_idempotency_keys where sender_id=%s",(uid,))
             cur.execute("delete from order_action_idempotency_keys where actor_id=%s",(uid,))
@@ -1898,7 +1902,8 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             cur.execute("delete from sessions where user_id=%s",(uid,))
             cur.execute("delete from user_roles where user_id=%s",(uid,))
             deleted_phone='deleted-user-'+str(uid)+'@minjaz.invalid'
-            cur.execute("""update users set phone=%s,name='مستخدم محذوف',is_verified=false,deleted_at=now()
+            cur.execute("""update users set phone=%s,email=null,password_hash=null,email_verified_at=null,
+                           name='مستخدم محذوف',is_verified=false,deleted_at=now()
                            where id=%s""",(deleted_phone,uid))
             note=str(admin_note or '').strip()[:1200] or 'تم تنفيذ حذف الحساب وإخفاء الهوية وفق سياسة الخصوصية.'
             cur.execute("""update privacy_requests set status='completed',details=null,admin_note=%s,
