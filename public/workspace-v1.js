@@ -30,7 +30,7 @@ const esc=value=>String(value===undefined||value===null?"":value).replace(/[&<>"
 function show(id,yes){$(id).classList.toggle("hidden",!yes)}
 function notice(msg,type){const n=$("notice");n.textContent=msg;n.className="notice "+(type||"");n.classList.toggle("hidden",!msg)}
 async function request(path,options={}){
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),options.timeoutMs||12000);
  try{
   const response=await fetch(path,{method:options.method||"GET",credentials:"same-origin",cache:"no-store",
    headers:{"Accept":"application/json",...(options.data?{"Content-Type":"application/json"}:{})},
@@ -481,6 +481,7 @@ async function loadPortfolio(){
   ).join(""):empty("لا توجد نماذج أعمال. أضف عملًا حقيقيًا لتقوية ملفك المهني.");
  }catch(e){$("portfolioItems").innerHTML=empty("تعذر تحميل معرض أعمالك: "+e.message)}
 }
+let adminSupportTickets=[];
 async function loadAdminQueues(){
  if(currentUser?.role!=="admin")return;
  try{
@@ -500,17 +501,23 @@ async function loadAdminQueues(){
    ["الإلغاءات",metrics.pending_cancellations]
   ];
   $("adminStats").innerHTML=pairs.map(x=>'<article><b>'+Number(x[1]||0)+'</b><small>'+esc(x[0])+'</small></article>').join("");
+  adminSupportTickets=help.items||[];
   const groups=[
    ["تذاكر الدعم",help.items||[],"subject",["open","in_progress"]],
    ["طلبات الخصوصية",privacy.items||[],"request_type",["pending","in_progress"]],
    ["بلاغات السلامة",safety.items||[],"category",["open","in_review"]]
   ];
-  $("adminQueues").innerHTML=groups.map(([name,rows,field,statuses])=>{
+  const counters=groups.map(([name,rows,field,statuses])=>{
     const pending=rows.filter(x=>statuses.includes(x.status));
     return entry(name,"عدد الحالات المفتوحة: "+pending.length,
-      pending.slice(0,5).map(x=>("#"+Number(x.id)+" · "+String(x[field]||"حالة"))),
-      "");
+      pending.slice(0,5).map(x=>("#"+Number(x.id)+" · "+String(x[field]||"حالة"))),"");
   }).join("");
+  const urgentSupport=adminSupportTickets.filter(x=>["open","in_progress"].includes(x.status)).slice(0,10).map(x=>
+    entry("تذكرة #"+Number(x.id)+" · "+x.subject,x.message||"",
+      [ticketStatus(x.status),safeDate(x.updated_at)],
+      '<button type="button" data-action="review-support" data-id="'+Number(x.id)+'">الرد على المستخدم</button>')
+  ).join("");
+  $("adminQueues").innerHTML=counters+urgentSupport;
  }catch(e){$("adminQueues").innerHTML=empty("تعذر تحديث بيانات الإدارة: "+e.message)}
 }
 async function loadExtraPanels(){
@@ -542,7 +549,7 @@ $("sessionsItems").addEventListener("click",async e=>{
 $("downloadMyData").addEventListener("click",async()=>{
  const b=$("downloadMyData");b.disabled=true;
  try{
-  const payload=await request("/api/v1/privacy/export");
+  const payload=await request("/api/v1/privacy/export",{timeoutMs:45000});
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json;charset=utf-8"});
   const url=URL.createObjectURL(blob),link=document.createElement("a");
   link.href=url;link.download="minjaz-my-account-"+new Date().toISOString().slice(0,10)+".json";
@@ -628,6 +635,35 @@ $("reportForm").addEventListener("submit",async e=>{
  finally{loadingButton(form,false)}
 });
 $("adminRefresh").addEventListener("click",loadAdminQueues);
+
+$("adminQueues").addEventListener("click",e=>{
+ const b=e.target.closest('button[data-action="review-support"]');
+ if(!b||currentUser?.role!=="admin")return;
+ const id=Number(b.dataset.id);
+ const t=adminSupportTickets.find(x=>Number(x.id)===id);
+ if(!t||!Number.isSafeInteger(id)||id<1)return;
+ $("adminTicketId").value=String(id);
+ $("adminTicketTitle").textContent="تذكرة الدعم #"+id+" · "+(t.subject||"");
+ $("adminTicketDetails").textContent=t.message||"";
+ $("adminTicketStatus").value=t.status==="open"?"in_progress":t.status==="resolved"?"resolved":t.status==="closed"?"closed":"in_progress";
+ $("adminTicketReply").value=t.admin_reply||"";
+ $("adminTicketDialog").showModal();
+});
+$("closeAdminTicket").addEventListener("click",()=>$("adminTicketDialog").close());
+$("adminTicketForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="admin")return;
+ const f=e.currentTarget,id=Number($("adminTicketId").value);
+ const status=$("adminTicketStatus").value,reply=$("adminTicketReply").value.trim();
+ if(!Number.isSafeInteger(id)||id<1||!["in_progress","resolved","closed"].includes(status)||!reply)return;
+ if(["resolved","closed"].includes(status)&&!window.confirm("سيتم تسجيل الحالة وإرسالها في سجل التذكرة. هل تمت معالجة المشكلة فعلًا؟"))return;
+ loadingButton(f,true);
+ try{
+  await request("/api/admin/support/"+id,{method:"PATCH",data:{status,admin_reply:reply}});
+  $("adminTicketDialog").close();await loadAdminQueues();
+  notice("تم حفظ رد الإدارة وتحديث حالة التذكرة #"+id+".","success");
+ }catch(err){notice("تعذر تحديث التذكرة: "+err.message,"error")}finally{loadingButton(f,false)}
+});
+
 
 load();
 })();
