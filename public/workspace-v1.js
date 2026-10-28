@@ -1,7 +1,7 @@
 (function(){
 "use strict";
 const $=id=>document.getElementById(id);
-let currentUser=null,currentTasks=[],currentOrders=[],legalInfo=null,documents=[],pendingTaskKey="",loading=false;
+let currentUser=null,currentTasks=[],currentOrders=[],currentProposals=[],legalInfo=null,documents=[],pendingTaskKey="",pendingMessageKey="",activeOrderId=0,activeOfferTaskId=0,loading=false;
 const ERROR={
  unauthorized:"انتهت جلستك. سجّل الدخول مجددًا.",
  legal_acceptance_required:"راجع مستندات الشروط والخصوصية ووافق عليها قبل تنفيذ الطلب.",
@@ -17,7 +17,13 @@ const ERROR={
  insufficient_permissions:"هذه العملية غير متاحة لدورك.",
  interaction_restricted:"العملية موقوفة لحماية الأطراف.",
  task_rate_limited:"تم الوصول للحد المسموح لإنشاء المهام، حاول لاحقًا.",
- proposal_rate_limited:"تم الوصول للحد المسموح للعروض، حاول لاحقًا."
+ proposal_rate_limited:"تم الوصول للحد المسموح للعروض، حاول لاحقًا.",
+ order_exists:"سبق اختيار عرض لهذه المهمة.",
+ proposal_not_available:"العرض لم يعد متاحًا للاختيار.",
+ message_rate_limited:"وصلت للحد المسموح للرسائل خلال ساعة.",
+ idempotency_key_reused:"تم تغيير الطلب بعد محاولة سابقة، راجع البيانات وحاول مجددًا.",
+ task_not_open:"المهمة ليست مفتوحة الآن.",
+ task_has_order:"سبق اختيار مستقل لهذه المهمة، ولا يمكن إغلاقها بهذه الطريقة."
 };
 const money=value=>Number(value||0).toLocaleString("ar-SA",{maximumFractionDigits:2})+" ر.س";
 const esc=value=>String(value===undefined||value===null?"":value).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
@@ -59,7 +65,7 @@ function showRole(){
  $("myName").value=u.name||"";
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
- show("freelancerProfile",role==="freelancer");
+ show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
  const switcher=$("switchRole");
  show("switchRole",role!=="admin");
  switcher.textContent=role==="client"?"العمل كمستقل":role==="freelancer"?"العمل كعميل":"";
@@ -88,7 +94,7 @@ function renderTasks(){
  $("taskItems").innerHTML=currentTasks.length?currentTasks.slice(0,40).map(t=>{
   const canOffer=role==="freelancer"&&t.status==="open"&&!t.has_proposal;
   const mine=role==="client";
-  const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>':
+  const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>'+(t.status==="open"?'<button type="button" data-action="close-task" data-id="'+Number(t.id)+'">إغلاق المهمة</button>':""):
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
   return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],actions);
@@ -98,9 +104,20 @@ function renderOrders(){
  const role=currentUser.role;
  if(role==="admin"){$("orderItems").innerHTML=empty("راجع طلبات العملاء من لوحة إدارة الخدمات.");return}
  $("orderItems").innerHTML=currentOrders.length?currentOrders.slice(0,25).map(o=>
- entry(o.title||("طلب #"+o.id),role==="client"?(o.freelancer_name||"المستقل"):(o.client_name||"العميل"),
- [humanStatus(o.status),money(o.amount),o.payment_status==="paid"?"مدفوع":o.payment_status==="unpaid"?"غير مدفوع":(o.payment_status||"")],"")
- ).join(""):empty("لا توجد طلبات مكتملة المطابقة حتى الآن. تتكوّن الطلبات بعد اختيار عرض مناسب.");
+  entry(o.title||("طلب #"+o.id),role==="client"?(o.freelancer_name||"المستقل"):(o.client_name||"العميل"),
+  [humanStatus(o.status),money(o.amount),o.payment_status==="paid"?"الدفع مؤكد":o.payment_status==="unpaid"?"لم يُدفع":(o.payment_status||"")],
+  '<button type="button" data-action="open-order" data-id="'+Number(o.id)+'">المحادثة والتفاصيل</button>')
+ ).join(""):empty("لا توجد طلبات بعد. تختار عرضًا من عروض المهمة ثم يصبح الطلب بانتظار دفع معتمد.");
+}
+function renderProposals(){
+ $("proposalItems").innerHTML=currentProposals.length?currentProposals.slice(0,60).map(p=>{
+  const canWithdraw=p.proposal_status==="sent"&&p.task_status==="open"&&!p.order_id;
+  const meta=[p.proposal_status==="sent"?"بانتظار رد العميل":p.proposal_status==="accepted"?"تم اختيار عرضك":p.proposal_status==="rejected"?"لم يتم اختيار العرض":p.proposal_status||"عرض",
+   money(p.price),"التسليم "+Number(p.delivery_hours||0)+" ساعة"];
+  if(p.order_id)meta.push("الطلب: "+humanStatus(p.order_status));
+  const action=canWithdraw?'<button type="button" data-action="withdraw-offer" data-id="'+Number(p.task_id)+'">سحب العرض</button>':"";
+  return entry(p.title||("مهمة #"+p.task_id),p.message||p.description,meta,action);
+ }).join(""):empty("لم ترسل عروضًا بعد. تصفح الفرص المتاحة وقدّم على مشروع مناسب.");
 }
 async function loadAdmin(){
  const result=await request("/api/admin/summary");
@@ -113,22 +130,31 @@ async function loadAdmin(){
 async function loadUserData(){
  const role=currentUser.role;
  if(role==="admin"){await loadAdmin();return}
- const [t,o,n]=await Promise.allSettled([
+ const [t,o,n,proposals,profile]=await Promise.allSettled([
   request("/api/v1/tasks"),
   request("/api/v1/orders"),
-  request("/api/v1/notifications?limit=8")
+  request("/api/v1/notifications?limit=8"),
+  role==="freelancer"?request("/api/v1/freelancer/proposals"):Promise.resolve({items:[]}),
+  role==="client"?request("/api/v1/client/profile"):Promise.resolve(null)
  ]);
  if(t.status==="fulfilled"){currentTasks=t.value.items||[]}
  else{currentTasks=[];notice("تعذر تحميل المهام: "+t.reason.message,"error")}
  if(o.status==="fulfilled"){currentOrders=o.value.items||[]}
  else{currentOrders=[];notice("تعذر تحميل الطلبات: "+o.reason.message,"error")}
  renderTasks();renderOrders();
+ currentProposals=proposals.status==="fulfilled"?(proposals.value.items||[]):[];
+ if(role==="freelancer"){renderProposals();if(proposals.status==="rejected")notice("تعذر تحميل عروضك: "+proposals.reason.message,"error")}
+ if(role==="client"&&profile.status==="fulfilled"&&profile.value){
+  const c=profile.value;$("clientCompany").value=c.company_name||"";$("clientCity").value=c.city||"";
+  $("clientSector").value=c.sector||"";$("clientBio").value=c.bio||"";
+ }
  if(n.status==="fulfilled"){
   const data=n.value;
+  show("markAllRead",Number(data.unread||0)>0);
   $("sideItems").innerHTML=(data.items||[]).length?
   data.items.map(it=>entry(it.title,it.body,[(it.read_at?"مقروء":"جديد"),it.kind],"")).join(""):
   empty("ما عندك إشعارات جديدة.");
- }else{$("sideItems").innerHTML=empty("تعذر تحميل الإشعارات. جرّب تحديث الصفحة.")}
+ }else{$("sideItems").innerHTML=empty("تعذر تحميل الإشعارات. جرّب تحديث الصفحة.");show("markAllRead",false)}
  const open=role==="client"?currentTasks.filter(x=>x.status==="open").length:currentTasks.filter(x=>!x.has_proposal).length;
  $("summary").innerHTML=[
   [role==="client"?"مهامي":"الفرص",currentTasks.length],
@@ -162,10 +188,11 @@ async function load(){
   await renderLegal();
   await loadUserData();
  }catch(e){
-  show("workspace",false);
-  show("loginRequired",true);
-  show("logout",false);
-  notice(e.status===401?"انتهت الجلسة، ادخل من جديد.":e.message,e.status===401?"":"error");
+  if(e.status===401)currentUser=null;
+  show("workspace",Boolean(currentUser));
+  show("loginRequired",!currentUser);
+  show("logout",Boolean(currentUser));
+  notice(e.status===401?"انتهت الجلسة، ادخل من جديد.":"تعذر تحديث مساحة العمل: "+e.message,"error");
  }finally{$("loading").classList.add("hidden");loading=false}
 }
 $("switchRole").addEventListener("click",async()=>{
