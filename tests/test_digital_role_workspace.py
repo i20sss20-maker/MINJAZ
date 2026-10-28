@@ -98,7 +98,7 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn("لا ترسل أي مبالغ خارج المنصة", JS)
         self.assertIn("لن يُخصم أي مبلغ", JS)
         self.assertIn("الهوية غير موثقة", JS)
-        self.assertIn("الدفع الرسمي", HTML)
+        self.assertIn("مزود الدفع", HTML)
         self.assertNotIn('request("/api/v1/orders/"+id+"/pay"', JS)
         self.assertNotIn("payment_mode=mock", JS)
         self.assertNotIn("مقبول ومدفوع", JS)
