@@ -1,5 +1,6 @@
 """Read-only premium workspace UX contract: real data, no fabricated counts."""
 import re
+import json
 import shutil
 import subprocess
 import unittest
@@ -64,6 +65,22 @@ class WorkspacePolish(unittest.TestCase):
                       '.minjaz-work .action-toast','.minjaz-work .list-more',
                       'prefers-reduced-motion','focus-visible'):
             self.assertIn(token,CSS)
+
+    def test_mobile_app_opens_real_workspace_not_demo_or_marketing(self):
+        manifest=json.loads((ROOT/'public/manifest-workspace.webmanifest').read_text(encoding='utf-8'))
+        self.assertEqual(manifest['start_url'],'/workspace')
+        self.assertEqual(manifest['id'],'/workspace')
+        self.assertEqual(manifest['display'],'standalone')
+        self.assertEqual(manifest['lang'],'ar')
+        self.assertEqual(manifest['dir'],'rtl')
+        self.assertIn('/workspace#tasks-section',[v['url'] for v in manifest['shortcuts']])
+        self.assertIn('/workspace#orders-section',[v['url'] for v in manifest['shortcuts']])
+        for name in ('workspace.html','signup.html','discover.html'):
+            page=(ROOT/'public'/name).read_text(encoding='utf-8')
+            self.assertIn('rel="manifest" href="/manifest-workspace.webmanifest"',page)
+        self.assertIn("p=='/manifest-workspace.webmanifest'",SERVER)
+        self.assertIn("application/manifest+json; charset=utf-8",SERVER)
+        self.assertIn("if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})",SERVER)
 
     def test_no_payment_mock_or_admin_privilege_in_frontend(self):
         self.assertNotIn('/api/v1/orders/pay',JS)
