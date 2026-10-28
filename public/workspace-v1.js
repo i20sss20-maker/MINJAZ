@@ -50,6 +50,63 @@ async function request(path,options={}){
 function loadingButton(form,enabled){
  const b=form.querySelector('button[type="submit"]');if(b)b.disabled=enabled;
 }
+
+const MAX_ATTACHMENT_BYTES=10_000_000;
+const ACCEPTED_ATTACHMENT_MIME={
+ ".pdf":"application/pdf", ".doc":"application/msword",
+ ".docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+ ".xlsx":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+ ".png":"image/png", ".jpg":"image/jpeg", ".jpeg":"image/jpeg",
+ ".webp":"image/webp", ".zip":"application/zip"
+};
+let stagedTaskAttachments=null,stagedMessageAttachments=null;
+async function uploadRealAttachments(list,statusNode){
+ const files=Array.from(list||[]);
+ if(!files.length){statusNode.textContent="لا توجد مرفقات مضافة.";return []}
+ if(files.length>3)throw Error("يسمح بإرفاق ثلاثة ملفات كحد أقصى.");
+ const result=[];
+ for(let i=0;i<files.length;i++){
+  const file=files[i],ext="."+String(file.name).split(".").pop().toLowerCase();
+  if(!Object.hasOwn(ACCEPTED_ATTACHMENT_MIME,ext))throw Error("نوع ملف غير مسموح: "+file.name);
+  if(!file.size||file.size>MAX_ATTACHMENT_BYTES)throw Error("حجم الملف يجب أن يكون بين 1 بايت و10 ميجابايت: "+file.name);
+  const type=file.type||ACCEPTED_ATTACHMENT_MIME[ext];
+  statusNode.textContent="جاري رفع ملف "+(i+1)+" من "+files.length+": "+file.name;
+  const signed=await request("/api/v1/uploads/presign",{method:"POST",data:{
+   file_name:file.name,mime_type:type,size_bytes:file.size
+  },timeoutMs:30000});
+  if(!signed.upload_url||!signed.key)throw Error("تعذر تجهيز رابط الرفع الخاص.");
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),65000);
+  let response;
+  try{
+   response=await fetch(signed.upload_url,{
+    method:"PUT",mode:"cors",cache:"no-store",headers:signed.headers||{"Content-Type":type},
+    body:file,signal:ctl.signal
+   });
+  }catch(err){
+   throw Error("فشل رفع الملف إلى مساحة التخزين الخاصة؛ تحقق من الشبكة أو إعدادات CORS.");
+  }finally{clearTimeout(timer)}
+  if(!response.ok)throw Error("تعذر رفع الملف إلى التخزين ("+response.status+").");
+  const verified=await request("/api/v1/uploads/complete",{method:"POST",
+   data:{key:signed.key},timeoutMs:30000});
+  if(!verified.attachment||verified.attachment.storage_key!==signed.key){
+   throw Error("تعذر التأكد من حفظ الملف. لم يُرسل الطلب.");
+  }
+  result.push(verified.attachment);
+ }
+ statusNode.textContent="اكتمل رفع "+result.length+" ملف إلى التخزين الخاص.";
+ return result;
+}
+function attachmentLinks(items){
+ return (items||[]).map(att=>{
+  const raw=String(att.file_url||att.url||"");
+  let safe=false;
+  try{const u=new URL(raw);safe=u.protocol==="https:"&&!u.username&&!u.password}
+  catch(err){}
+  if(!safe)return "";
+  return '<a class="btn-lite" href="'+esc(raw)+'" target="_blank" rel="noopener noreferrer">'+
+   esc(att.file_name||att.name||"مرفق محفوظ")+'</a>';
+ }).join("");
+}
 function humanStatus(v){
  return {open:"مفتوحة",matched:"اختير عرض",awaiting_payment:"بانتظار الدفع",in_progress:"قيد التنفيذ",delivered:"تم التسليم",completed:"مكتملة",cancelled:"ملغاة",revision_requested:"تعديل مطلوب",disputed:"نزاع"}[v]||String(v||"جديد");
 }
@@ -275,15 +332,19 @@ $("newTask").addEventListener("submit",async e=>{
   budget_max:budget_max?Number(budget_max):null,
   idempotency_key:pendingTaskKey||(pendingTaskKey="work-"+(crypto.randomUUID?.()||Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)))};
  try{
+  if(!stagedTaskAttachments)stagedTaskAttachments=await uploadRealAttachments($("taskFiles").files,$("taskUploadStatus"));
+  payload.attachments=stagedTaskAttachments;
   await request("/api/v1/tasks",{method:"POST",data:payload});
-  pendingTaskKey="";form.reset();notice("تم نشر المهمة في حسابك، ويمكن للمستقلين تقديم عروضهم.","success");await loadUserData()
+  pendingTaskKey="";stagedTaskAttachments=null;form.reset();
+  $("taskUploadStatus").textContent="يمكن إرفاق ملفات إضافية في المشروع التالي.";
+  notice("تم نشر المهمة ومرفقاتها المحفوظة، ويمكن للمستقلين تقديم عروضهم.","success");await loadUserData()
  }catch(err){
   if(err.code==="idempotency_key_reused")pendingTaskKey="";
   notice(err.message,"error");
   if(err.code==="legal_acceptance_required")$("legalWrap").scrollIntoView({behavior:"smooth"});
  }finally{loadingButton(form,false)}
 });
-$("newTask").addEventListener("input",()=>{pendingTaskKey=""});
+$("newTask").addEventListener("input",()=>{pendingTaskKey="";stagedTaskAttachments=null});
 $("taskItems").addEventListener("click",async e=>{
  const b=e.target.closest("button[data-action]");if(!b)return;
  const id=Number(b.dataset.id);
@@ -394,7 +455,8 @@ async function showOrder(id,openDialog=true){
    [ticketStatus(currentCancel.status),"الاسترداد: "+(currentCancel.refund_status==="not_needed"?"لا توجد أموال محصّلة":currentCancel.refund_status||"مراجعة")],""):
   empty("لا يوجد طلب إلغاء سابق. أي طلب جديد يُراجع من الإدارة أولًا.");
  $("orderMessages").innerHTML=(messages.items||[]).length?(messages.items||[]).map(m=>
-  entry(m.sender_name||"عضو",m.body||"مرفق",["بتاريخ "+displayDate(m.created_at)],"")
+  entry(m.sender_name||"عضو",m.body||"مرفق",["بتاريخ "+displayDate(m.created_at)],
+   attachmentLinks(m.attachments))
  ).join(""):empty("ما فيه رسائل حتى الآن. ابدأ محادثة مع الطرف الآخر.");
  $("orderTimeline").innerHTML=(timeline.items||[]).length?(timeline.items||[]).map(t=>
   entry(t.title||"تحديث",t.details||"",[displayDate(t.created_at),t.actor_name||"المنصة"],"")
@@ -415,7 +477,8 @@ $("refreshOrder").addEventListener("click",async()=>{
  try{await showOrder(activeOrderId,false)}catch(err){notice(err.message,"error")}
  finally{btn.disabled=false}
 });
-$("messageBody").addEventListener("input",()=>{pendingMessageKey=""});
+$("messageBody").addEventListener("input",()=>{pendingMessageKey="";stagedMessageAttachments=null});
+$("messageFiles").addEventListener("change",()=>{pendingMessageKey="";stagedMessageAttachments=null});
 $("messageForm").addEventListener("submit",async e=>{
  e.preventDefault();
  const id=activeOrderId,form=e.currentTarget,body=$("messageBody").value.trim();
@@ -423,8 +486,12 @@ $("messageForm").addEventListener("submit",async e=>{
  loadingButton(form,true);
  pendingMessageKey=pendingMessageKey||"message-"+(crypto.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2));
  try{
-  await request("/api/v1/orders/"+id+"/messages",{method:"POST",data:{body,idempotency_key:pendingMessageKey}});
-  pendingMessageKey="";$("messageBody").value="";
+  if(!stagedMessageAttachments)stagedMessageAttachments=await uploadRealAttachments($("messageFiles").files,$("messageUploadStatus"));
+  await request("/api/v1/orders/"+id+"/messages",{method:"POST",data:{
+   body,attachments:stagedMessageAttachments,idempotency_key:pendingMessageKey
+  }});
+  pendingMessageKey="";stagedMessageAttachments=null;$("messageBody").value="";
+  $("messageFiles").value="";$("messageUploadStatus").textContent="المرفقات الجديدة تُحفظ في مساحة خاصة.";
   notice("أُرسلت الرسالة وحُفظت في محادثة الطلب.","success");
   await showOrder(id,false);
  }catch(err){
