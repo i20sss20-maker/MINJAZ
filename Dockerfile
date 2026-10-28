@@ -3,7 +3,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir psycopg2-binary
 
-COPY migrate.py storage.py server.py minjaz_digital_services.py minjaz_digital_workflow.py minjaz_digital_deliverables.py minjaz_email_auth.py minjaz_account_auth.py /app/
+COPY migrate.py storage.py server.py minjaz_digital_services.py minjaz_digital_workflow.py minjaz_digital_deliverables.py minjaz_email_auth.py minjaz_account_auth.py minjaz_admin_claim.py /app/
 COPY scripts /app/scripts
 COPY database /app/database
 COPY public /app/public
@@ -18,7 +18,7 @@ RUN set -eux; \
     migration_count="$(find database/migrations -maxdepth 1 -name '*.sql' | wc -l)"; \
     test "$migration_count" -ge 1; \
     test "$(find database/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | cut -d_ -f1 | sort | uniq -d | wc -l)" -eq 0; \
-    python -m py_compile server.py migrate.py storage.py minjaz_digital_services.py minjaz_digital_workflow.py minjaz_digital_deliverables.py minjaz_email_auth.py minjaz_account_auth.py scripts/seed_digital_services_preview.py scripts/smoke_digital_services.py; \
+    python -m py_compile server.py migrate.py storage.py minjaz_digital_services.py minjaz_digital_workflow.py minjaz_digital_deliverables.py minjaz_email_auth.py minjaz_account_auth.py minjaz_admin_claim.py scripts/seed_digital_services_preview.py scripts/smoke_digital_services.py; \
     python -m unittest discover -s tests -p 'test_digital*.py' -v
 
 ENV PORT=3000
