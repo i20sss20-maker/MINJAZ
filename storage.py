@@ -150,3 +150,44 @@ class RailwayBucketStorage:
         if not re.fullmatch(r'uploads/[0-9]+/[0-9]{4}/[0-9]{2}/[a-f0-9]{32}\.[a-z0-9]+',key):
             return False
         return key.startswith(f'uploads/{int(user_id)}/')
+
+
+def setup_preview_bucket_cors(storage, origins, environment):
+    """Configure exact-origin browser PUT/GET CORS for a private preview bucket.
+
+    Never authorize wildcard origins or modify a production bucket. Credentials
+    remain in the runtime environment and are not returned or logged.
+    """
+    if environment != 'preview' or not storage.ready:
+        return 'skipped'
+    from urllib.parse import urlsplit
+    allowed=[]
+    for raw in sorted(set(origins or ())):
+        try:
+            u=urlsplit(str(raw))
+            if (u.scheme=='https' and u.hostname and u.username is None and
+                    u.password is None and u.path in ('','/') and not u.query and
+                    not u.fragment and '*' not in str(raw)):
+                allowed.append(str(raw).rstrip('/'))
+        except ValueError:
+            continue
+    if not allowed:
+        return 'skipped_no_valid_origin'
+    import boto3
+    from botocore.config import Config
+    client=boto3.client(
+        's3',endpoint_url=storage.endpoint,region_name=storage.region,
+        aws_access_key_id=storage.access_key,
+        aws_secret_access_key=storage.secret_key,
+        config=Config(s3={'addressing_style':'virtual' if storage.url_style=='virtual' else 'path'},
+                      connect_timeout=3,read_timeout=5,retries={'max_attempts':1}))
+    client.put_bucket_cors(
+        Bucket=storage.bucket,
+        CORSConfiguration={'CORSRules':[{
+            'AllowedHeaders':['Content-Type','Content-MD5','x-amz-*'],
+            'AllowedMethods':['GET','HEAD','PUT'],
+            'AllowedOrigins':allowed,
+            'ExposeHeaders':['ETag'],
+            'MaxAgeSeconds':3600,
+        }]})
+    return 'configured'
