@@ -30,7 +30,7 @@ const esc=value=>String(value===undefined||value===null?"":value).replace(/[&<>"
 function show(id,yes){$(id).classList.toggle("hidden",!yes)}
 function notice(msg,type){const n=$("notice");n.textContent=msg;n.className="notice "+(type||"");n.classList.toggle("hidden",!msg)}
 async function request(path,options={}){
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),options.timeoutMs||12000);
  try{
   const response=await fetch(path,{method:options.method||"GET",credentials:"same-origin",cache:"no-store",
    headers:{"Accept":"application/json",...(options.data?{"Content-Type":"application/json"}:{})},
@@ -66,6 +66,8 @@ function showRole(){
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("freelancerProfile",role==="freelancer");show("clientProfile",role==="client");show("proposalPanel",role==="freelancer");show("markAllRead",role!=="admin");
+ show("portfolioPanel",role==="freelancer");show("adminQueuesPanel",role==="admin");
+ if(role==="freelancer")$("kycStatus").textContent=(window.__freelancerProfile?.kyc_status==="approved")?"الهوية موثّقة لدى المزود":"الهوية غير معتمدة. لن تظهر شارة موثّق قبل اكتمال تحقق فعلي."
  const switcher=$("switchRole");
  show("switchRole",role!=="admin");
  switcher.textContent=role==="client"?"العمل كمستقل":role==="freelancer"?"العمل كعميل":"";
@@ -97,7 +99,8 @@ function renderTasks(){
   const actions=mine?'<button type="button" data-action="show-offers" data-id="'+Number(t.id)+'">عرض العروض ('+Number(t.proposal_count||0)+')</button>'+(t.status==="open"?'<button type="button" data-action="close-task" data-id="'+Number(t.id)+'">إغلاق المهمة</button>':""):
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
-  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],actions);
+  const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
+  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
  }).join(""):empty(role==="client"?"ما عندك مهام إلى الآن. ابدأ بنشر أول مهمة من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
 }
 function renderOrders(){
@@ -187,6 +190,7 @@ async function load(){
   documents=results[1].status==="fulfilled"?results[1].value.documents||[]:[];
   await renderLegal();
   await loadUserData();
+  await loadExtraPanels();
  }catch(e){
   if(e.status===401)currentUser=null;
   show("workspace",Boolean(currentUser));
@@ -271,6 +275,9 @@ $("taskItems").addEventListener("click",async e=>{
    await request("/api/v1/tasks/"+id+"/close",{method:"POST",data:{}});
    notice("أغلقت المهمة وأُبلغ أصحاب العروض.","success");await loadUserData();
   }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+ }else if(b.dataset.action==="report-task"){
+  if(currentUser.role!=="freelancer")return;
+  openReportDialog({task_id:id});
  }
 });
 $("receivedOffers").addEventListener("click",async e=>{
@@ -326,6 +333,7 @@ async function showOrder(id,openDialog=true){
  ]);
  activeOrderId=id;
  $("orderTitle").textContent=order.title||("طلب #"+id);
+ $("reportOrderButton").disabled=false;
  const pending=order.status==="awaiting_payment";
  $("orderInfo").innerHTML=entry("الطلب #"+id,order.description||"",
   [humanStatus(order.status),"المبلغ المتفق عليه: "+money(order.amount),
@@ -405,5 +413,257 @@ $("freelancerProfile").addEventListener("submit",async e=>{
   notice("تم حفظ ملف المستقل والمهارات.","success")
  }catch(err){notice(err.message,"error")}finally{loadingButton(f,false)}
 });
+
+function operationKey(prefix){
+ return prefix+"-"+(crypto.randomUUID?.()||Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));
+}
+const ticketStatus=value=>({
+ open:"مفتوحة",in_progress:"قيد المعالجة",resolved:"تم الحل",closed:"مغلقة",
+ pending:"بانتظار المراجعة",completed:"مكتملة",rejected:"مرفوضة",
+ in_review:"قيد المراجعة",dismissed:"مغلقة بعد المراجعة"
+}[value]||String(value||"جديد"));
+function safeDate(value){
+ if(!value)return "";
+ const d=new Date(value);
+ return Number.isNaN(d.getTime())?"":d.toLocaleString("ar-SA",{dateStyle:"medium",timeStyle:"short"});
+}
+async function loadSessions(){
+ try{
+  const r=await request("/api/v1/account/sessions");
+  $("sessionsItems").innerHTML=(r.items||[]).length?r.items.map(item=>{
+   const id=Number(item.id),actions=(!item.current&&Number.isSafeInteger(id)&&id>0)
+    ?'<button data-action="revoke-session" data-id="'+id+'" type="button">إنهاء هذا الجهاز</button>':"";
+   return entry(item.current?"هذا الجهاز · جلسة حالية":(item.device_label||"جهاز مسجل"),
+    item.current?"يمكنك إنهاء هذه الجلسة من زر تسجيل الخروج.":"أغلق هذا الجهاز إذا لم تتعرّف عليه.",
+    ["آخر نشاط: "+safeDate(item.last_seen_at||item.created_at),
+     "انتهاء الجلسة: "+safeDate(item.expires_at)],actions);
+  }).join(""):empty("لا توجد جلسات فعالة.");
+ }catch(e){$("sessionsItems").innerHTML=empty("تعذر عرض الأجهزة: "+e.message)}
+}
+async function loadSupport(){
+ try{
+  const r=await request("/api/v1/support/tickets");
+  $("supportItems").innerHTML=(r.items||[]).length?r.items.slice(0,20).map(t=>
+   entry("#"+Number(t.id)+" · "+t.subject,t.message||"",
+    [ticketStatus(t.status),t.category||"استفسار",safeDate(t.updated_at)],
+    t.admin_reply?'<p class="warning">رد الدعم: '+esc(t.admin_reply)+'</p>':"")
+  ).join(""):empty("لا توجد تذاكر دعم.");
+ }catch(e){$("supportItems").innerHTML=empty("تعذر عرض التذاكر: "+e.message)}
+}
+async function loadPrivacyRequests(){
+ try{
+  const r=await request("/api/v1/privacy/requests");
+  $("privacyItems").innerHTML=(r.items||[]).length?r.items.slice(0,20).map(x=>
+    entry("طلب #"+Number(x.id)+" · "+({
+      access:"الاطلاع على البيانات",export:"تصدير",correct:"تصحيح",
+      delete:"حذف الحساب",restrict:"تقييد المعالجة"
+    }[x.request_type]||x.request_type),x.details||"",
+    [ticketStatus(x.status),safeDate(x.created_at)],"")
+  ).join(""):empty("ما عندك طلبات خصوصية حتى الآن.");
+ }catch(e){$("privacyItems").innerHTML=empty("تعذر عرض طلبات الخصوصية: "+e.message)}
+}
+async function loadSafetyReports(){
+ try{
+  const r=await request("/api/v1/safety/reports");
+  $("safetyItems").innerHTML=(r.items||[]).length?r.items.slice(0,15).map(x=>
+   entry("بلاغ #"+Number(x.id)+" · "+(x.category||"مخالفة"),
+    x.details||"",[ticketStatus(x.status),safeDate(x.created_at)],"")
+  ).join(""):empty("لا توجد بلاغات مرسلة.");
+ }catch(e){$("safetyItems").innerHTML=empty("تعذر عرض البلاغات: "+e.message)}
+}
+async function loadPortfolio(){
+ if(currentUser?.role!=="freelancer")return;
+ try{
+  const r=await request("/api/v1/freelancer/portfolio");
+  $("portfolioItems").innerHTML=(r.items||[]).length?r.items.map(x=>
+   entry(x.title,x.description||"",[x.external_url||"بدون رابط",safeDate(x.created_at)],
+    '<button type="button" data-action="delete-portfolio" data-id="'+Number(x.id)+'">حذف النموذج</button>')
+  ).join(""):empty("لا توجد نماذج أعمال. أضف عملًا حقيقيًا لتقوية ملفك المهني.");
+ }catch(e){$("portfolioItems").innerHTML=empty("تعذر تحميل معرض أعمالك: "+e.message)}
+}
+let adminSupportTickets=[];
+async function loadAdminQueues(){
+ if(currentUser?.role!=="admin")return;
+ try{
+  const [oper,help,privacy,safety]=await Promise.all([
+   request("/api/admin/operations"),request("/api/admin/support"),
+   request("/api/admin/privacy"),request("/api/admin/safety/reports?status=open")
+  ]);
+  const metrics=oper.metrics||{};
+  const pairs=[
+   ["حسابات جديدة خلال 24 س",metrics.new_users_24h],
+   ["مشاريع مفتوحة",metrics.open_tasks],
+   ["طلبات بانتظار الدفع",metrics.awaiting_payment],
+   ["بلاغات مفتوحة",metrics.open_safety_reports],
+   ["الدعم المفتوح",metrics.open_support],
+   ["الخصوصية المعلقة",metrics.pending_privacy],
+   ["النزاعات",metrics.open_disputes],
+   ["الإلغاءات",metrics.pending_cancellations]
+  ];
+  $("adminStats").innerHTML=pairs.map(x=>'<article><b>'+Number(x[1]||0)+'</b><small>'+esc(x[0])+'</small></article>').join("");
+  adminSupportTickets=help.items||[];
+  const groups=[
+   ["تذاكر الدعم",help.items||[],"subject",["open","in_progress"]],
+   ["طلبات الخصوصية",privacy.items||[],"request_type",["pending","in_progress"]],
+   ["بلاغات السلامة",safety.items||[],"category",["open","in_review"]]
+  ];
+  const counters=groups.map(([name,rows,field,statuses])=>{
+    const pending=rows.filter(x=>statuses.includes(x.status));
+    return entry(name,"عدد الحالات المفتوحة: "+pending.length,
+      pending.slice(0,5).map(x=>("#"+Number(x.id)+" · "+String(x[field]||"حالة"))),"");
+  }).join("");
+  const urgentSupport=adminSupportTickets.filter(x=>["open","in_progress"].includes(x.status)).slice(0,10).map(x=>
+    entry("تذكرة #"+Number(x.id)+" · "+x.subject,x.message||"",
+      [ticketStatus(x.status),safeDate(x.updated_at)],
+      '<button type="button" data-action="review-support" data-id="'+Number(x.id)+'">الرد على المستخدم</button>')
+  ).join("");
+  $("adminQueues").innerHTML=counters+urgentSupport;
+ }catch(e){$("adminQueues").innerHTML=empty("تعذر تحديث بيانات الإدارة: "+e.message)}
+}
+async function loadExtraPanels(){
+ const jobs=[loadSessions(),loadSupport(),loadPrivacyRequests(),loadSafetyReports()];
+ if(currentUser?.role==="freelancer")jobs.push(loadPortfolio());
+ if(currentUser?.role==="admin")jobs.push(loadAdminQueues());
+ await Promise.allSettled(jobs);
+}
+$("refreshSessions").addEventListener("click",loadSessions);
+$("revokeOtherSessions").addEventListener("click",async()=>{
+ if(!window.confirm("سيتم تسجيل خروج كل الأجهزة الأخرى من حسابك، لكن جهازك الحالي سيبقى مسجلًا. هل تؤكد؟"))return;
+ const b=$("revokeOtherSessions");b.disabled=true;
+ try{
+  const r=await request("/api/v1/account/sessions/revoke-others",{method:"POST",data:{}});
+  await loadSessions();notice("أُغلقت "+Number(r.revoked_count||0)+" جلسة على الأجهزة الأخرى.","success");
+ }catch(e){notice(e.message,"error")}finally{b.disabled=false}
+});
+$("sessionsItems").addEventListener("click",async e=>{
+ const b=e.target.closest('button[data-action="revoke-session"]');if(!b)return;
+ const id=Number(b.dataset.id);
+ if(!Number.isSafeInteger(id)||id<1)return;
+ if(!window.confirm("إنهاء جلسة هذا الجهاز؟ سيحتاج صاحبه لتسجيل الدخول مجددًا."))return;
+ b.disabled=true;
+ try{
+  await request("/api/v1/account/sessions/"+id,{method:"DELETE"});
+  await loadSessions();notice("تم إنهاء الجلسة المختارة.","success");
+ }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+});
+$("downloadMyData").addEventListener("click",async()=>{
+ const b=$("downloadMyData");b.disabled=true;
+ try{
+  const payload=await request("/api/v1/privacy/export",{timeoutMs:45000});
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json;charset=utf-8"});
+  const url=URL.createObjectURL(blob),link=document.createElement("a");
+  link.href=url;link.download="minjaz-my-account-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+  notice("تم إنشاء ملف بياناتك. احتفظ به في جهاز آمن.","success");
+ }catch(e){notice("تعذر تصدير بياناتك: "+e.message,"error")}finally{b.disabled=false}
+});
+let supportRequestKey="",privacyRequestKey="",portfolioRequestKey="",reportRequestKey="";
+$("supportForm").addEventListener("input",()=>{supportRequestKey=""});
+$("supportForm").addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget;loadingButton(form,true);
+ const payload={subject:$("supportSubject").value.trim(),
+  message:$("supportMessage").value.trim(),category:$("supportCategory").value,
+  priority:"normal",idempotency_key:supportRequestKey||(supportRequestKey=operationKey("support"))};
+ try{
+  const r=await request("/api/v1/support/tickets",{method:"POST",data:payload});
+  supportRequestKey="";form.reset();await loadSupport();
+  notice("تم فتح تذكرة الدعم رقم "+Number(r.id)+". يمكنك متابعة حالتها في حسابك.","success");
+ }catch(err){if(err.code==="idempotency_key_reused")supportRequestKey="";notice(err.message,"error")}
+ finally{loadingButton(form,false)}
+});
+$("privacyForm").addEventListener("input",()=>{privacyRequestKey=""});
+$("privacyForm").addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget;const type=$("privacyType").value;
+ if(type==="delete"&&!window.confirm("طلب حذف الحساب سيُرسل للإدارة للمراجعة؛ قد يؤدي حذفه بعد اعتماده إلى فقدان الوصول والبيانات. هل تريد تقديم الطلب؟"))return;
+ loadingButton(form,true);
+ const payload={request_type:type,details:$("privacyDetails").value.trim(),
+  idempotency_key:privacyRequestKey||(privacyRequestKey=operationKey("privacy"))};
+ try{
+  const r=await request("/api/v1/privacy/requests",{method:"POST",data:payload});
+  privacyRequestKey="";form.reset();await loadPrivacyRequests();
+  notice("حُفظ طلب الخصوصية رقم "+Number(r.id)+" للمراجعة. لا يُنفّذ الحذف تلقائيًا.","success");
+ }catch(err){if(err.code==="idempotency_key_reused")privacyRequestKey="";notice(err.message,"error")}
+ finally{loadingButton(form,false)}
+});
+$("portfolioForm").addEventListener("input",()=>{portfolioRequestKey=""});
+$("portfolioForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="freelancer")return;
+ const form=e.currentTarget,ext=$("portfolioUrl").value.trim();
+ if(ext&&!ext.startsWith("https://")){notice("رابط معرض الأعمال يجب أن يبدأ بـ HTTPS.","error");return}
+ loadingButton(form,true);
+ const payload={title:$("portfolioTitle").value.trim(),description:$("portfolioDescription").value.trim(),
+  external_url:ext,idempotency_key:portfolioRequestKey||(portfolioRequestKey=operationKey("portfolio"))};
+ try{
+  await request("/api/v1/freelancer/portfolio",{method:"POST",data:payload});
+  portfolioRequestKey="";form.reset();await loadPortfolio();
+  notice("تمت إضافة نموذج العمل إلى ملفك العام.","success");
+ }catch(err){if(err.code==="idempotency_key_reused")portfolioRequestKey="";notice(err.message,"error")}
+ finally{loadingButton(form,false)}
+});
+$("portfolioItems").addEventListener("click",async e=>{
+ const b=e.target.closest('button[data-action="delete-portfolio"]');if(!b||currentUser?.role!=="freelancer")return;
+ const id=Number(b.dataset.id);
+ if(!Number.isSafeInteger(id)||id<1||!window.confirm("هل تريد حذف نموذج العمل من ملفك العام نهائيًا؟"))return;
+ b.disabled=true;
+ try{
+  await request("/api/v1/freelancer/portfolio/"+id,{method:"DELETE"});
+  await loadPortfolio();notice("حُذف النموذج من معرض أعمالك.","success");
+ }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+});
+function openReportDialog({task_id=0,order_id=0}={}){
+ $("reportTask").value=Number(task_id)||"";
+ $("reportOrder").value=Number(order_id)||"";
+ $("reportDetails").value="";reportRequestKey="";
+ $("reportDialog").showModal();
+}
+$("closeReport").addEventListener("click",()=>$("reportDialog").close());
+$("reportOrderButton").addEventListener("click",()=>{
+ if(activeOrderId)openReportDialog({order_id:activeOrderId});
+});
+$("reportForm").addEventListener("input",()=>{reportRequestKey=""});
+$("reportForm").addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget;loadingButton(form,true);
+ const taskId=Number($("reportTask").value),orderId=Number($("reportOrder").value);
+ const payload={category:$("reportCategory").value,details:$("reportDetails").value.trim(),
+  ...(taskId>0?{task_id:taskId}:{}),...(orderId>0?{order_id:orderId}:{}),
+  idempotency_key:reportRequestKey||(reportRequestKey=operationKey("safety"))};
+ try{
+  const r=await request("/api/v1/safety/reports",{method:"POST",data:payload});
+  reportRequestKey="";form.reset();$("reportDialog").close();await loadSafetyReports();
+  notice("وصل البلاغ #"+Number(r.id)+" إلى فريق السلامة للمراجعة.","success");
+ }catch(err){if(err.code==="idempotency_key_reused")reportRequestKey="";notice(err.message,"error")}
+ finally{loadingButton(form,false)}
+});
+$("adminRefresh").addEventListener("click",loadAdminQueues);
+
+$("adminQueues").addEventListener("click",e=>{
+ const b=e.target.closest('button[data-action="review-support"]');
+ if(!b||currentUser?.role!=="admin")return;
+ const id=Number(b.dataset.id);
+ const t=adminSupportTickets.find(x=>Number(x.id)===id);
+ if(!t||!Number.isSafeInteger(id)||id<1)return;
+ $("adminTicketId").value=String(id);
+ $("adminTicketTitle").textContent="تذكرة الدعم #"+id+" · "+(t.subject||"");
+ $("adminTicketDetails").textContent=t.message||"";
+ $("adminTicketStatus").value=t.status==="open"?"in_progress":t.status==="resolved"?"resolved":t.status==="closed"?"closed":"in_progress";
+ $("adminTicketReply").value=t.admin_reply||"";
+ $("adminTicketDialog").showModal();
+});
+$("closeAdminTicket").addEventListener("click",()=>$("adminTicketDialog").close());
+$("adminTicketForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="admin")return;
+ const f=e.currentTarget,id=Number($("adminTicketId").value);
+ const status=$("adminTicketStatus").value,reply=$("adminTicketReply").value.trim();
+ if(!Number.isSafeInteger(id)||id<1||!["in_progress","resolved","closed"].includes(status)||!reply)return;
+ if(["resolved","closed"].includes(status)&&!window.confirm("سيتم تسجيل الحالة وإرسالها في سجل التذكرة. هل تمت معالجة المشكلة فعلًا؟"))return;
+ loadingButton(f,true);
+ try{
+  await request("/api/admin/support/"+id,{method:"PATCH",data:{status,admin_reply:reply}});
+  $("adminTicketDialog").close();await loadAdminQueues();
+  notice("تم حفظ رد الإدارة وتحديث حالة التذكرة #"+id+".","success");
+ }catch(err){notice("تعذر تحديث التذكرة: "+err.message,"error")}finally{loadingButton(f,false)}
+});
+
+
 load();
 })();
