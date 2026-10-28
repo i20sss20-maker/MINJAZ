@@ -235,6 +235,7 @@ $("newTask").addEventListener("submit",async e=>{
   if(err.code==="legal_acceptance_required")$("legalWrap").scrollIntoView({behavior:"smooth"});
  }finally{loadingButton(form,false)}
 });
+$("newTask").addEventListener("input",()=>{pendingTaskKey=""});
 $("taskItems").addEventListener("click",async e=>{
  const b=e.target.closest("button[data-action]");if(!b)return;
  const id=Number(b.dataset.id);
@@ -249,11 +250,52 @@ $("taskItems").addEventListener("click",async e=>{
   b.disabled=true;
   try{
    const resp=await request("/api/v1/tasks/"+id+"/proposals");
+   activeOfferTaskId=id;
+   const task=currentTasks.find(t=>Number(t.id)===id);
    $("receivedOffers").innerHTML=(resp.items||[]).length?
-    resp.items.map(p=>entry(p.name||"مستقل",p.message,["السعر: "+money(p.price),"التسليم: "+Number(p.delivery_hours)+" س","التعديلات: "+Number(p.revisions||0)],"")).join(""):empty("لم تصل عروض لهذه المهمة بعد.");
+    resp.items.map(p=>{
+     const canSelect=task?.status==="open"&&p.status==="sent";
+     const action=canSelect?'<button type="button" data-action="select-offer" data-id="'+Number(p.id)+'">اختيار العرض وإنشاء الطلب</button>':"";
+     return entry(p.name||"مستقل",(p.message||"")+(p.bio?" · نبذة المستقل: "+p.bio:""),
+      ["السعر: "+money(p.price),"التسليم: "+Number(p.delivery_hours)+" س",
+       "التعديلات: "+Number(p.revisions||0),p.kyc_status==="approved"?"هوية معتمدة":"الهوية غير موثقة"],action);
+    }).join(""):empty("لم تصل عروض لهذه المهمة بعد.");
    $("offersDialog").showModal()
   }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+ }else if(b.dataset.action==="close-task"){
+  const task=currentTasks.find(t=>Number(t.id)===id);
+  if(!task||task.status!=="open")return;
+  if(!window.confirm("إغلاق المهمة سيمنع العروض الجديدة ويرفض العروض المعلقة، ولا يمكن التراجع عنه. هل أنت متأكد؟"))return;
+  b.disabled=true;
+  try{
+   await request("/api/v1/tasks/"+id+"/close",{method:"POST",data:{}});
+   notice("أغلقت المهمة وأُبلغ أصحاب العروض.","success");await loadUserData();
+  }catch(err){notice(err.message,"error")}finally{b.disabled=false}
  }
+});
+$("receivedOffers").addEventListener("click",async e=>{
+ const b=e.target.closest('button[data-action="select-offer"]');if(!b)return;
+ const proposalId=Number(b.dataset.id);
+ const task=currentTasks.find(t=>Number(t.id)===activeOfferTaskId);
+ if(!Number.isSafeInteger(proposalId)||proposalId<1||!task||task.status!=="open")return;
+ if(!window.confirm("تأكيد الاختيار: سينشأ طلب حقيقي ويُغلق باب العروض. لن يُخصم أي مبلغ ولن يبدأ التنفيذ حتى تفعيل الدفع الرسمي وتسويات المستقلين. هل توافق؟"))return;
+ b.disabled=true;
+ try{
+  const order=await request("/api/v1/orders",{method:"POST",data:{proposal_id:proposalId}});
+  $("offersDialog").close();
+  notice("تم اختيار العرض وإنشاء طلب #"+Number(order.id)+" بانتظار الدفع الرسمي. لم يتم تحصيل أي مبلغ.","success");
+  await loadUserData();
+ }catch(err){notice(err.message,"error")}finally{b.disabled=false}
+});
+$("proposalItems").addEventListener("click",async e=>{
+ const b=e.target.closest('button[data-action="withdraw-offer"]');if(!b)return;
+ const id=Number(b.dataset.id);
+ if(!Number.isSafeInteger(id)||id<1||!window.confirm("هل تريد سحب هذا العرض من المهمة المفتوحة؟"))return;
+ b.disabled=true;
+ try{
+  await request("/api/v1/tasks/"+id+"/proposals",{method:"DELETE"});
+  notice("سُحب العرض من قاعدة البيانات بنجاح.","success");await loadUserData();
+ }catch(err){notice(err.message,"error")}finally{b.disabled=false}
 });
 $("offerForm").addEventListener("submit",async e=>{
  e.preventDefault();const f=e.currentTarget,fd=new FormData(f),task_id=Number(fd.get("task_id"));loadingButton(f,true);
