@@ -4010,4 +4010,15 @@ if __name__=='__main__':
         ensure_notifications_schema()
         ensure_engagement_schema()
         ensure_payout_schema()
+    if STORAGE_MODE=='railway_bucket' and BUCKET_READY and APP_ENV=='preview':
+        try:
+            from storage import setup_preview_bucket_cors
+            origins=set(CORS_ORIGINS)
+            if PUBLIC_BASE_URL:origins.add(PUBLIC_BASE_URL)
+            result=setup_preview_bucket_cors(BUCKET_STORAGE,origins,APP_ENV)
+            print('STORAGE_CORS',result,flush=True)
+        except Exception as exc:
+            # Storage CORS setup should not take down the marketplace. Uploaded
+            # files remain private until this is fixed and verified.
+            print('STORAGE_CORS_WARNING',type(exc).__name__,flush=True)
     ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
