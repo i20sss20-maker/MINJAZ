@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-RUN pip install --no-cache-dir psycopg2-binary
+RUN pip install --no-cache-dir psycopg2-binary boto3
 
 COPY migrate.py storage.py server.py minjaz_digital_services.py minjaz_digital_workflow.py minjaz_digital_deliverables.py minjaz_email_auth.py minjaz_account_auth.py minjaz_admin_claim.py /app/
 COPY scripts /app/scripts
