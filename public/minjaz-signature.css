@@ -262,3 +262,7 @@ body.minjaz-doc{font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;background:
  .minjaz-work .list-tools{grid-template-columns:1fr}
  .minjaz-work .list-tools input,.minjaz-work .list-tools select{font-size:13px}
 }
+
+.minjaz-work .list-more{display:flex;align-items:center;justify-content:center;width:100%;min-height:43px;margin-top:15px;padding:10px 16px;border:1px solid #ded8ef;border-radius:10px;background:#f8f5ff;color:#5540aa;font-size:12px;font-weight:800}
+.minjaz-work .list-more:hover{background:#eee9fc;border-color:#c4b7e9}
+.minjaz-work .list-more.hidden{display:none!important}
