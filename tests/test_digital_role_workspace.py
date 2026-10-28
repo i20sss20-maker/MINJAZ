@@ -63,6 +63,46 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn("idempotency_key:", JS)
         self.assertIn("request(\"/api/v1/auth/logout\"", JS)
 
+    def test_live_task_offer_order_workflows_are_wired_to_real_apis(self):
+        for route in (
+            '/api/v1/freelancer/proposals',
+            '/api/v1/client/profile',
+            '/api/v1/notifications/read-all',
+            '/api/v1/tasks/"+id+"/close',
+            '/api/v1/orders/"+id+"/messages',
+            '/api/v1/orders/"+id+"/timeline',
+        ):
+            self.assertIn(route, JS)
+        self.assertIn('request("/api/v1/orders",{method:"POST",data:{proposal_id:proposalId}})', JS)
+        self.assertIn('method:"DELETE"', JS)
+        self.assertIn('method:"PATCH"', JS)
+        self.assertIn('idempotency_key:pendingMessageKey', JS)
+        self.assertIn('idempotency_key:pendingTaskKey', JS)
+        self.assertIn('data-action="open-order"', JS)
+        self.assertIn('data-action="select-offer"', JS)
+        self.assertIn('window.confirm', JS)
+        self.assertIn("p.kyc_status===\"approved\"", JS)
+
+    def test_new_forms_exist_and_every_js_dom_lookup_is_present(self):
+        for key in ("proposalPanel", "proposalItems", "clientProfile", "clientCompany",
+                    "clientBio", "clientCity", "clientSector", "markAllRead",
+                    "orderDialog", "orderTitle", "orderInfo", "orderMessages",
+                    "orderTimeline", "closeOrder", "refreshOrder", "messageBody", "messageForm"):
+            self.assertIn('id="'+key+'"', HTML)
+        js_ids=set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', JS))
+        html_ids=set(re.findall(r'id="([A-Za-z0-9_-]+)"', HTML))
+        self.assertFalse(js_ids-html_ids, "Missing HTML elements: "+str(js_ids-html_ids))
+
+    def test_real_order_is_pending_without_fake_payment(self):
+        self.assertIn("لم يتم دفع أي مبلغ", JS)
+        self.assertIn("لا ترسل أي مبالغ خارج المنصة", JS)
+        self.assertIn("لن يُخصم أي مبلغ", JS)
+        self.assertIn("الهوية غير موثقة", JS)
+        self.assertIn("مزود الدفع", HTML)
+        self.assertNotIn('request("/api/v1/orders/"+id+"/pay"', JS)
+        self.assertNotIn("payment_mode=mock", JS)
+        self.assertNotIn("مقبول ومدفوع", JS)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
