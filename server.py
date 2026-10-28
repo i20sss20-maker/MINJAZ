@@ -2396,6 +2396,7 @@ class H(BaseHTTPRequestHandler):
                     {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
                     {'key':'marketplace_payout_settlement','ok':False,'value':'no_verified_payout_adapter','required':True},
+                    {'key':'privacy_account_deletion','ok':False,'value':'storage_object_deletion_and_restore_drill_unverified','required':True},
                     {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
                     {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
