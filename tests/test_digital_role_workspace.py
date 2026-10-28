@@ -168,6 +168,32 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn('request("/api/v1/privacy/export",{timeoutMs:45000})', JS)
         self.assertIn("where user_id=%s", SERVER)
 
+    def test_unpaid_order_cancellation_is_reviewed_not_fake_refunded(self):
+        for dom_id in (
+            "orderCancelSection", "orderCancelForm", "orderCancelInfo",
+            "orderCancelReason", "orderCancelDetails", "adminCancellationDialog",
+            "adminCancellationTitle", "adminCancellationDetails",
+            "adminCancellationForm", "adminCancellationId",
+            "adminCancellationStatus", "adminCancellationNote", "closeAdminCancellation"
+        ):
+            self.assertIn('id="'+dom_id+'"', HTML)
+        for uri in (
+            'request("/api/v1/orders/"+id+"/cancellation")',
+            'request("/api/v1/orders/"+id+"/cancellation",{method:"POST"',
+            'request("/api/admin/cancellations")',
+            'request("/api/admin/cancellations/"+id,{method:"PATCH"'
+        ):
+            self.assertIn(uri, JS)
+        self.assertIn('idempotency_key:orderCancelKey', JS)
+        self.assertIn('if(status==="approved"&&req.payment_status==="paid")', JS)
+        self.assertIn('option.disabled=req.payment_status==="paid"', JS)
+        self.assertIn('لم يتغير وضع الدفع', JS)
+        self.assertIn("لا يمكن اعتماد إلغاء مدفوع", JS)
+        self.assertIn('m=re.fullmatch(r\'/api/v1/orders/(\\d+)/cancellation\',p)', SERVER)
+        self.assertIn("if p=='/api/admin/cancellations' and method=='GET':", SERVER)
+        self.assertIn("admin_transition_cancellation", SERVER)
+        self.assertNotIn("mark_refunded", JS)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
