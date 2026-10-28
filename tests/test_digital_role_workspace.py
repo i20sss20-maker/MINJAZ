@@ -273,6 +273,27 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn('object_key(u[\'id\']', SERVER)
         self.assertNotIn("fake_uploaded", JS)
 
+    def test_admin_sees_live_fail_closed_official_launch_requirements(self):
+        for element in ("launchReadinessPanel","launchReadinessSummary",
+                        "launchReadinessItems","refreshLaunchReadiness"):
+            self.assertIn('id="'+element+'"', HTML)
+        self.assertIn('show("launchReadinessPanel",role==="admin")', JS)
+        self.assertIn('if(currentUser?.role!=="admin")return;', JS)
+        self.assertIn('request("/readiness",{timeoutMs:16000})', JS)
+        for gate in (
+            "marketplace_payout_settlement", "kyc_provider", "legal_review",
+            "privacy_account_deletion", "payment_provider", "file_storage",
+            "database_persistence", "verified_email_policy"
+        ):
+            self.assertIn(gate,JS)
+        self.assertIn('response.ready_for_commercial_launch===true&&allMandatory',JS)
+        self.assertIn('لا تُفعّل الدفع بناءً على حالة قديمة.',JS)
+        self.assertIn('response.ready_for_nonfinancial_pilot!==true',JS)
+        self.assertIn('jobs.push(loadAdminQueues(),loadLaunchReadiness())',JS)
+        self.assertIn("if method=='GET' and p=='/readiness':",SERVER)
+        self.assertIn("'key':'marketplace_payout_settlement','ok':False",SERVER)
+        self.assertIn("'key':'privacy_account_deletion','ok':False",SERVER)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)

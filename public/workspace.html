@@ -97,6 +97,13 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
  <form id="privacyForm"><div class="row2"><label class="field">نوع الطلب <select id="privacyType"><option value="access">الاطلاع على البيانات</option><option value="export">طلب نسخة من البيانات</option><option value="correct">تصحيح بيانات</option><option value="restrict">تقييد المعالجة</option><option value="delete">طلب حذف الحساب</option></select></label>
  <label class="field">شرح الطلب <textarea id="privacyDetails" maxlength="2500" placeholder="التفاصيل اللازمة لمعالجة الطلب"></textarea></label></div>
  <div class="form-actions"><button type="submit" class="primary">تقديم طلب خصوصية</button></div></form><div id="privacyItems" class="items"></div></section>
+ <section id="launchReadinessPanel" class="panel full hidden" aria-label="جاهزية الإطلاق الرسمي">
+<h2>بوابة اعتماد الإطلاق الرسمي</h2>
+<p class="subtitle">حالة فورية تُقرأ من خادم مِنجاز. لا يمكن تفعيل التحصيل أو تحويل حقوق المستقلين من هذه اللوحة قبل اعتماد بوابات الدفع والتسوية والهوية والشروط.</p>
+<div id="launchReadinessSummary" role="status" class="warning">لم يتم فحص متطلبات الإطلاق بعد.</div>
+<div id="launchReadinessItems" class="items"></div>
+<div class="form-actions"><button id="refreshLaunchReadiness" class="btn-lite" type="button">فحص جاهزية الإطلاق الآن</button></div>
+</section>
  <section id="adminQueuesPanel" class="panel full hidden"><h2>لوحة العمليات والإدارة</h2><p class="subtitle">بيانات مباشرة للإدارة المصرّح بها فقط، دون إعلان جاهزية قانونية أو تسويات مالية.</p>
  <div id="adminStats" class="summary" style="margin-bottom:12px"></div><div id="adminQueues" class="items"></div><button id="adminRefresh" type="button" class="btn-lite">تحديث بيانات الإدارة</button></section>
 </div></div>
