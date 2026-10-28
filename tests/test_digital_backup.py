@@ -7,6 +7,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 SH=(ROOT/'scripts'/'backup_minjaz_sandbox.sh').read_text(encoding='utf-8')
 DOCKER=(ROOT/'Dockerfile.backup').read_text(encoding='utf-8')
+DRILL=(ROOT/'scripts'/'restore_drill_minjaz_ci.sh').read_text(encoding='utf-8')
 
 
 class BackupContract(unittest.TestCase):
@@ -31,6 +32,29 @@ class BackupContract(unittest.TestCase):
         self.assertIn('umask 077',SH)
         self.assertIn('mktemp',SH)
         self.assertIn('No automatic deletion',SH)
+
+
+    def test_disposable_pg18_restore_drill_is_available(self):
+        script=ROOT/'scripts'/'restore_drill_minjaz_ci.sh'
+        subprocess.run(['bash','-n',str(script)],check=True)
+        for term in (
+            'postgres:18-alpine',
+            'DATABASE_URL PGHOST BACKUP_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY',
+            'mktemp -d',
+            'trap cleanup EXIT',
+            'pg_dump -U drill',
+            'pg_restore --list',
+            'pg_restore --exit-on-error',
+            'createdb -U drill minjaz_restore_drill_ci',
+            'source_hash',
+            'restored_hash',
+            'RESTORE_DRILL_OK',
+            'synthetic local backup',
+        ):
+            self.assertIn(term,DRILL)
+        self.assertNotIn('railway.internal',DRILL)
+        self.assertNotIn('s3://',DRILL)
+        self.assertNotIn('pg_restore -d minjaz_backup_source',DRILL)
 
     def test_no_drop_or_live_restore_or_exposed_credentials(self):
         self.assertNotRegex(SH,r'\\b(?:dropdb|createdb|psql|pg_restore\\s+--dbname|rm\\s+-rf)\\b')
