@@ -246,6 +246,33 @@ class RoleWorkspaceTests(unittest.TestCase):
         self.assertIn("u=self.require()", SERVER)
         self.assertNotIn('role="admin" value=', HTML)
 
+    def test_real_private_project_and_message_attachment_workflows(self):
+        for dom_id in ("taskFiles","taskUploadStatus","messageFiles","messageUploadStatus"):
+            self.assertIn('id="'+dom_id+'"', HTML)
+        for route in (
+            'request("/api/v1/uploads/presign"',
+            'request("/api/v1/uploads/complete"',
+            'request("/api/v1/tasks",{method:"POST",data:payload})',
+            'request("/api/v1/orders/"+id+"/messages",{method:"POST"'
+        ):
+            self.assertIn(route, JS)
+        self.assertIn('payload.attachments=stagedTaskAttachments', JS)
+        self.assertIn('attachments:stagedMessageAttachments', JS)
+        self.assertIn('stagedTaskAttachments=null', JS)
+        self.assertIn('stagedMessageAttachments=null', JS)
+        self.assertIn('method:"PUT",mode:"cors"', JS)
+        self.assertIn('signed.headers', JS)
+        self.assertIn('verified.attachment.storage_key!==signed.key', JS)
+        self.assertIn('MAX_ATTACHMENT_BYTES=10_000_000', JS)
+        self.assertIn('files.length>3', JS)
+        self.assertIn('attachmentLinks(m.attachments)', JS)
+        self.assertIn('rel="noopener noreferrer"', JS)
+        self.assertIn("STORAGE_MODE=='railway_bucket' and BUCKET_READY", SERVER)
+        self.assertIn("setup_preview_bucket_cors", SERVER)
+        self.assertIn("CORS_ORIGINS", SERVER)
+        self.assertIn('object_key(u[\'id\']', SERVER)
+        self.assertNotIn("fake_uploaded", JS)
+
     @unittest.skipUnless(shutil.which("node"), "Node unavailable in minimal Docker image")
     def test_javascript_parses(self):
         subprocess.run(["node", "--check", str(ROOT / "public" / "workspace-v1.js")], check=True)
