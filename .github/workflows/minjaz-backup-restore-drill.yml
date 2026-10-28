@@ -1,0 +1,36 @@
+name: MINJAZ isolated PostgreSQL backup restore drill
+on:
+  pull_request:
+    branches:
+      - feature/digital-services-geidea-sandbox
+    paths:
+      - "scripts/backup_minjaz_sandbox.sh"
+      - "scripts/restore_drill_minjaz_ci.sh"
+      - "tests/test_digital_backup.py"
+      - "Dockerfile.backup"
+      - ".github/workflows/minjaz-backup-restore-drill.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minjaz-restore-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-postgresql18-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out versioned backup tools
+        uses: actions/checkout@v4
+      - name: Refuse direct data-source credentials and validate shell
+        shell: bash
+        run: |
+          bash -n scripts/restore_drill_minjaz_ci.sh
+          sh -n scripts/backup_minjaz_sandbox.sh
+          python3 -m unittest discover -s tests -p 'test_digital_backup.py' -v
+      - name: Dump and restore isolated PostgreSQL 18 with real constraints and Arabic rows
+        shell: bash
+        run: bash scripts/restore_drill_minjaz_ci.sh
