@@ -326,10 +326,11 @@ function displayDate(value){
 }
 async function showOrder(id,openDialog=true){
  if(!Number.isSafeInteger(id)||id<1)return;
- const [order,messages,timeline]=await Promise.all([
+ const [order,messages,timeline,cancel]=await Promise.all([
   request("/api/v1/orders/"+id),
   request("/api/v1/orders/"+id+"/messages"),
-  request("/api/v1/orders/"+id+"/timeline")
+  request("/api/v1/orders/"+id+"/timeline"),
+  request("/api/v1/orders/"+id+"/cancellation")
  ]);
  activeOrderId=id;
  $("orderTitle").textContent=order.title||("طلب #"+id);
@@ -340,6 +341,14 @@ async function showOrder(id,openDialog=true){
    order.payment_status==="paid"?"الدفع مؤكد":"لم يتم دفع أي مبلغ",
    "العميل: "+(order.client_name||"-"),"المستقل: "+(order.freelancer_name||"-")],"")+
   (pending?'<div class="warning">هذا طلب حقيقي مسجّل، لكنه لا يسمح ببدء تنفيذ مدفوع قبل ربط بوابة الدفع الرسمية وتسويات المستقلين. لا ترسل أي مبالغ خارج المنصة.</div>':"");
+ const currentCancel=cancel.item||null,activeCancel=currentCancel&&["pending","in_review"].includes(currentCancel.status);
+ const canCancel=!["cancelled","completed","disputed"].includes(order.status)&&!activeCancel;
+ show("orderCancelSection",Boolean(canCancel||currentCancel));
+ show("orderCancelForm",canCancel);
+ $("orderCancelInfo").innerHTML=currentCancel?
+  entry("حالة طلب الإلغاء #"+Number(currentCancel.id),currentCancel.reason||"",
+   [ticketStatus(currentCancel.status),"الاسترداد: "+(currentCancel.refund_status==="not_needed"?"لا توجد أموال محصّلة":currentCancel.refund_status||"مراجعة")],""):
+  empty("لا يوجد طلب إلغاء سابق. أي طلب جديد يُراجع من الإدارة أولًا.");
  $("orderMessages").innerHTML=(messages.items||[]).length?(messages.items||[]).map(m=>
   entry(m.sender_name||"عضو",m.body||"مرفق",["بتاريخ "+displayDate(m.created_at)],"")
  ).join(""):empty("ما فيه رسائل حتى الآن. ابدأ محادثة مع الطرف الآخر.");
@@ -481,13 +490,14 @@ async function loadPortfolio(){
   ).join(""):empty("لا توجد نماذج أعمال. أضف عملًا حقيقيًا لتقوية ملفك المهني.");
  }catch(e){$("portfolioItems").innerHTML=empty("تعذر تحميل معرض أعمالك: "+e.message)}
 }
-let adminSupportTickets=[];
+let adminSupportTickets=[],adminCancellations=[];
 async function loadAdminQueues(){
  if(currentUser?.role!=="admin")return;
  try{
-  const [oper,help,privacy,safety]=await Promise.all([
+  const [oper,help,privacy,safety,cancels]=await Promise.all([
    request("/api/admin/operations"),request("/api/admin/support"),
-   request("/api/admin/privacy"),request("/api/admin/safety/reports?status=open")
+   request("/api/admin/privacy"),request("/api/admin/safety/reports?status=open"),
+   request("/api/admin/cancellations")
   ]);
   const metrics=oper.metrics||{};
   const pairs=[
@@ -502,10 +512,12 @@ async function loadAdminQueues(){
   ];
   $("adminStats").innerHTML=pairs.map(x=>'<article><b>'+Number(x[1]||0)+'</b><small>'+esc(x[0])+'</small></article>').join("");
   adminSupportTickets=help.items||[];
+  adminCancellations=cancels.items||[];
   const groups=[
    ["تذاكر الدعم",help.items||[],"subject",["open","in_progress"]],
    ["طلبات الخصوصية",privacy.items||[],"request_type",["pending","in_progress"]],
-   ["بلاغات السلامة",safety.items||[],"category",["open","in_review"]]
+   ["بلاغات السلامة",safety.items||[],"category",["open","in_review"]],
+   ["إلغاءات العقود",adminCancellations,"reason",["pending","in_review"]]
   ];
   const counters=groups.map(([name,rows,field,statuses])=>{
     const pending=rows.filter(x=>statuses.includes(x.status));
@@ -517,7 +529,12 @@ async function loadAdminQueues(){
       [ticketStatus(x.status),safeDate(x.updated_at)],
       '<button type="button" data-action="review-support" data-id="'+Number(x.id)+'">الرد على المستخدم</button>')
   ).join("");
-  $("adminQueues").innerHTML=counters+urgentSupport;
+  const urgentCancels=adminCancellations.filter(x=>["pending","in_review"].includes(x.status)).slice(0,10).map(x=>
+    entry("طلب إلغاء #"+Number(x.id)+" · "+(x.title||"طلب"),x.reason||"",
+     [ticketStatus(x.status),x.payment_status==="paid"?"تم الدفع · يلزم إثبات استرداد":"غير مدفوع"],
+     '<button type="button" data-action="review-cancel" data-id="'+Number(x.id)+'">مراجعة الطلب</button>')
+  ).join("");
+  $("adminQueues").innerHTML=counters+urgentSupport+urgentCancels;
  }catch(e){$("adminQueues").innerHTML=empty("تعذر تحديث بيانات الإدارة: "+e.message)}
 }
 async function loadExtraPanels(){
@@ -635,6 +652,57 @@ $("reportForm").addEventListener("submit",async e=>{
  finally{loadingButton(form,false)}
 });
 $("adminRefresh").addEventListener("click",loadAdminQueues);
+
+let orderCancelKey="";
+$("orderCancelForm").addEventListener("input",()=>{orderCancelKey=""});
+$("orderCancelForm").addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget,id=activeOrderId;
+ const reason=$("orderCancelReason").value.trim(),details=$("orderCancelDetails").value.trim();
+ if(!id||reason.length<3){notice("اكتب سببًا واضحًا للإلغاء.","error");return}
+ if(!window.confirm("طلب الإلغاء يحتاج مراجعة الإدارة، ولن يغيّر حالة الطلب مباشرة. هل تريد إرساله؟"))return;
+ loadingButton(form,true);
+ const payload={reason,details,idempotency_key:orderCancelKey||(orderCancelKey=operationKey("cancel"))};
+ try{
+  const r=await request("/api/v1/orders/"+id+"/cancellation",{method:"POST",data:payload});
+  orderCancelKey="";form.reset();await showOrder(id,false);
+  notice("تم إرسال طلب الإلغاء #"+Number(r.id)+" للإدارة. لم يتغير وضع الدفع.","success");
+ }catch(err){if(err.code==="idempotency_key_reused")orderCancelKey="";notice(err.message,"error")}
+ finally{loadingButton(form,false)}
+});
+$("adminQueues").addEventListener("click",e=>{
+ const b=e.target.closest('button[data-action="review-cancel"]');
+ if(!b||currentUser?.role!=="admin")return;
+ const id=Number(b.dataset.id),req=adminCancellations.find(x=>Number(x.id)===id);
+ if(!req||!Number.isSafeInteger(id)||id<1)return;
+ $("adminCancellationId").value=String(id);
+ $("adminCancellationTitle").textContent="مراجعة طلب الإلغاء #"+id;
+ $("adminCancellationDetails").textContent=(req.title||"")+" · "+(req.reason||"")+
+  (req.payment_status==="paid"?" · تنبيه: تم تحصيل مبلغ ويحتاج إجراء استرداد فعلي.":" · لم يُدفع");
+ $("adminCancellationStatus").value="in_review";
+ $("adminCancellationNote").value=req.admin_note||"";
+ const option=$("adminCancellationStatus").querySelector('option[value="approved"]');
+ option.disabled=req.payment_status==="paid";
+ $("adminCancellationDialog").showModal();
+});
+$("closeAdminCancellation").addEventListener("click",()=>$("adminCancellationDialog").close());
+$("adminCancellationForm").addEventListener("submit",async e=>{
+ e.preventDefault();if(currentUser?.role!=="admin")return;
+ const f=e.currentTarget,id=Number($("adminCancellationId").value),
+  req=adminCancellations.find(x=>Number(x.id)===id),status=$("adminCancellationStatus").value,
+  note=$("adminCancellationNote").value.trim();
+ if(!req||!Number.isSafeInteger(id)||id<1||!["in_review","approved","rejected"].includes(status))return;
+ if(status==="approved"&&req.payment_status==="paid"){
+  notice("لا يمكن اعتماد إلغاء مدفوع هنا دون تسوية واسترداد موثقين.","error");return;
+ }
+ if(status!=="in_review"&&!window.confirm("قرار الإلغاء سيغيّر حالة الطلب الفعلية ويُبلّغ الأطراف. هل راجعت الأدلة؟"))return;
+ loadingButton(f,true);
+ try{
+  await request("/api/admin/cancellations/"+id,{method:"PATCH",data:{status,admin_note:note}});
+  $("adminCancellationDialog").close();await loadAdminQueues();
+  notice("حُفظ قرار الإلغاء #"+id+" في سجل الإدارة.","success");
+ }catch(err){notice(err.message,"error")}finally{loadingButton(f,false)}
+});
+
 
 $("adminQueues").addEventListener("click",e=>{
  const b=e.target.closest('button[data-action="review-support"]');
