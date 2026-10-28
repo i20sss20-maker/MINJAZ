@@ -2499,8 +2499,24 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'workspace-v1.js'),'rb').read()
                 self._headers(200,'application/javascript; charset=utf-8')
                 return self.wfile.write(data)
-            if method=='GET' and p in ('/','/index.html'):
+            if method=='GET' and p in ('/discover','/discover/'):
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'discover.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p in ('/classic','/classic/'):
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
+            if method=='GET' and p in ('/','/index.html'):
+                # Preview users should see the real-marketplace entrypoint, not the
+                # legacy demo-OTP shell. Preserve old UI at /classic for recovery.
+                front='discover.html' if APP_ENV=='preview' and p=='/' else None
+                data=open(os.path.join(os.path.dirname(HTML_PATH),front),'rb').read() if front else open(HTML_PATH,'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/minjaz-signature.css':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-signature.css'),'rb').read()
+                self._headers(200,'text/css; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):
                 static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js','/minjaz-release-v316.js':'minjaz-release-v316.js'}[p]
                 ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8','/minjaz-release-v316.js':'application/javascript; charset=utf-8'}[p]

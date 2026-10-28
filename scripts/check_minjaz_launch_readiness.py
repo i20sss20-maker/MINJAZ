@@ -55,7 +55,13 @@ def check_public_ui(root):
         expected_type="javascript" if path.endswith(".js") else "html"
         if status!=200 or expected_type not in content_type:
             raise RuntimeError(f"{path}: missing or incorrect public page/asset response")
-        if any(marker not in body for marker in markers):
+        # During sandbox redesign, either the old authenticated shell or
+        # the premium marketing landing may serve '/'. Both must link to
+        # the existing real verified-email account workflow.
+        premium_home=(path=="/" and
+                      all(m in body for m in ('id="hero-title"',
+                                               'href="/signup"', 'class="flow-card"')))
+        if not premium_home and any(marker not in body for marker in markers):
             raise RuntimeError(f"{path}: public interface contract missing")
     return True
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="index,follow">
-<title>حذف حساب مِنجاز</title>
+<title>طلب حذف الحساب | مِنجاز</title><link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
 :root{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;color:#172033;background:#f6f8fc}
 *{box-sizing:border-box}body{margin:0}.wrap{max-width:720px;margin:auto;padding:34px 18px 70px}
@@ -15,21 +15,21 @@ button,a.btn{display:inline-flex;align-items:center;justify-content:center;borde
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.status{padding:12px;border-radius:13px;background:#f8fafc;margin-top:12px;display:none}
 .status.on{display:block}.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:13px}
 label{display:flex;gap:8px;align-items:flex-start;margin-top:12px;color:#475569}
-</style>
+</style><link rel="stylesheet" href="/minjaz-signature.css?v=1">
 </head>
-<body><main class="wrap">
+<body class="minjaz-doc"><main class="wrap"><nav class="doc-nav" aria-label="روابط مِنجاز"><a href="/discover">← مِنجاز</a><a href="/privacy">سياسة الخصوصية</a></nav>
 <section class="card">
 <h1>حذف حساب مِنجاز</h1>
 <p>هذه الصفحة هي المسار الخارجي لطلب حذف حسابك وبياناتك المرتبطة به. يمكنك أيضًا الوصول لنفس الخيار من داخل التطبيق: <b>حسابي ← الخصوصية والبيانات ← حذف الحساب</b>.</p>
 <div class="warn">إذا كان لديك طلب نشط أو نزاع أو التزام مالي، قد نحتاج لإنهائه أو تسويته قبل إتمام الحذف. وقد نحتفظ فقط بالسجلات التي يلزم الاحتفاظ بها نظاميًا أو ماليًا أو أمنيًا.</div>
 <div id="signedOut" class="actions">
-<a class="btn primary" href="/?delete_account=1">تسجيل الدخول وطلب الحذف</a>
+<a class="btn primary" href="/signup?auth=login">تسجيل الدخول وطلب الحذف</a>
 <a class="btn ghost" href="/privacy">سياسة الخصوصية</a>
 </div>
 <div id="signedIn" style="display:none">
 <p id="accountText" class="muted"></p>
 <label><input id="confirmDelete" type="checkbox"> <span>أفهم أن طلب الحذف يعطل الوصول للحساب بعد إتمامه، وأن بعض السجلات قد تُحتفظ بها فقط عند وجود التزام نظامي أو مالي أو أمني.</span></label>
-<div class="actions"><button id="deleteBtn" class="danger" type="button">إرسال طلب حذف الحساب</button><a class="btn ghost" href="/">العودة لمِنجاز</a></div>
+<div class="actions"><button id="deleteBtn" class="danger" type="button">إرسال طلب حذف الحساب</button><a class="btn ghost" href="/workspace">العودة إلى مساحة العمل</a></div>
 </div>
 <div id="status" class="status"></div>
 </section>

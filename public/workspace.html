@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#161f3e">
-<title>مِنجاز | مركز العمل</title>
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#10182b"><link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>مساحة العمل | مِنجاز</title><meta name="description" content="مساحة مِنجاز لتنظيم مشاريع العملاء وعروض المستقلين ومحادثات العمل وإدارة الملفات.">
 <style>
 :root{font-family:system-ui,Tahoma,Arial,sans-serif;--bg:#f5f7fd;--paper:white;--ink:#1b2844;--muted:#6d7b93;--line:#e0e6f1;--blue:#4b50d5;--soft:#edf0ff;--green:#137554}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);line-height:1.8}button,input,textarea,select{font:inherit}a{color:inherit;text-decoration:none}button{cursor:pointer}button:disabled{cursor:wait;opacity:.62}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #aca8ff;outline-offset:3px}
@@ -26,18 +26,19 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 #loading{margin-top:20px}.full{grid-column:1/-1}.warning{border:1px solid #f3ce8b;background:#fff7e9;border-radius:12px;padding:12px 14px;font-size:12px;color:#7c5318;margin:12px 0}.order-list{display:grid;gap:9px;max-height:45vh;overflow:auto}.order-list .item{background:#f9faff}.hint{font-size:12px;color:#5a6380}.full{grid-column:1/-1}.hidden,[hidden]{display:none!important}
 @media(max-width:760px){.site{padding:15px 14px 50px}.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.panel{padding:17px}.hero{padding:22px}.hero-actions{width:100%}.row2{grid-template-columns:1fr}}
 </style>
+<link rel="stylesheet" href="/minjaz-signature.css?v=1">
 <script src="/workspace-v1.js" defer></script>
 </head>
-<body><div class="site">
-<header><a class="brand" href="/workspace"><span class="brand-mark">م</span><span>مِنجاز <small style="color:#7786a1;font-size:11px">مركز العمل</small></span></a>
-<nav><a href="/digital-services">الخدمات الجاهزة</a><a href="/" title="الواجهة الكاملة">المنصة الكاملة</a><a href="/privacy">الخصوصية</a><button id="logout" type="button" class="hidden">تسجيل الخروج</button></nav>
+<body class="minjaz-work"><div class="site">
+<header><a class="brand" href="/workspace" aria-label="مِنجاز، مساحة العمل"><span class="brand-mark"><img class="brand-icon-img" src="/icon.svg" width="46" height="46" alt=""></span><span>مِنجاز <small>مساحة العمل</small></span></a>
+<nav aria-label="روابط أساسية"><a href="/discover">عن المنصة</a><a href="/digital-services">استكشف الخدمات</a><a href="#profile">ملفي الشخصي</a><a href="/privacy">الخصوصية</a><button id="logout" type="button" class="hidden">تسجيل الخروج</button></nav>
 </header>
 <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
-<div id="loginRequired" class="panel hidden"><h1>أهلًا بك في مِنجاز</h1><p>حتى تبدأ العمل وتتابع الطلبات، سجّل دخولك بالبريد المفعّل.</p><a class="primary" href="/signup?auth=login">تسجيل الدخول</a></div>
-<div id="loading" class="panel">جاري تجهيز مساحة العمل...</div>
+<div id="loginRequired" class="panel hidden"><h1>مساحة عملك تنتظرك.</h1><p>سجّل دخولك ببريدك الإلكتروني الموثّق لتتابع مشاريعك وعروضك ومحادثاتك من مكان واحد.</p><a class="primary" href="/signup?auth=login">الدخول إلى حسابي</a></div>
+<div id="loading" class="panel" role="status">نجهّز بيانات مساحة عملك بأمان…</div>
 <div id="workspace" class="hidden">
-<section class="hero"><div><div class="eyebrow">مِنجاز · تشغيل حقيقي بمرحلة اختبار مغلقة · لا مدفوعات</div><h1 id="welcome">مرحبًا بك</h1><p id="who">مساحة عملك داخل منجاز</p></div>
-<div class="hero-actions"><a href="/digital-services">استعرض الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">حسابي</a></div></section>
+<section class="hero"><div><div class="eyebrow">MINJAZ WORKSPACE / مساحة عمل متصلة ببياناتك</div><h1 id="welcome">أهلًا بك في مِنجاز</h1><p id="who">مشاريعك، عروضك، وتفاصيل إنجازك في لوحة واحدة.</p></div>
+<div class="hero-actions"><a href="/digital-services">اكتشف الخدمات ←</a><button id="switchRole" type="button" class="hidden"></button><a href="#profile">إدارة الحساب</a></div></section>
 <section id="ownerAdminPanel" class="panel hidden" aria-label="تأكيد صلاحيات مدير مِنجاز" style="margin-top:16px">
 <h2>تفعيل الإدارة الرئيسية بطريقة آمنة</h2>
 <p class="subtitle">يُتاح هذا الإجراء فقط لبريد المالك الموثّق والمحدد على الخادم. لا يتم تغيير دور الحساب بمجرد إضافة البريد إلى الإعدادات؛ يلزم كلمة المرور ورابط تأكيد يُرسل إلى بريد المالك وينتهي خلال 15 دقيقة.</p>
@@ -51,22 +52,24 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <div class="warning">هذا تأكيد لصلاحيات مدير قادر على مراجعة بيانات المستخدمين وإجراءات الإدارة. لا تستخدم حسابًا مشتركًا.</div>
 <div class="form-actions"><button type="submit" class="primary">تأكيد تفعيل الإدارة</button></div>
 </form></section>
+<div class="work-heading"><span>نظرة عامة</span><p>ملخص مبني على بيانات حسابك — بدون أرقام افتراضية.</p></div>
 <section id="summary" class="summary" aria-label="ملخص الحساب"></section>
 <section id="legalWrap" class="hidden" aria-label="المستندات القانونية"><h2>الشروط والخصوصية التجريبية</h2><p>راجع المستندات والإصدارات أدناه قبل إنشاء المهام أو إرسال العروض. هذه مسودات تجريبية وليست نصوصًا تجارية معتمدة.</p><div id="legalDocs"></div><button id="acceptLegal" class="primary" type="button">أوافق على المستندات المحددة</button></section>
+<div class="work-heading"><span>المشاريع والتواصل</span><p>كل خطوة محفوظة في سجل الطلبات والنشاط.</p></div>
 <div class="grid">
  <section class="panel"><h2 id="mainTitle">مساحة العمل</h2><p class="subtitle" id="mainSubtitle"></p>
  <div id="clientAction" class="hidden">
-   <form id="newTask"><label class="field">عنوان المهمة <input name="title" required minlength="5" maxlength="180" placeholder="مثل تصميم شعار أو تجهيز موقع"></label>
-   <label class="field">وصف المطلوب <textarea name="description" required minlength="20" maxlength="6000" placeholder="اكتب تفاصيل طلبك والنتيجة المتوقعة"></textarea></label>
+   <form id="newTask"><label class="field">عنوان المشروع <input name="title" required minlength="5" maxlength="180" placeholder="مثال: تصميم واجهة متجر إلكتروني متكاملة"></label>
+   <label class="field">تفاصيل المشروع <textarea name="description" required minlength="20" maxlength="6000" placeholder="اشرح الهدف، نطاق العمل، الملفات المطلوبة والنتيجة التي تتوقع تسلّمها"></textarea></label>
    <label class="field">القسم <select name="category_id" id="categories" required><option value="">اختر القسم</option></select></label>
    <div class="row2"><label class="field">الحد الأدنى (ريال) <input name="budget_min" type="number" min="49" max="1000000" step=".01" placeholder="49"></label><label class="field">الحد الأعلى (ريال) <input name="budget_max" type="number" min="49" max="1000000" step=".01" placeholder="300"></label></div>
    <label class="field">مرفقات توضيحية للمشروع (اختياري، 3 ملفات، كل ملف حتى 10MB)
    <input id="taskFiles" type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.xlsx,.zip"></label>
    <p id="taskUploadStatus" class="note" role="status">يتم حفظ الملفات الخاصة في مساحة تخزين محمية، ولا يبدأ الدفع أو التنفيذ تلقائيًا.</p>
-   <div class="form-actions"><button type="submit" class="primary">نشر المهمة</button><span class="note">لا يوجد دفع حقيقي في التجربة.</span></div></form>
+   <div class="form-actions"><button type="submit" class="primary">نشر المشروع واستقبال العروض</button><span class="note">لا يتم تحصيل أي مبالغ حاليًا.</span></div></form>
  </div>
- <div id="freelancerAction" class="hidden"><p class="note">هذه المهام المتاحة يمكنك تقديم عروض عليها. يراجع العميل العروض ويختار المناسب.</p></div>
- <div id="adminAction" class="hidden"><p class="note">ملخص تشغيل للمدير فقط، والصلاحيات مفروضة على واجهات البرمجة.</p><a class="primary" href="/digital-services/admin">إدارة الخدمات الرقمية</a></div>
+ <div id="freelancerAction" class="hidden"><p class="note">تصفّح فرص العمل المناسبة لك، وقدّم عرضًا يوضح السعر والمدة ونطاق التنفيذ. يراجع العميل العروض ويختار الأنسب.</p></div>
+ <div id="adminAction" class="hidden"><p class="note">إدارة العمليات الفعلية محمية بصلاحيات الخادم، ويمكن متابعة طلبات المستخدمين ومراجعتها من اللوحة.</p><a class="primary" href="/digital-services/admin">فتح إدارة الخدمات الرقمية</a></div>
  </section>
  <section class="panel"><h2 id="sideTitle">آخر النشاط</h2><p class="subtitle" id="sideSubtitle">البيانات من حسابك الفعلي</p><div id="sideItems" class="items"></div><div class="form-actions"><button id="markAllRead" type="button" class="btn-lite hidden">تحديد الإشعارات كمقروءة</button></div></section>
  <section class="panel"><h2 id="tasksTitle">المهام</h2><p class="subtitle" id="tasksSubtitle"></p><div id="taskItems" class="items"></div></section>
@@ -159,5 +162,6 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
 <label class="field">تفاصيل إضافية <textarea id="orderCancelDetails" maxlength="4000" placeholder="اشرح ظروف طلب الإلغاء"></textarea></label>
 <div class="form-actions"><button class="primary" type="submit">إرسال طلب إلغاء للمراجعة</button></div></form></section>
 <h3>سجل الطلب</h3><div id="orderTimeline" class="order-list"></div></dialog>
+<footer class="site-footer" aria-label="روابط المنصة"><span>© مِنجاز · مساحة عمل بتجربة عربية واضحة.</span><span>المعاملات المالية غير متاحة حتى اكتمال الاعتماد · <a href="/privacy">الخصوصية</a> · <a href="/discover">عن مِنجاز</a></span></footer>
 </body>
 </html>
