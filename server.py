@@ -2702,7 +2702,37 @@ class H(BaseHTTPRequestHandler):
                     q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
                 prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
                 user={k:as_json(u.get(k)) for k in ('id','phone','email','name','role','is_verified')}; user['email_verified']=bool(u.get('email_verified_at')); user['roles']=roles
+                from minjaz_email_auth import normalize_email as _normalized_mail
+                user['admin_eligible']=(APP_ENV=='preview' and u['role']!='admin'
+                    and bool(os.getenv('ADMIN_EMAIL','').strip()) and bool(u.get('email_verified_at'))
+                    and _normalized_mail(u.get('email'))==_normalized_mail(os.getenv('ADMIN_EMAIL','')))
                 return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
+            if p in ('/api/v1/auth/admin-claim/request','/api/v1/auth/admin-claim/confirm') and method=='POST':
+                # An existing email-verified owner must explicitly authorize admin
+                # elevation with password + single-use email token. Config alone
+                # never changes roles, and this path is disabled outside preview.
+                if APP_ENV!='preview' or not EMAIL_AUTH_REQUIRED:
+                    return self.sendj(404,{'error':'not_found'})
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                u=self.require()
+                if not u:return
+                if not rate_limit_event('admin_claim_ip',self.client_key(),6,3600):
+                    return self.sendj(429,{'error':'admin_claim_rate_limited'})
+                b=self.body()
+                from minjaz_admin_claim import request_owner_claim,confirm_owner_claim
+                if p.endswith('/request'):
+                    status,payload=request_owner_claim(u['id'],b.get('password'),db_connect,SECRET,
+                                                       os.getenv('ADMIN_EMAIL',''))
+                else:
+                    status,payload=confirm_owner_claim(u['id'],u['session_id'],b.get('password'),
+                                                      b.get('token'),db_connect,SECRET,
+                                                      os.getenv('ADMIN_EMAIL',''))
+                    if status==200 and payload.get('admin_activated'):
+                        admin_audit(u['id'],'owner_admin_claim','user',u['id'],
+                                    {'method':'existing_account_password_and_email'})
+                return self.sendj(status,payload)
             if p=='/api/v1/me/profile' and method=='PATCH':
                 u=self.require();
                 if not u:return
