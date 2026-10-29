@@ -97,6 +97,12 @@ class FullCatalog(TestCase):
         self.assertIn("new URL('/digital-services',location.origin)",frontend)
         self.assertIn("if(btn)beginServiceOrder(p,card,btn)",frontend)
         self.assertIn("navigator.clipboard?.writeText",frontend)
+        for marker in ("orderPackageSummary","briefGuide","briefQuestions",
+                       "selected=p;$('orderTitle')","$('serviceDetailsDialog').showModal()"):
+            self.assertIn(marker,frontend)
+        for category in CATEGORIES:
+            self.assertIn(category+":",frontend)
+        self.assertIn("السعر والمدة تُراجع بعد استلام المتطلبات",frontend)
         self.assertIn("المدة تقدير",frontend.replace("المدة التقديرية","المدة تقدير"))
         self.assertNotIn("تم الدفع بنجاح",frontend)
         for control in ("serviceSort","moreServices","categoryFilter","serviceSearch"):
