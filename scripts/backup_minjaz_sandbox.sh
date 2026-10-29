@@ -23,7 +23,8 @@ esac
 pg_dump --version
 date_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 key="minjaz/preview/postgresql18/${date_stamp}.dump"
-file="$(mktemp /tmp/minjaz-preview-XXXXXXXX.dump)"
+# BusyBox mktemp in postgres:18-alpine rejects template suffixes such as .dump.
+file="$(mktemp /tmp/minjaz-preview-XXXXXXXX)"
 trap 'rm -f "$file"' EXIT HUP INT TERM
 echo "BACKUP_START ${date_stamp}"
 pg_dump --dbname="$DATABASE_URL" --format=custom --compress=6 --no-owner --no-privileges --file="$file"
