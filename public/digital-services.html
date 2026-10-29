@@ -167,6 +167,14 @@ async function beginServiceOrder(p,card,btn){
 }
 async function api(path,options){const res=await fetch(path,{credentials:'same-origin',headers:{Accept:'application/json',...(options?.body?{'Content-Type':'application/json'}:{})},...options});let data;try{data=await res.json()}catch{throw Error('تعذر قراءة رد الخادم')}if(!res.ok){if(res.status===401){const error=new Error('يلزم تسجيل الدخول لعرض طلباتك أو إكمال الطلب');error.code='unauthorized';throw error;}throw Error(errorLabels[data.error]||data.error||'حدث خطأ ('+res.status+')')}return data}
 let catalogItems=[];let catalogVersion=0;let catalogVisible=12;let catalogDeepLinkChecked=false;
+function syncVisibleServiceCategories(items){
+ const categories=new Set(items.map(service=>service.category));
+ for(const option of $('categoryFilter').options){
+  if(!option.value)continue;
+  option.disabled=!categories.has(option.value);
+  option.hidden=!categories.has(option.value);
+ }
+}
 const catalogSymbols={website:'▤',mobile_app:'▯',ecommerce:'◫',branding:'◈',maintenance:'⚙',ai:'✦',marketing:'↗',seo:'⌕',content:'✎',video:'▶',automation:'⟲',data:'▥',security:'◇',consulting:'◎'};
 function renderCatalog(){
  const box=$('catalog');box.replaceChildren();
@@ -211,7 +219,7 @@ function renderCatalog(){
    card.append(bottom,link);card.dataset.packageId=String(p.id);card.dataset.serviceSlug=p.slug;box.append(card);
  }
 }
-async function load(){const version=++catalogVersion;$('catalog').replaceChildren();$('status').textContent='جاري تحميل الخدمات...';try{const category=$('categoryFilter').value;const data=await api('/api/digital-services/catalog'+(category?'?category='+encodeURIComponent(category):''));if(version!==catalogVersion)return;if(!Array.isArray(data.services))throw Error('صيغة البيانات غير صحيحة');catalogItems=data.services;catalogVisible=12;renderCatalog();
+async function load(){const version=++catalogVersion;$('catalog').replaceChildren();$('status').textContent='جاري تحميل الخدمات...';try{const category=$('categoryFilter').value;const data=await api('/api/digital-services/catalog'+(category?'?category='+encodeURIComponent(category):''));if(version!==catalogVersion)return;if(!Array.isArray(data.services))throw Error('صيغة البيانات غير صحيحة');catalogItems=data.services;if(!category)syncVisibleServiceCategories(catalogItems);catalogVisible=12;renderCatalog();
  if(!catalogDeepLinkChecked){
    catalogDeepLinkChecked=true;
    const deepService=new URLSearchParams(location.search).get('service');
