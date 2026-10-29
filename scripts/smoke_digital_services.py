@@ -81,6 +81,18 @@ def main():
     if not all(item.get("category") == "website" for item in category_catalog["services"]):
         raise AssertionError("category filtering returned a different category")
     print("PASS category-filtered catalog")
+    # Read-only verification for every supported category, including newly
+    # launched offerings. Administrators may legitimately hide individual
+    # packages, so verify shape and filtering, not an arbitrary count.
+    categories=("website","mobile_app","ecommerce","branding","maintenance","ai",
+                "marketing","seo","content","video","automation","data","security","consulting")
+    all_ids={item["id"] for item in services}
+    if len(all_ids)!=len(services):
+        raise AssertionError("duplicate package ids in catalog")
+    for category in categories:
+        subset=check("/api/digital-services/catalog?category="+category,200,"services")["services"]
+        if any(item.get("category")!=category or item.get("id") not in all_ids for item in subset):
+            raise AssertionError(f"{category}: invalid public category filtering")
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/activity",401,"error")
