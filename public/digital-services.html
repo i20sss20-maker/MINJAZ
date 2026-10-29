@@ -52,11 +52,45 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
 </div></section>
 </main>
 <footer class="footer"><div class="footer-inner container"><div class="brand"><span class="brand-icon">≋</span><span>منجاز<span class="brand-caption">الخدمات الرقمية</span></span></div><p>نسخة تجريبية لتجربة الخدمات • لا توجد معاملات دفع حقيقية</p><a href="/workspace">الذهاب إلى مركز العمل</a></div></footer>
+<dialog id="serviceDetailsDialog" aria-labelledby="serviceDetailsTitle">
+  <div class="service-detail">
+    <span id="serviceDetailsCategory" class="badge"></span>
+    <h2 id="serviceDetailsTitle"></h2>
+    <p id="serviceDetailsDescription"></p>
+    <div class="process" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:20px 0" aria-label="بيانات الباقة">
+      <div class="process-step" style="padding:12px"><strong id="serviceDetailsPrice"></strong><p>سعر استرشادي</p></div>
+      <div class="process-step" style="padding:12px"><strong id="serviceDetailsDuration"></strong><p>المدة التقديرية</p></div>
+      <div class="process-step" style="padding:12px"><strong id="serviceDetailsRevisions"></strong><p>التعديلات المتوقعة</p></div>
+    </div>
+    <p class="muted">الشرح المبيّن هو نطاق مبدئي للخدمة. التفاصيل النهائية والسعر والمدة تُراجع بعد استلام المتطلبات، ولا يشمل العرض أي التزام بالدفع في النسخة التجريبية.</p>
+    <p><a id="serviceDetailsShareLink" href="#" rel="noopener">رابط مباشر لهذه الخدمة</a></p>
+    <p id="serviceDetailsFeedback" role="status" class="muted"></p>
+    <div class="hero-actions">
+      <button id="serviceDetailsRequest" type="button">إنشاء مسودة لهذه الخدمة</button>
+      <button id="serviceDetailsCopy" type="button">نسخ الرابط</button>
+      <button id="serviceDetailsClose" type="button">إغلاق</button>
+    </div>
+  </div>
+</dialog>
 <dialog id="orderDialog" aria-labelledby="orderTitle"><form id="orderForm"><h2 id="orderTitle">طلب خدمة</h2><label for="requirements">متطلبات المشروع (10 أحرف على الأقل)</label><textarea id="requirements" required minlength="10" maxlength="10000" placeholder="صف فكرتك، صفحات المشروع، والنتيجة اللي تتوقعها..."></textarea><p class="muted">سيُحفظ الطلب كمسودة فقط. السعر والمدة استرشاديان وغير ملزمين قبل الاتفاق، ولن يُحصَّل أي مبلغ في هذه النسخة.</p><p id="formError" class="error" role="alert"></p><button type="submit" id="submitOrder">إنشاء مسودة الطلب</button> <button type="button" id="cancel">إلغاء</button></form></dialog>
 
 <script>
 'use strict';const $=id=>document.getElementById(id);let selected=null;let pendingOrderKey=null;let ordersOpened=false;
 const labels={website:'المواقع الإلكترونية',mobile_app:'تطبيقات الجوال',ecommerce:'المتاجر الإلكترونية',branding:'التصميم والهوية',maintenance:'الصيانة والدعم',ai:'الذكاء الاصطناعي',marketing:'التسويق الرقمي',seo:'محركات البحث SEO',content:'الكتابة والمحتوى',video:'الفيديو والمونتاج',automation:'الأتمتة والتكاملات',data:'تحليل البيانات',security:'الأمن السيبراني',consulting:'الاستشارات التقنية'};
+let detailPackage=null;let detailCard=null;
+function serviceUrl(slug){const url=new URL('/digital-services',location.origin);url.searchParams.set('service',slug);return url.toString()}
+function showServiceDetails(p,card){
+ detailPackage=p;detailCard=card;
+ $('serviceDetailsCategory').textContent=labels[p.category]||p.category;
+ $('serviceDetailsTitle').textContent=p.title_ar;
+ $('serviceDetailsDescription').textContent=p.description_ar;
+ $('serviceDetailsPrice').textContent=Number(p.price_sar).toLocaleString('ar-SA')+' ر.س';
+ $('serviceDetailsDuration').textContent=p.delivery_days+' يوم';
+ $('serviceDetailsRevisions').textContent=p.revision_limit;
+ const url=serviceUrl(p.slug);$('serviceDetailsShareLink').href=url;
+ $('serviceDetailsFeedback').textContent='';
+ $('serviceDetailsDialog').showModal();
+}
 const orderStates={created:'إنشاء الطلب',draft:'مسودة',awaiting_payment:'بانتظار الدفع',paid:'تم الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',refunded:'مسترد'};
 const errorLabels={unauthorized:'سجّل دخولك أولًا',admin_only:'هذه العملية للمدير فقط',sandbox_only:'هذه العملية متاحة في البيئة التجريبية فقط',invalid_order:'بيانات الطلب غير صحيحة',invalid_requirements:'متطلبات المشروع غير صحيحة',invalid_delivery_url:'رابط التسليم يجب أن يكون HTTPS عامًا وصحيحًا',invalid_title:'أدخل اسمًا واضحًا للملف',invalid_deliverable:'بيانات ملف التسليم غير مكتملة',duplicate_delivery_url:'هذا الرابط مضاف مسبقًا',delivery_link_limit_reached:'وصل الطلب إلى الحد الأقصى للروابط',order_not_in_progress:'يجب بدء تنفيذ الطلب أولًا',pending_link_not_found:'الرابط غير موجود أو تم تسليمه ولا يمكن سحبه',invalid_status_transition:'لا يمكن تنفيذ هذا الإجراء في الحالة الحالية',order_not_found:'الطلب غير موجود أو لا تملك صلاحية الوصول إليه',package_unavailable:'الباقة غير متاحة حاليًا',idempotency_key_reused:'تغيّرت بيانات الطلب؛ أعد فتح نافذة الطلب لإنشاء محاولة جديدة',origin_not_allowed:'تعذّر التحقق من مصدر الطلب؛ حدّث الصفحة وحاول مجددًا'};
 function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
@@ -134,9 +168,12 @@ function renderCatalog(){
    const price=element('div',undefined,'price');
    price.append(document.createTextNode(p.price_sar+' '),element('small','ر.س (استرشادي)'));
    bottom.append(price);
+   const details=element('button','التفاصيل','secondary');
+   details.type='button';details.style.cssText='background:#eef1ff;color:#283a9c;box-shadow:none';
+   details.addEventListener('click',()=>showServiceDetails(p,card));
    const btn=element('button','طلب مسودة الخدمة');
    btn.addEventListener('click',()=>beginServiceOrder(p,card,btn));
-   bottom.append(btn);
+   bottom.append(details,btn);
    const link=element('a','رابط الخدمة');
    link.href='/digital-services?service='+encodeURIComponent(p.slug);
    link.setAttribute('aria-label','فتح رابط مستقل لخدمة '+p.title_ar);
@@ -168,6 +205,21 @@ if(!checkedPendingService){
 }catch(e){if(version===catalogVersion)$('status').textContent='تعذر تحميل الخدمات: '+e.message}}
 async function orders(){const box=$('orders');box.replaceChildren(element('p','جاري التحميل...'));try{const data=await api('/api/digital-services/orders');box.replaceChildren();if(!data.orders.length){box.append(element('p','لا توجد طلبات حتى الآن'));return}for(const o of data.orders){const card=element('article',undefined,'card order-card');card.append(element('h3',o.title_ar),element('p','رقم الطلب: '+o.id+' • الحالة: '+(orderStates[o.status]||o.status)),element('p',o.price_sar+' ر.س'));const details=element('button','عرض التفاصيل');details.addEventListener('click',async()=>{details.disabled=true;try{const result=await api('/api/digital-services/orders/'+encodeURIComponent(o.id));const linkData=await api('/api/digital-services/orders/'+encodeURIComponent(o.id)+'/deliverables');const order=result.order;if(!order)throw Error('تعذر عرض الطلب');let info=card.querySelector('.order-details');if(!info){info=element('div',undefined,'order-details');card.append(info)}info.replaceChildren(element('p','رقم الطلب: '+order.id),element('p','الحالة: '+(orderStates[order.status]||order.status)),element('p','السعر الاسترشادي عند إنشاء المسودة: '+order.price_sar+' ر.س'),element('p','تاريخ الإنشاء: '+new Date(order.created_at).toLocaleString('ar-SA')),element('p','متطلبات المشروع: '+(order.requirements||'غير متاحة')),element('p','التعديلات المستخدمة: '+(order.revisions_used??0)+' / '+(order.revision_limit??0)));if(order.delivery_note)info.append(element('p','ملاحظة التسليم: '+order.delivery_note));if(Array.isArray(linkData.deliverables)&&linkData.deliverables.length){info.append(element('h4','ملفات التسليم'));const list=element('ul');for(const asset of linkData.deliverables){const item=element('li');const anchor=document.createElement('a');anchor.href=asset.url;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.textContent=asset.title;item.append(anchor);list.append(item)}info.append(list)}if(Array.isArray(order.events)&&order.events.length){info.append(element('h4','سجل مراحل الطلب'));const ul=element('ul');for(const event of order.events){const label=(orderStates[event.previous_status]||event.previous_status)+' ← '+(orderStates[event.new_status]||event.new_status);ul.append(element('li',label+' • '+new Date(event.created_at).toLocaleString('ar-SA')+(event.note?' • '+event.note:'')))}info.append(ul)}if(Array.isArray(order.revisions)&&order.revisions.length){info.append(element('h4','طلبات التعديلات السابقة'));const ul=element('ul');for(const rev of order.revisions)ul.append(element('li',rev.note+' • '+new Date(rev.created_at).toLocaleString('ar-SA')));info.append(ul)}if(order.status==='delivered'){const accept=element('button','اعتماد الاستلام');accept.addEventListener('click',async()=>{if(!confirm('هل تؤكد استلام الخدمة وإكمال الطلب التجريبي؟'))return;accept.disabled=true;try{await api('/api/digital-services/orders/'+order.id+'/complete',{method:'POST',body:'{}'});await orders()}catch(error){$('status').textContent=error.message}finally{accept.disabled=false}});info.append(accept);if((order.revisions_used??0)<(order.revision_limit??0)){const note=element('textarea');note.placeholder='صف التعديلات المطلوبة بوضوح (10-3000 حرف)';note.maxLength=3000;const rev=element('button','طلب تعديل');rev.addEventListener('click',async()=>{if(note.value.trim().length<10){$('status').textContent='أدخل وصف التعديل لا يقل عن 10 أحرف';return}rev.disabled=true;try{await api('/api/digital-services/orders/'+order.id+'/revisions',{method:'POST',body:JSON.stringify({note:note.value.trim()})});await orders()}catch(error){$('status').textContent=error.message}finally{rev.disabled=false}});info.append(note,rev)}}if(order.status==='draft'){const editLabel=element('label','تعديل متطلبات المسودة قبل بدء التنفيذ');const edited=element('textarea');edited.value=order.requirements||'';edited.maxLength=10000;edited.minLength=10;edited.setAttribute('aria-label','متطلبات المشروع المعدلة');const saveRequirements=element('button','حفظ المتطلبات');saveRequirements.addEventListener('click',async()=>{const newRequirements=edited.value.trim();if(newRequirements.length<10){$('status').textContent='الحد الأدنى لمتطلبات المشروع 10 أحرف';return}if(newRequirements===order.requirements){$('status').textContent='لم تتغير المتطلبات';return}saveRequirements.disabled=true;try{await api('/api/digital-services/orders/'+order.id,{method:'PATCH',body:JSON.stringify({requirements:newRequirements})});$('status').textContent='تم حفظ متطلبات الطلب';await orders()}catch(error){$('status').textContent=error.message}finally{saveRequirements.disabled=false}});info.append(editLabel,edited,saveRequirements);const cancelOrder=element('button','إلغاء المسودة');cancelOrder.addEventListener('click',async()=>{if(!confirm('تأكيد إلغاء مسودة الطلب؟'))return;cancelOrder.disabled=true;try{await api('/api/digital-services/orders/'+order.id+'/cancel',{method:'POST',body:'{}'});await orders()}catch(error){$('status').textContent=error.message}finally{cancelOrder.disabled=false}});info.append(cancelOrder)}}catch(err){let info=card.querySelector('.order-details');if(!info){info=element('div',undefined,'order-details');card.append(info)}info.replaceChildren(element('p',err.message,'error'))}finally{details.disabled=false}});card.append(details);box.append(card)}}catch(e){box.replaceChildren(element('p',e.message,'error'));if(e.code==='unauthorized')box.append(signInLink())}}
 async function loadActivity(){const box=$('activity');try{const data=await api('/api/digital-services/activity');if(!Array.isArray(data.activity))throw Error('تعذر قراءة تحديثات الطلبات');box.replaceChildren();if(!data.activity.length){box.append(element('p','لا توجد تحديثات تنفيذ من الإدارة حتى الآن.','muted'));return}for(const event of data.activity){const card=element('article',undefined,'card');card.append(element('h4',event.title_ar+' • طلب #'+event.order_id),element('p','الحالة: '+(orderStates[event.status]||event.status)),element('p',new Date(event.created_at).toLocaleString('ar-SA')));box.append(card)}}catch(error){box.replaceChildren(element('p',error.message,'error'));if(error.code==='unauthorized')box.append(signInLink())}}
+$('serviceDetailsClose').addEventListener('click',()=>$('serviceDetailsDialog').close());
+$('serviceDetailsCopy').addEventListener('click',async()=>{
+ if(!detailPackage)return;
+ try{
+   if(!navigator.clipboard?.writeText)throw Error('clipboard_unavailable');
+   await navigator.clipboard.writeText(serviceUrl(detailPackage.slug));
+   $('serviceDetailsFeedback').textContent='تم نسخ الرابط';
+ }catch(_){$('serviceDetailsFeedback').textContent='يمكنك فتح رابط الخدمة أو نسخه يدويًا من الرابط أعلاه.'}
+});
+$('serviceDetailsRequest').addEventListener('click',()=>{
+ if(!detailPackage||!detailCard)return;
+ const p=detailPackage,card=detailCard,btn=card.querySelector('.service-bottom button:last-of-type');
+ $('serviceDetailsDialog').close();
+ if(btn)beginServiceOrder(p,card,btn);
+});
 $('refresh').addEventListener('click',load);$('categoryFilter').addEventListener('change',load);$('serviceSearch').addEventListener('input',()=>{catalogVisible=12;renderCatalog()});$('serviceSort').addEventListener('change',()=>{catalogVisible=12;renderCatalog()});$('moreServices').addEventListener('click',()=>{catalogVisible+=12;renderCatalog()});$('ordersBtn').addEventListener('click',async()=>{ordersOpened=true;await Promise.all([orders(),loadActivity()])});$('activityBtn').addEventListener('click',async()=>{ordersOpened=true;await loadActivity()});setInterval(()=>{if(ordersOpened&&document.visibilityState==='visible')loadActivity()},60000);$('cancel').addEventListener('click',()=>$('orderDialog').close());
 $('orderForm').addEventListener('submit',async e=>{e.preventDefault();if(!selected)return;const btn=$('submitOrder');btn.disabled=true;$('formError').textContent='';try{const result=await api('/api/digital-services/orders',{method:'POST',body:JSON.stringify({package_id:selected.id,requirements:$('requirements').value.trim(),idempotency_key:pendingOrderKey})});$('orderDialog').close();pendingOrderKey=null;alert((result.idempotent_replay?'تم استرجاع الطلب السابق رقم ':'تم إنشاء مسودة الطلب رقم ')+result.order_id);ordersOpened=true;await Promise.all([orders(),loadActivity()])}catch(err){$('formError').textContent=err.message;if(err.code==='unauthorized')$('formError').append(signInLink())}finally{btn.disabled=false}});load();
 </script></body></html>
