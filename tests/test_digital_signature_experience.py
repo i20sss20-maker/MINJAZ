@@ -69,8 +69,13 @@ class SignatureExperience(unittest.TestCase):
 
     def test_direct_login_entrypoint_uses_verified_email_without_old_otp(self):
         self.assertIn("p in ('/signup','/signup/','/login','/login/')",SERVER)
-        self.assertIn('if APP_ENV!=\'preview\': return self.sendj(404',SERVER)
-        self.assertIn('^\\/login\\/?
+        self.assertIn("if APP_ENV!='preview': return self.sendj(404",SERVER)
+        self.assertIn(r'/^\/login\/?$/.test(window.location.pathname)',SIGNUP)
+        self.assertIn('show("login")',SIGNUP)
+        self.assertIn('await call("/api/v1/auth/login-email"',SIGNUP)
+        self.assertNotIn('window.location.assign("/")',SIGNUP)
+
+    def test_existing_live_workspace_ids_are_preserved(self):
         for ident in (
             "logout","notice","loginRequired","loading","workspace",
             "welcome","who","switchRole","newTask","taskItems","sideItems",
