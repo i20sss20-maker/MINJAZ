@@ -33,6 +33,7 @@ PUBLIC_UI_CONTRACT={
     "/digital-services": ("id=\"catalog\"", "id=\"orderForm\"",
                           "href=\"/signup?auth=login&amp;next=digital-services\""),
     "/signup": ("id=\"signup\"", "id=\"login\"", "id=\"recover\""),
+    "/login": ("id=\"signup\"", "id=\"login\"", "id=\"recover\"", "/api/v1/auth/login-email"),
     "/workspace": ("id=\"workspace\"", "id=\"clientAction\"", "id=\"freelancerAction\""),
     "/workspace-v1.js": ("/api/v1/me", "/api/v1/tasks", "/api/v1/legal/accept"),
     "/minjaz-account-registration-v1.js": ("minjaz-service-entry-app",
