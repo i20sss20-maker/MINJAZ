@@ -506,6 +506,8 @@ $("taskItems").addEventListener("click",async e=>{
   const task=currentTasks.find(t=>Number(t.id)===id);
   if(!task)return;
   $("offerTaskTitle").textContent=task.title;
+  const specialty=marketplaceSubcategories.find(service=>Number(service.id)===Number(task.service_id));
+  $("offerSpecialtyGuide").textContent=(specialty?.freelancer_guidance||"اذكر خبرتك، وطريقة التنفيذ، وملفات التسليم، ومدة العمل والتعديلات.")+" السعر والمدة في العرض مقترحان للمراجعة؛ الدفع الحقيقي غير متاح حاليًا.";
   $("offerTaskId").value=String(id);
   $("offerDialog").showModal();
  }else if(b.dataset.action==="show-offers"){
