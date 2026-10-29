@@ -109,7 +109,7 @@ def main():
                                    'href="/signup?auth=login&amp;next=digital-services"'))
     check("/api/digital-services/orders/1/revisions",401,"error")
     check_html("/digital-services/admin",('id="adminAccess"','id="adminDashboard"',
-                                          'id="adminEmailForm"'))
+                                          'id="adminEmailForm"','id="adminDraftNotice"','id="adminViewDrafts"'))
     check_html("/",('id="hero-title"','href="/signup"','class="flow-card"'))
     check_html("/signup",('id="signup"','id="login"','id="recover"'))
     check_html("/login",('id="signup"','id="login"','/api/v1/auth/login-email'))
