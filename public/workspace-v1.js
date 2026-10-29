@@ -472,8 +472,8 @@ $("insertTaskTemplate").addEventListener("click",()=>{
  const subject=marketplaceSubcategories.find(s=>String(s.id)===$("taskSubcategories").value);
  if(!subject){notice("اختر القسم والتخصص الفرعي قبل إضافة نموذج الوصف.","error");return}
  const area=$("newTask").elements.namedItem("description");
- const template="الهدف من المشروع:\\nنطاق العمل المطلوب:\\nالمعلومات والملفات المتوفرة:\\nالتصميم أو الأمثلة المرجعية:\\nالمخرجات المطلوبة:\\nالجدول الزمني والتعديلات المتوقعة:";
- area.value=(area.value.trim()?area.value.trim()+"\\n\\n":"")+template;
+ const template="الهدف من المشروع:\nنطاق العمل المطلوب:\nالمعلومات والملفات المتوفرة:\nالتصميم أو الأمثلة المرجعية:\nالمخرجات المطلوبة:\nالجدول الزمني والتعديلات المتوقعة:";
+ area.value=(area.value.trim()?area.value.trim()+"\n\n":"")+template;
  area.focus();pendingTaskKey="";
 });
 $("newTask").addEventListener("submit",async e=>{
