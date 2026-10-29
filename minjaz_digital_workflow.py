@@ -30,7 +30,7 @@ def _order_info(row):
             "revision_limit": row[7], "created_at": row[8].isoformat()}
 
 
-PACKAGE_CATEGORIES = {"website","mobile_app","ecommerce","branding","maintenance","ai"}
+PACKAGE_CATEGORIES = {"website","mobile_app","ecommerce","branding","maintenance","ai","marketing","seo","content","video","automation","data","security","consulting"}
 PACKAGE_FIELDS = {"slug","category","title_ar","description_ar","price_sar","delivery_days","revision_limit","active"}
 
 def _package(row):
