@@ -72,7 +72,7 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
     </div>
   </div>
 </dialog>
-<dialog id="orderDialog" aria-labelledby="orderTitle"><form id="orderForm"><h2 id="orderTitle">طلب خدمة</h2><label for="requirements">متطلبات المشروع (10 أحرف على الأقل)</label><textarea id="requirements" required minlength="10" maxlength="10000" placeholder="صف فكرتك، صفحات المشروع، والنتيجة اللي تتوقعها..."></textarea><p class="muted">سيُحفظ الطلب كمسودة فقط. السعر والمدة استرشاديان وغير ملزمين قبل الاتفاق، ولن يُحصَّل أي مبلغ في هذه النسخة.</p><p id="formError" class="error" role="alert"></p><button type="submit" id="submitOrder">إنشاء مسودة الطلب</button> <button type="button" id="cancel">إلغاء</button></form></dialog>
+<dialog id="orderDialog" aria-labelledby="orderTitle"><form id="orderForm"><h2 id="orderTitle">طلب خدمة</h2><div id="orderPackageSummary" class="card" aria-live="polite" style="margin:0 0 18px;padding:15px"></div><p id="briefGuide" class="muted"></p><label for="requirements">متطلبات المشروع (10 أحرف على الأقل)</label><textarea id="requirements" required minlength="10" maxlength="10000" placeholder="صف فكرتك، صفحات المشروع، والنتيجة اللي تتوقعها..."></textarea><p class="muted">سيُحفظ الطلب كمسودة فقط. السعر والمدة استرشاديان وغير ملزمين قبل الاتفاق، ولن يُحصَّل أي مبلغ في هذه النسخة.</p><p id="formError" class="error" role="alert"></p><button type="submit" id="submitOrder">إنشاء مسودة الطلب</button> <button type="button" id="cancel">إلغاء</button></form></dialog>
 
 <script>
 'use strict';const $=id=>document.getElementById(id);let selected=null;let pendingOrderKey=null;let ordersOpened=false;
@@ -91,6 +91,22 @@ function showServiceDetails(p,card){
  $('serviceDetailsFeedback').textContent='';
  $('serviceDetailsDialog').showModal();
 }
+const briefQuestions={
+ website:'ما نوع النشاط، كم عدد الصفحات، وما المزايا المطلوبة؟ هل لديك نطاق أو استضافة؟',
+ mobile_app:'ما أنظمة التشغيل المستهدفة، وما الشاشات والوظائف والتكاملات الأساسية؟',
+ ecommerce:'ما المنصة المطلوبة، وعدد المنتجات، وطرق الشحن والدفع التي ستُناقش لاحقًا؟',
+ branding:'ما اسم النشاط وجمهوره والذوق المرغوب، وما الملفات التي تحتاجها؟',
+ maintenance:'ما الرابط أو النظام، وما وصف العطل وخطوات تكراره والأولوية؟',
+ ai:'ما مصادر المعرفة المسموح بها وكيف ستراجع دقة المخرجات وخصوصية البيانات؟',
+ marketing:'من جمهورك المستهدف، وما أهداف الحملة والمنصات والمواد المتاحة؟',
+ seo:'ما رابط الموقع والصفحات المستهدفة والمناطق والكلمات المهمة؟',
+ content:'من الجمهور، وما موضوعات المحتوى وعدد القطع واللغة والأسلوب؟',
+ video:'ما مدة الفيديو ومقاسه وملفات المصدر والأسلوب المطلوب؟',
+ automation:'ما الأنظمة المراد ربطها، وما مدخلات الإجراء ومخرجاته وصلاحياته؟',
+ data:'ما مصادر البيانات وحقولها والمؤشرات المطلوبة وصيغة التسليم؟',
+ security:'ما النظام الذي تملكه أو تديره بتصريح، وما نطاق المراجعة المسموح؟',
+ consulting:'ما المشكلة الحالية والنتيجة المنتظرة والقيود والجدول المبدئي؟'
+};
 const orderStates={created:'إنشاء الطلب',draft:'مسودة',awaiting_payment:'بانتظار الدفع',paid:'تم الدفع',in_progress:'قيد التنفيذ',delivered:'تم التسليم',revision_requested:'طلب تعديل',completed:'مكتمل',cancelled:'ملغي',refunded:'مسترد'};
 const errorLabels={unauthorized:'سجّل دخولك أولًا',admin_only:'هذه العملية للمدير فقط',sandbox_only:'هذه العملية متاحة في البيئة التجريبية فقط',invalid_order:'بيانات الطلب غير صحيحة',invalid_requirements:'متطلبات المشروع غير صحيحة',invalid_delivery_url:'رابط التسليم يجب أن يكون HTTPS عامًا وصحيحًا',invalid_title:'أدخل اسمًا واضحًا للملف',invalid_deliverable:'بيانات ملف التسليم غير مكتملة',duplicate_delivery_url:'هذا الرابط مضاف مسبقًا',delivery_link_limit_reached:'وصل الطلب إلى الحد الأقصى للروابط',order_not_in_progress:'يجب بدء تنفيذ الطلب أولًا',pending_link_not_found:'الرابط غير موجود أو تم تسليمه ولا يمكن سحبه',invalid_status_transition:'لا يمكن تنفيذ هذا الإجراء في الحالة الحالية',order_not_found:'الطلب غير موجود أو لا تملك صلاحية الوصول إليه',package_unavailable:'الباقة غير متاحة حاليًا',idempotency_key_reused:'تغيّرت بيانات الطلب؛ أعد فتح نافذة الطلب لإنشاء محاولة جديدة',origin_not_allowed:'تعذّر التحقق من مصدر الطلب؛ حدّث الصفحة وحاول مجددًا'};
 function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
@@ -129,6 +145,10 @@ async function beginServiceOrder(p,card,btn){
    if(!current.user?.id)throw Error('تعذّر قراءة بيانات الحساب. حدّث الصفحة وحاول مجددًا.');
    clearPendingPackage();
    selected=p;$('orderTitle').textContent='طلب: '+p.title_ar;
+   $('orderPackageSummary').replaceChildren(element('strong',p.title_ar),
+     element('p',p.description_ar),
+     element('p','تقدير مبدئي: '+p.price_sar+' ر.س • '+p.delivery_days+' يوم • حتى '+p.revision_limit+' تعديلات','muted'));
+   $('briefGuide').textContent='لتوضيح متطلباتك: '+(briefQuestions[p.category]||'ما الهدف والنتائج المطلوبة، وما المراجع المتاحة؟');
    $('formError').textContent='';$('requirements').value='';
    pendingOrderKey=crypto.randomUUID();$('orderDialog').showModal();
  }catch(error){
