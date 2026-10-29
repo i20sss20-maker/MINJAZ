@@ -85,6 +85,15 @@ class FullCatalog(TestCase):
         self.assertIn("APP_ENV",docker)
         self.assertIn("python migrate.py &&",docker)
         self.assertIn("سعر",frontend)
+        for control in ("serviceSort","moreServices","categoryFilter","serviceSearch"):
+            self.assertIn('id="'+control+'"',frontend)
+        for share in ("?service=","encodeURIComponent(p.slug)","catalogDeepLinkChecked","localeCompare"):
+            self.assertIn(share,frontend)
+        for control in ("packageSearch","packageCategoryFilter","packageVisibilityFilter","moreAdminPackages"):
+            self.assertIn('id="'+control+'"',admin)
+        self.assertIn("adminPackageVisible+=15",admin)
+        self.assertIn("renderAdminPackages()",admin)
+        self.assertIn("ON CONFLICT (slug) DO NOTHING",(ROOT/"scripts/seed_minjaz_full_catalog_preview.py").read_text("utf-8"))
 
 if __name__=="__main__":
     unittest.main()
