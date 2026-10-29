@@ -46,7 +46,7 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
     <p id="message" class="status-text" role="status">جاري تحميل الطلبات...</p><section id="orders" class="grid order-grid" aria-live="polite"></section><section id="details" aria-live="polite"></section>
   </section>
   <section id="packagesPanel" class="panel-section">
-    <div class="panel-head"><div><span class="dash-eyebrow">كتالوج خدماتك</span><h2>إدارة الخدمات والباقات</h2><p>أنشئ خدمة، عدّل السعر والوصف، وتحكم في نشرها.</p></div><button id="packagesRefresh" type="button">تحديث الباقات</button></div>
+    <div class="panel-head"><div><span class="dash-eyebrow">كتالوج خدماتك</span><h2>إدارة الخدمات والباقات</h2><p>أنشئ خدمة، عدّل السعر والوصف، وتحكم في نشرها.</p></div><div style="display:flex;flex-wrap:wrap;gap:8px"><button id="packagesRefresh" type="button">تحديث الباقات</button><button id="exportPackages" type="button" class="secondary">تصدير كتالوج الخدمات CSV</button></div></div>
     <div class="toolbar" aria-label="تصفية باقات الخدمات" style="display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:12px 0 16px">
       <label for="packageSearch">البحث عن باقة <input id="packageSearch" type="search" placeholder="اسم الخدمة أو المعرّف..." autocomplete="off" style="min-width:190px"></label>
       <label for="packageCategoryFilter">التصنيف <select id="packageCategoryFilter"><option value="">جميع التصنيفات</option><option value="website">مواقع إلكترونية</option><option value="mobile_app">تطبيقات</option><option value="ecommerce">متاجر</option><option value="branding">التصميم والهوية</option><option value="maintenance">الصيانة</option><option value="ai">الذكاء الاصطناعي</option><option value="marketing">التسويق</option><option value="seo">محركات البحث</option><option value="content">المحتوى</option><option value="video">الفيديو</option><option value="automation">الأتمتة</option><option value="data">تحليل البيانات</option><option value="security">الأمن السيبراني</option><option value="consulting">الاستشارات</option></select></label>
@@ -167,6 +167,25 @@ for(const id of ['packageSearch','packageCategoryFilter','packageVisibilityFilte
  $(id).addEventListener(id==='packageSearch'?'input':'change',()=>{adminPackageVisible=15;renderAdminPackages()});
 }
 $('moreAdminPackages').addEventListener('click',()=>{adminPackageVisible+=15;renderAdminPackages()});
+
+function csvValue(value){
+ const text=String(value??'');
+ // Protect spreadsheet applications against formula injection from names,
+ // slugs and descriptions entered in the admin panel.
+ const safe=/^[\\s]*[=+@\\-]/u.test(text)?"'"+text:text;
+ return '"'+safe.replace(/"/g,'""')+'"';
+}
+$('exportPackages').addEventListener('click',()=>{
+ if(!adminPackages.length){packageMessage('حدّث الكتالوج أولًا قبل التصدير.',true);return}
+ const columns=['slug','category','title_ar','description_ar','price_sar','delivery_days','revision_limit','active'];
+ const rows=[columns.join(','),...adminPackages.map(item=>columns.map(key=>csvValue(item[key])).join(','))];
+ const blob=new Blob(['\\uFEFF'+rows.join('\\r\\n')],{type:'text/csv;charset=utf-8'});
+ const url=URL.createObjectURL(blob);const link=document.createElement('a');
+ link.href=url;link.download='minjaz-services-catalog.csv';link.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+ packageMessage('تم تجهيز تصدير '+adminPackages.length+' باقة للمراجعة. لا يتضمن بيانات العملاء.');
+});
+
 $('packageForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const payload={slug:form.elements.namedItem('slug').value.trim(),category:form.elements.namedItem('category').value,title_ar:form.elements.namedItem('title_ar').value.trim(),description_ar:form.elements.namedItem('description_ar').value.trim(),price_sar:form.elements.namedItem('price_sar').value,delivery_days:Number(form.elements.namedItem('delivery_days').value),revision_limit:Number(form.elements.namedItem('revision_limit').value),active:form.elements.namedItem('active').checked};const btn=$('savePackage');btn.disabled=true;try{const endpoint=editingPackageId?'/api/digital-services/admin/packages/'+editingPackageId:'/api/digital-services/admin/packages';await api(endpoint,{method:editingPackageId?'PATCH':'POST',body:JSON.stringify(payload)});resetPackage();await loadPackages();packageMessage('تم حفظ الباقة بنجاح')}catch(e){packageMessage(e.message,true)}finally{btn.disabled=false}});
 $('resetPackage').addEventListener('click',resetPackage);$('packagesRefresh').addEventListener('click',loadPackages);
 const loginForm=$('adminEmailForm');
