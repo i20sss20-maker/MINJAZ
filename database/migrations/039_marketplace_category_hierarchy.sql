@@ -1,6 +1,17 @@
 -- Add a remote-work marketplace taxonomy; independent from first-party MINJAZ sales catalog.
 -- Preserve old parent IDs, existing services, custom admin edits and old tasks.
 BEGIN;
+CREATE TABLE IF NOT EXISTS services (
+ id BIGSERIAL PRIMARY KEY,
+ category_id BIGINT NOT NULL REFERENCES categories(id),
+ slug TEXT UNIQUE NOT NULL,
+ name_ar TEXT NOT NULL,
+ description_ar TEXT,
+ min_price NUMERIC(10,2),
+ max_price NUMERIC(10,2),
+ active BOOLEAN NOT NULL DEFAULT TRUE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ALTER TABLE services ADD COLUMN IF NOT EXISTS client_guidance TEXT;
 ALTER TABLE services ADD COLUMN IF NOT EXISTS freelancer_guidance TEXT;
 INSERT INTO categories(slug,name_ar,icon)
