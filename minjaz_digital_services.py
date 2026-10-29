@@ -24,6 +24,78 @@ def dispatch(method, path, query, body, actor, connect):
                   ORDER BY id DESC LIMIT 250""",(category,category))
                 return 200, {'services':[_public_package(row) for row in cur.fetchall()]}
         finally: c.close()
+    if path in ('/api/digital-services/notifications',
+                '/api/digital-services/notifications/read'):
+        if not actor:
+            return 401, {'error':'unauthorized'}
+        customer_id=int(actor['id'])
+        if path == '/api/digital-services/notifications':
+            if method != 'GET':
+                return 405, {'error':'method_not_allowed'}
+            c=connect()
+            try:
+                with c.cursor() as cur:
+                    cur.execute("""SELECT last_seen_event_id
+                      FROM digital_service_notification_reads WHERE customer_id=%s""",
+                      (customer_id,))
+                    saved=cur.fetchone()
+                    last_seen=int(saved[0]) if saved else 0
+                    cur.execute("""SELECT ev.id,ev.order_id,p.title_ar,ev.new_status,ev.created_at
+                      FROM digital_service_order_events ev
+                      JOIN digital_service_orders o ON o.id=ev.order_id
+                      JOIN digital_service_packages p ON p.id=o.package_id
+                      WHERE o.customer_id=%s AND ev.actor_id<>o.customer_id
+                      ORDER BY ev.id DESC LIMIT 30""",(customer_id,))
+                    notifications=[{'event_id':row[0],'order_id':row[1],
+                       'title_ar':row[2],'status':row[3],
+                       'created_at':row[4].isoformat(),
+                       'unread':row[0]>last_seen} for row in cur.fetchall()]
+                    cur.execute("""SELECT COUNT(*) FROM digital_service_order_events ev
+                      JOIN digital_service_orders o ON o.id=ev.order_id
+                      WHERE o.customer_id=%s AND ev.actor_id<>o.customer_id
+                        AND ev.id>%s""",(customer_id,last_seen))
+                    unread_count=int(cur.fetchone()[0])
+                    return 200, {'notifications':notifications,
+                                 'unread_count':unread_count,
+                                 'last_seen_event_id':last_seen}
+            finally:
+                c.close()
+        if method!='POST':
+            return 405, {'error':'method_not_allowed'}
+        if (not isinstance(body,dict) or set(body)!={'through_event_id'}
+                or type(body['through_event_id']) is not int
+                or not 1<=body['through_event_id']<=9223372036854775807):
+            return 400, {'error':'invalid_notification_cursor'}
+        from minjaz_digital_workflow import _preview
+        if not _preview():
+            return 403, {'error':'sandbox_only'}
+        target=body['through_event_id']
+        c=connect()
+        c.autocommit=False
+        try:
+            with c.cursor() as cur:
+                cur.execute("""SELECT 1 FROM digital_service_order_events ev
+                  JOIN digital_service_orders o ON o.id=ev.order_id
+                  WHERE ev.id=%s AND o.customer_id=%s AND ev.actor_id<>o.customer_id""",
+                  (target,customer_id))
+                if not cur.fetchone():
+                    return 404, {'error':'notification_not_found'}
+                cur.execute("""INSERT INTO digital_service_notification_reads
+                  (customer_id,last_seen_event_id) VALUES (%s,%s)
+                  ON CONFLICT (customer_id) DO UPDATE
+                  SET last_seen_event_id=GREATEST(
+                    digital_service_notification_reads.last_seen_event_id,
+                    EXCLUDED.last_seen_event_id),
+                    updated_at=NOW()
+                  RETURNING last_seen_event_id""",(customer_id,target))
+                last_seen=int(cur.fetchone()[0])
+            c.commit()
+            return 200, {'last_seen_event_id':last_seen}
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
     if path == '/api/digital-services/activity' and method == 'GET':
         if not actor:return 401, {'error':'unauthorized'}
         customer_id=int(actor['id'])
