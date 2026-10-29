@@ -14,7 +14,7 @@ def dispatch(method, path, query, body, actor, connect):
     """Return (status, payload); caller authenticates using MINJAZ auth(headers)."""
     if path == '/api/digital-services/catalog' and method == 'GET':
         category=(query.get('category') or [None])[0]
-        if category and category not in ('website','mobile_app','ecommerce','branding','maintenance','ai'):
+        if category and category not in ('website','mobile_app','ecommerce','branding','maintenance','ai','marketing','seo','content','video','automation','data','security','consulting'):
             return 400, {'error':'invalid_category'}
         c=connect()
         try:
