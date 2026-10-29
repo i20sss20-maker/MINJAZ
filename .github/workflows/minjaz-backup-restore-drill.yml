@@ -1,5 +1,14 @@
 name: MINJAZ isolated PostgreSQL backup restore drill
 on:
+  push:
+    branches:
+      - feature/digital-services-geidea-sandbox
+    paths:
+      - "scripts/backup_minjaz_sandbox.sh"
+      - "scripts/restore_drill_minjaz_ci.sh"
+      - "tests/test_digital_backup.py"
+      - "Dockerfile.backup"
+      - ".github/workflows/minjaz-backup-restore-drill.yml"
   pull_request:
     branches:
       - feature/digital-services-geidea-sandbox
