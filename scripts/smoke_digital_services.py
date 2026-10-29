@@ -23,14 +23,16 @@ def check(path, expected, key=None):
     print(f"PASS {path}: HTTP {status}")
     return data
 
-def check_html(path, marker):
+def check_html(path, markers):
     req = Request(BASE+path,headers={"Accept":"text/html","User-Agent":"MINJAZ-sandbox-smoke/1"})
     with urlopen(req,timeout=15) as response:
         status=response.status
         content_type=response.headers.get("Content-Type","")
         html=response.read(524288).decode("utf-8")
-    if status != 200 or "text/html" not in content_type.lower() or marker not in html:
-        raise AssertionError(f"{path}: page or marker missing (HTTP {status})")
+    required=(markers,) if isinstance(markers,str) else tuple(markers)
+    missing=[marker for marker in required if marker not in html]
+    if status != 200 or "text/html" not in content_type.lower() or missing:
+        raise AssertionError(f"{path}: missing real UI contract {missing!r} (HTTP {status})")
     print(f"PASS {path}: HTML page ready")
 
 def check_css(path, marker):
@@ -88,10 +90,17 @@ def main():
     check("/api/digital-services/admin/summary",401,"error")
     check("/api/digital-services/admin/orders/1/deliverables",401,"error")
     check("/api/digital-services/orders/1/deliverables",401,"error")
-    check_html("/digital-services","خدمات منجاز الرقمية")
+    # Validate the *real*, redesigned sandbox pages (not retired marketing copy).
+    check_html("/digital-services",('id="catalog"','id="orderForm"',
+                                   'href="/signup?auth=login&amp;next=digital-services"'))
     check("/api/digital-services/orders/1/revisions",401,"error")
-    check_html("/digital-services/admin","أهلًا بك في منجاز")
-    check_html("/","مهمتك، لها من ينجزها.")
+    check_html("/digital-services/admin",('id="adminAccess"','id="adminDashboard"',
+                                          'id="adminEmailForm"'))
+    check_html("/",('id="hero-title"','href="/signup"','class="flow-card"'))
+    check_html("/signup",('id="signup"','id="login"','id="recover"'))
+    check_html("/login",('id="signup"','id="login"','/api/v1/auth/login-email'))
+    check_html("/workspace",('id="workspace"','id="clientAction"','id="freelancerAction"'))
+    check_css("/minjaz-signature.css","Alexandria")
     check_css("/minjaz-unified-ui-v1.css","MINJAZ Unified UI v1")
     check("/health",200,"ok")
     print("All read-only sandbox checks passed.")
