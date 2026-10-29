@@ -11,9 +11,9 @@ READ=NOTICES+"/read"
 ACTOR={"id":11,"role":"customer"}
 OTHER={"id":22,"role":"customer"}
 NOW=datetime.datetime(2026,10,29,tzinfo=datetime.timezone.utc)
-EVENTS=[(3,11,11,"خدمة تطوير","in_progress",NOW,90),
-        (4,11,11,"خدمة تطوير","delivered",NOW,90),
-        (5,22,22,"خدمة أخرى","in_progress",NOW,91)]
+EVENTS=[(3,11,22,"خدمة تطوير","in_progress",NOW,90),
+        (4,11,22,"خدمة تطوير","delivered",NOW,90),
+        (5,33,22,"خدمة أخرى","in_progress",NOW,91)]
 
 class NoDatabase:
     def __call__(self):
