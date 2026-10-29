@@ -53,7 +53,7 @@ VALUES
  ('other','خدمات أخرى عن بُعد','✨')
 ON CONFLICT (slug) DO NOTHING;
 INSERT INTO services(category_id,slug,name_ar,description_ar,client_guidance,freelancer_guidance,active)
-SELECT c.id,v.slug,v.title_ar,'تخصص مستقل ضمن '+c.name_ar,v.client_guidance,v.freelancer_guidance,TRUE
+SELECT c.id,v.slug,v.title_ar,'تخصص مستقل ضمن '||c.name_ar,v.client_guidance,v.freelancer_guidance,TRUE
 FROM (VALUES
  ('web','market-web-01','صفحات هبوط','وضّح هدفك من صفحات هبوط، نطاق العمل والنتيجة المطلوبة، والملفات أو الأمثلة المتاحة، والموعد المفضل.','اذكر خبرتك السابقة في صفحات هبوط، وطريقة التنفيذ والمدة المتوقعة والمخرجات وعدد التعديلات.'),
  ('web','market-web-02','مواقع شركات','وضّح هدفك من مواقع شركات، نطاق العمل والنتيجة المطلوبة، والملفات أو الأمثلة المتاحة، والموعد المفضل.','اذكر خبرتك السابقة في مواقع شركات، وطريقة التنفيذ والمدة المتوقعة والمخرجات وعدد التعديلات.'),
