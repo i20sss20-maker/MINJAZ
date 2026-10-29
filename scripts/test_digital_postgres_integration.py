@@ -57,6 +57,7 @@ def setup():
             "032_digital_service_deliverables.sql",
             "033_digital_service_delivery_withdrawal.sql",
             "034_verified_email_login.sql",
+            "038_digital_service_notification_reads.sql",
         ):
             # Each migration wraps its statements in BEGIN/COMMIT.
             with db.cursor() as cur:
@@ -237,6 +238,42 @@ def run():
     code,other_activity=call_customer("GET","/api/digital-services/activity",actor=OTHER)
     check(code==200 and not other_activity["activity"],
           "another customer received private order activity")
+    # Customer notifications are isolated by ownership, including read receipts.
+    notifications_url="/api/digital-services/notifications"
+    notification_read_url=notifications_url+"/read"
+    check(call_customer("GET",notifications_url,actor=None)[0]==401,
+          "anonymous actor accessed private notification feed")
+    code,inbox=call_customer("GET",notifications_url)
+    check(code==200 and inbox["unread_count"]==2
+          and len(inbox["notifications"])==2
+          and all(n["unread"] for n in inbox["notifications"]),
+          "admin transitions did not create two unread customer notices")
+    code,empty_inbox=call_customer("GET",notifications_url,actor=OTHER)
+    check(code==200 and not empty_inbox["notifications"]
+          and empty_inbox["unread_count"]==0,
+          "another customer received private notifications")
+    latest=inbox["notifications"][0]["event_id"]
+    older=inbox["notifications"][-1]["event_id"]
+    check(call_customer("POST",notification_read_url,
+          {"through_event_id":latest},OTHER)[0]==404,
+          "another customer acknowledged a private notification")
+    check(call_customer("POST",notification_read_url,
+          {"through_event_id":True})[0]==400,
+          "notification cursor accepted boolean as event id")
+    code,ack=call_customer("POST",notification_read_url,{"through_event_id":latest})
+    check(code==200 and ack["last_seen_event_id"]==latest,
+          "customer could not acknowledge own notification")
+    check(call_customer("GET",notifications_url)[1]["unread_count"]==0,
+          "read receipt did not persist to PostgreSQL")
+    check(call_customer("POST",notification_read_url,
+          {"through_event_id":older})[1]["last_seen_event_id"]==latest,
+          "stale tab regressed the notification cursor")
+    with guarded_connect() as db:
+        with db.cursor() as cur:
+            cur.execute("SELECT last_seen_event_id FROM digital_service_notification_reads WHERE customer_id=%s",
+                        (CUSTOMER["id"],))
+            check(cur.fetchone()[0]==latest,"notification read cursor was not persisted")
+    print("PASS customer notification privacy, PostgreSQL read cursor and cross-account denial")
     with guarded_connect() as db:
         with db.cursor() as cur:
             cur.execute("""SELECT archived_by,published_at FROM digital_service_deliverables
@@ -245,7 +282,12 @@ def run():
             check(archived_by==22 and published_at is None,
                   "withdrawn link was published or withdrawal audit was lost")
     customer_to("revisions","يرجى تعديل ألوان الصفحة الرئيسية إلى الأزرق")
+    # Customer-side revisions do not generate self-notifications.
+    check(call_customer("GET",notifications_url)[1]["unread_count"]==0,
+          "customer generated an unread notice by requesting a revision")
     admin_to("in_progress")
+    check(call_customer("GET",notifications_url)[1]["unread_count"]==1,
+          "admin resuming work did not produce a new unread notice")
     link_2={"title":"نسخة ثانية من الملفات","url":"https://files.example.com/digital/second.zip"}
     code,_=call_deliverables("POST",asset_base,link_2)
     check(code==201,"revised delivery link was not staged")
