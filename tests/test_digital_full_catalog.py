@@ -112,6 +112,14 @@ class FullCatalog(TestCase):
         for control in ("packageSearch","packageCategoryFilter","packageVisibilityFilter","moreAdminPackages"):
             self.assertIn('id="'+control+'"',admin)
         self.assertIn("adminPackageVisible+=15",admin)
+        for item in ("adminDraftNotice","adminDraftCount","adminViewDrafts"):
+            self.assertIn('id="'+item+'"',admin)
+        self.assertIn("if(adminAuthenticated&&document.visibilityState==='visible')loadSummary()",admin)
+        self.assertIn("$('filter').value='draft';load()",admin)
+        for item in ("notifications","notificationsBadge","notificationsRefresh","notificationsMarkRead"):
+            self.assertIn('id="'+item+'"',frontend)
+        self.assertIn("await api('/api/digital-services/notifications/read'",frontend)
+        self.assertIn("through_event_id:lastNotificationEventId",frontend)
         self.assertIn("renderAdminPackages()",admin)
         self.assertIn("ON CONFLICT (slug) DO NOTHING",(ROOT/"scripts/seed_minjaz_full_catalog_preview.py").read_text("utf-8"))
 
