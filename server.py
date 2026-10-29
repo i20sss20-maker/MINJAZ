@@ -2365,7 +2365,7 @@ class H(BaseHTTPRequestHandler):
                 payload = self.body() if method in ('POST','PATCH') else None
                 status, response = digital_workflow_dispatch(method,p,query,payload,actor,db_connect)
                 return self.sendj(status,response)
-            if p == '/api/digital-services/catalog' or p == '/api/digital-services/activity' or p == '/api/digital-services/orders' or p.startswith('/api/digital-services/orders/'):
+            if p in ('/api/digital-services/catalog', '/api/digital-services/activity', '/api/digital-services/notifications', '/api/digital-services/notifications/read', '/api/digital-services/orders') or p.startswith('/api/digital-services/orders/'):
                 from minjaz_digital_services import dispatch as digital_services_dispatch
                 actor = auth(self.headers) if p != '/api/digital-services/catalog' else None
                 if method in ('POST','PATCH'):
