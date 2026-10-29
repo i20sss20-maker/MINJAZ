@@ -2484,7 +2484,9 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services.html'),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
-            if method=='GET' and p in ('/signup','/signup/'):
+            # /login is an alias of the real verified-email sign-in page;
+            # never send visitors to the obsolete OTP homepage.
+            if method=='GET' and p in ('/signup','/signup/','/login','/login/'):
                 if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
                 data=open(os.path.join(os.path.dirname(HTML_PATH),'signup.html'),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
