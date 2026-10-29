@@ -93,6 +93,22 @@ def main():
         subset=check("/api/digital-services/catalog?category="+category,200,"services")["services"]
         if any(item.get("category")!=category or item.get("id") not in all_ids for item in subset):
             raise AssertionError(f"{category}: invalid public category filtering")
+    # Two distinct catalogs: first-party packages curated by operational scope,
+    # versus the broad categories/subcategories that any freelancer can offer.
+    parents=check("/api/v1/categories",200,"items")["items"]
+    specialties=check("/api/v1/services",200,"items")["items"]
+    if len(parents)<35 or len({row.get("slug") for row in parents})<35:
+        raise AssertionError("marketplace missing expected parent categories")
+    parent_ids={row.get("id") for row in parents}
+    real_specializations=[row for row in specialties if str(row.get("slug","")).startswith("market-")]
+    if len(real_specializations)<200:
+        raise AssertionError("marketplace subcategory hierarchy incomplete")
+    if not all(item.get("category_id") in parent_ids and item.get("client_guidance")
+               and item.get("freelancer_guidance") for item in real_specializations):
+        raise AssertionError("subcategory missing parent or role-specific guidance")
+    print(f"PASS marketplace: {len(parents)} parent categories, "
+          f"{len(real_specializations)} guided subcategories; "
+          f"{len(services)} first-party offerings currently visible")
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/activity",401,"error")
@@ -113,7 +129,7 @@ def main():
     check_html("/",('id="hero-title"','href="/signup"','class="flow-card"'))
     check_html("/signup",('id="signup"','id="login"','id="recover"'))
     check_html("/login",('id="signup"','id="login"','/api/v1/auth/login-email'))
-    check_html("/workspace",('id="workspace"','id="clientAction"','id="freelancerAction"'))
+    check_html("/workspace",('id="workspace"','id="clientAction"','id="freelancerAction"','id="taskSubcategories"','id="freelancerSpecialty"','id="taskServiceFilter"'))
     check_css("/minjaz-signature.css","Alexandria")
     check_css("/minjaz-unified-ui-v1.css","MINJAZ Unified UI v1")
     check("/health",200,"ok")
