@@ -227,7 +227,8 @@ footer a{color:#463cbd;text-decoration:none}
     const roleInput=document.querySelector('input[name="role"][value="'+chosenRole+'"]');
     if(roleInput)roleInput.checked=true;
   }
-  if(entryQuery.get("auth")==="login")show("login");
+  // Direct /login links must open the sign-in tab, not registration.
+  if(entryQuery.get("auth")==="login" || /^\/login\/?$/.test(window.location.pathname))show("login");
   handleActionLink();
   call("/api/v1/auth/account-status",undefined,"GET").then(info=>{
     const enabled=info.enabled===true && info.configured===true;
