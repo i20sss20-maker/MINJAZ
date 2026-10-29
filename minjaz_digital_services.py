@@ -21,7 +21,7 @@ def dispatch(method, path, query, body, actor, connect):
             with c.cursor() as cur:
                 cur.execute("""SELECT id,slug,category,title_ar,description_ar,price_sar,delivery_days,revision_limit
                   FROM digital_service_packages WHERE active=TRUE AND (%s IS NULL OR category=%s)
-                  ORDER BY id DESC LIMIT 100""",(category,category))
+                  ORDER BY id DESC LIMIT 250""",(category,category))
                 return 200, {'services':[_public_package(row) for row in cur.fetchall()]}
         finally: c.close()
     if path == '/api/digital-services/activity' and method == 'GET':
