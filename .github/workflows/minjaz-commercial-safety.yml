@@ -1,7 +1,7 @@
 name: MINJAZ Commercial Safety Checks
 on:
   push:
-    branches: [feature/minjaz-commercial-safety-20261027]
+    branches: [feature/minjaz-commercial-safety-20261027, feature/digital-services-geidea-sandbox]
   pull_request:
     branches: [feature/digital-services-geidea-sandbox]
   workflow_dispatch:
