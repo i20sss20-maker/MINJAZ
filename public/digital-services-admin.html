@@ -172,14 +172,14 @@ function csvValue(value){
  const text=String(value??'');
  // Protect spreadsheet applications against formula injection from names,
  // slugs and descriptions entered in the admin panel.
- const safe=/^[\\s]*[=+@\\-]/u.test(text)?"'"+text:text;
+ const safe=/^\s*[=+@-]/u.test(text)?"'"+text:text;
  return '"'+safe.replace(/"/g,'""')+'"';
 }
 $('exportPackages').addEventListener('click',()=>{
  if(!adminPackages.length){packageMessage('حدّث الكتالوج أولًا قبل التصدير.',true);return}
  const columns=['slug','category','title_ar','description_ar','price_sar','delivery_days','revision_limit','active'];
  const rows=[columns.join(','),...adminPackages.map(item=>columns.map(key=>csvValue(item[key])).join(','))];
- const blob=new Blob(['\\uFEFF'+rows.join('\\r\\n')],{type:'text/csv;charset=utf-8'});
+ const blob=new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});
  const url=URL.createObjectURL(blob);const link=document.createElement('a');
  link.href=url;link.download='minjaz-services-catalog.csv';link.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
