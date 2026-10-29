@@ -47,8 +47,13 @@ h1,h2,h3,.brand,.admin-brand{font-family:"Alexandria","IBM Plex Sans Arabic",sys
   </section>
   <section id="packagesPanel" class="panel-section">
     <div class="panel-head"><div><span class="dash-eyebrow">كتالوج خدماتك</span><h2>إدارة الخدمات والباقات</h2><p>أنشئ خدمة، عدّل السعر والوصف، وتحكم في نشرها.</p></div><button id="packagesRefresh" type="button">تحديث الباقات</button></div>
+    <div class="toolbar" aria-label="تصفية باقات الخدمات" style="display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:12px 0 16px">
+      <label for="packageSearch">البحث عن باقة <input id="packageSearch" type="search" placeholder="اسم الخدمة أو المعرّف..." autocomplete="off" style="min-width:190px"></label>
+      <label for="packageCategoryFilter">التصنيف <select id="packageCategoryFilter"><option value="">جميع التصنيفات</option><option value="website">مواقع إلكترونية</option><option value="mobile_app">تطبيقات</option><option value="ecommerce">متاجر</option><option value="branding">التصميم والهوية</option><option value="maintenance">الصيانة</option><option value="ai">الذكاء الاصطناعي</option><option value="marketing">التسويق</option><option value="seo">محركات البحث</option><option value="content">المحتوى</option><option value="video">الفيديو</option><option value="automation">الأتمتة</option><option value="data">تحليل البيانات</option><option value="security">الأمن السيبراني</option><option value="consulting">الاستشارات</option></select></label>
+      <label for="packageVisibilityFilter">حالة النشر <select id="packageVisibilityFilter"><option value="">الكل</option><option value="published">منشورة</option><option value="hidden">مخفية</option></select></label>
+    </div>
     <p id="packageMessage" class="status-text" role="status"></p>
-    <div class="package-layout"><div id="packages" class="grid packages-list" aria-live="polite"></div>
+    <div class="package-layout"><div><div id="packages" class="grid packages-list" aria-live="polite"></div><button id="moreAdminPackages" type="button" class="secondary" hidden aria-controls="packages" style="margin-top:12px">عرض المزيد من الباقات</button></div>
       <div class="package-editor"><h3 id="packageFormTitle">إضافة باقة جديدة</h3><p>الأسعار أدناه خاصة بالبيئة التجريبية.</p>
         <form id="packageForm">
           <label for="slug">معرّف الباقة بالإنجليزي</label><input id="slug" name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="80" placeholder="service-package">
@@ -96,7 +101,72 @@ let editingPackageId=null;
 function packageMessage(msg,error=false){$('packageMessage').textContent=msg;$('packageMessage').className=error?'error':'good'}
 function fillPackage(p){const f=$('packageForm');for(const key of ['slug','category','title_ar','description_ar','price_sar','delivery_days','revision_limit'])f.elements.namedItem(key).value=p[key];f.elements.namedItem('active').checked=p.active;editingPackageId=p.id;$('packageFormTitle').textContent='تعديل باقة #'+p.id;$('savePackage').textContent='حفظ التعديلات';f.scrollIntoView({behavior:'smooth',block:'start'})}
 function resetPackage(){editingPackageId=null;$('packageForm').reset();$('packageFormTitle').textContent='إضافة باقة جديدة';$('savePackage').textContent='حفظ الباقة'}
-async function loadPackages(){const box=$('packages');box.replaceChildren();packageMessage('جاري تحميل الباقات...');try{const data=await api('/api/digital-services/admin/packages');if(!Array.isArray(data.packages))throw Error('تعذر قراءة الباقات');packageMessage('عدد الباقات: '+data.packages.length);for(const p of data.packages){const c=el('article',undefined,'card');c.append(el('h3',p.title_ar),el('p',p.category+' | '+p.price_sar+' ر.س'),el('p',p.active?'منشورة':'مخفية','badge'));const edit=el('button','تعديل','secondary');edit.addEventListener('click',()=>fillPackage(p));const toggle=el('button',p.active?'إخفاء الباقة':'نشر الباقة',p.active?'danger':'secondary');toggle.addEventListener('click',async()=>{if(!confirm('تأكيد تغيير نشر الباقة؟'))return;toggle.disabled=true;try{await api('/api/digital-services/admin/packages/'+p.id,{method:'PATCH',body:JSON.stringify({active:!p.active})});packageMessage('تم تغيير حالة ظهور الباقة');await loadPackages()}catch(e){packageMessage(e.message,true)}finally{toggle.disabled=false}});const history=el('button','سجل الباقة','secondary');history.addEventListener('click',async()=>{history.disabled=true;try{const data=await api('/api/digital-services/admin/packages/'+p.id+'/events');let log=c.querySelector('.package-history');if(!log){log=el('div',undefined,'package-history');c.append(log)}log.replaceChildren(el('h4','آخر تغييرات الباقة'));if(!data.events?.length){log.append(el('p','لا توجد تغييرات مسجلة'));return}const ul=el('ul');for(const event of data.events){const title=event.action==='created'?'إنشاء الباقة':'تعديل الباقة';const before=event.before?.active;const after=event.after?.active;const visibility=before!==undefined&&before!==after?' • تغيّر ظهور الباقة':'';ul.append(el('li',title+visibility+' • '+new Date(event.created_at).toLocaleString('ar-SA')))}log.append(ul)}catch(error){packageMessage(error.message,true)}finally{history.disabled=false}});c.append(edit,el('span',' '),toggle,el('span',' '),history);box.append(c)}}catch(e){packageMessage(e.message,true)}}
+
+let adminPackages=[];let adminPackageVisible=15;let adminCatalogLoading=false;
+function renderAdminPackages(){
+ const box=$('packages');box.replaceChildren();
+ const search=$('packageSearch').value.trim().toLocaleLowerCase('ar');
+ const category=$('packageCategoryFilter').value;
+ const visibility=$('packageVisibilityFilter').value;
+ const filtered=adminPackages.filter(p=>{
+   if(category&&p.category!==category)return false;
+   if(visibility==='published'&&!p.active)return false;
+   if(visibility==='hidden'&&p.active)return false;
+   return !search||(p.title_ar+' '+p.slug+' '+p.description_ar).toLocaleLowerCase('ar').includes(search);
+ });
+ const limited=filtered.slice(0,adminPackageVisible);
+ packageMessage('عرض '+limited.length+' من '+filtered.length+' باقة مطابقة • إجمالي الكتالوج '+adminPackages.length);
+ $('moreAdminPackages').hidden=limited.length>=filtered.length;
+ if(!filtered.length)box.append(el('p','لا توجد باقات مطابقة للتصفية.','muted'));
+ for(const p of limited){
+   const c=el('article',undefined,'card');
+   c.append(el('h3',p.title_ar),el('p',p.category+' | '+p.price_sar+' ر.س (استرشادي)'),el('p',p.active?'منشورة':'مخفية','badge'));
+   const edit=el('button','تعديل','secondary');edit.addEventListener('click',()=>fillPackage(p));
+   const toggle=el('button',p.active?'إخفاء الباقة':'نشر الباقة',p.active?'danger':'secondary');
+   toggle.addEventListener('click',async()=>{
+     if(!confirm('تأكيد تغيير نشر الباقة؟'))return;
+     toggle.disabled=true;
+     try{await api('/api/digital-services/admin/packages/'+p.id,{method:'PATCH',body:JSON.stringify({active:!p.active})});
+       await loadPackages();packageMessage('تم تحديث نشر الباقة بنجاح');
+     }catch(e){packageMessage(e.message,true)}finally{toggle.disabled=false}
+   });
+   const history=el('button','سجل الباقة','secondary');
+   history.addEventListener('click',async()=>{
+     history.disabled=true;
+     try{
+       const data=await api('/api/digital-services/admin/packages/'+p.id+'/events');
+       let log=c.querySelector('.package-history');
+       if(!log){log=el('div',undefined,'package-history');c.append(log)}
+       log.replaceChildren(el('h4','آخر تغييرات الباقة'));
+       if(!data.events?.length){log.append(el('p','لا توجد تغييرات مسجلة'));return}
+       const ul=el('ul');
+       for(const event of data.events){
+         const title=event.action==='created'?'إنشاء الباقة':'تعديل الباقة';
+         const before=event.before?.active,after=event.after?.active;
+         const changed=before!==undefined&&before!==after?' • تغيّر ظهور الباقة':'';
+         ul.append(el('li',title+changed+' • '+new Date(event.created_at).toLocaleString('ar-SA')));
+       }
+       log.append(ul);
+     }catch(error){packageMessage(error.message,true)}finally{history.disabled=false}
+   });
+   c.append(edit,el('span',' '),toggle,el('span',' '),history);box.append(c);
+ }
+}
+async function loadPackages(){
+ if(adminCatalogLoading)return;
+ adminCatalogLoading=true;packageMessage('جاري تحميل الباقات...');
+ try{
+   const data=await api('/api/digital-services/admin/packages');
+   if(!Array.isArray(data.packages))throw Error('تعذّر قراءة الباقات');
+   adminPackages=data.packages;
+   renderAdminPackages();
+ }catch(e){packageMessage(e.message,true)}
+ finally{adminCatalogLoading=false}
+}
+for(const id of ['packageSearch','packageCategoryFilter','packageVisibilityFilter']){
+ $(id).addEventListener(id==='packageSearch'?'input':'change',()=>{adminPackageVisible=15;renderAdminPackages()});
+}
+$('moreAdminPackages').addEventListener('click',()=>{adminPackageVisible+=15;renderAdminPackages()});
 $('packageForm').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;const payload={slug:form.elements.namedItem('slug').value.trim(),category:form.elements.namedItem('category').value,title_ar:form.elements.namedItem('title_ar').value.trim(),description_ar:form.elements.namedItem('description_ar').value.trim(),price_sar:form.elements.namedItem('price_sar').value,delivery_days:Number(form.elements.namedItem('delivery_days').value),revision_limit:Number(form.elements.namedItem('revision_limit').value),active:form.elements.namedItem('active').checked};const btn=$('savePackage');btn.disabled=true;try{const endpoint=editingPackageId?'/api/digital-services/admin/packages/'+editingPackageId:'/api/digital-services/admin/packages';await api(endpoint,{method:editingPackageId?'PATCH':'POST',body:JSON.stringify(payload)});resetPackage();await loadPackages();packageMessage('تم حفظ الباقة بنجاح')}catch(e){packageMessage(e.message,true)}finally{btn.disabled=false}});
 $('resetPackage').addEventListener('click',resetPackage);$('packagesRefresh').addEventListener('click',loadPackages);
 const loginForm=$('adminEmailForm');
