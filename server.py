@@ -2570,8 +2570,8 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(409,{'error':'upload_verification_failed'})
                 q("update upload_intents set completed_at=now(),etag=%s where id=%s",(actual.get('etag') or None,intent['id']),None)
                 return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
-            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
-            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
+            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon,s.client_guidance,s.freelancer_guidance from services s join categories c on c.id=s.category_id where s.active=true and c.is_active=true order by s.category_id,s.id limit 500')})
+            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories where is_active=true order by id')})
             if method=='GET' and p=='/api/v1/auth/account-status':
                 from minjaz_account_auth import secure_config,_shared_test_sender
                 return self.sendj(200,{'registration':'email_link','configured':secure_config(),
@@ -3148,7 +3148,7 @@ class H(BaseHTTPRequestHandler):
                 u=self.require();
                 if not u:return
                 if u['role']=='client':
-                    a=q("select t.*,c.name_ar category_name,(select count(*)::int from proposals p where p.task_id=t.id) proposal_count from tasks t left join categories c on c.id=t.category_id where t.client_id=%s order by t.created_at desc limit 200",(u['id'],))
+                    a=q("select t.*,c.name_ar category_name,s.name_ar service_name,(select count(*)::int from proposals p where p.task_id=t.id) proposal_count from tasks t left join categories c on c.id=t.category_id left join services s on s.id=t.service_id where t.client_id=%s order by t.created_at desc limit 200",(u['id'],))
                 elif u['role']=='freelancer':
                     a=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,
                                  exists(select 1 from proposals p where p.task_id=t.id and p.freelancer_id=%s) has_proposal,
