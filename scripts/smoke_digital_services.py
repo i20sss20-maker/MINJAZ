@@ -96,6 +96,8 @@ def main():
     check("/api/digital-services/catalog?category=unknown",400,"error")
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/activity",401,"error")
+    check("/api/digital-services/notifications",401,"error")
+    check("/api/digital-services/notifications/read",401,"error")
     check("/api/digital-services/orders/1",401,"error")
     check("/api/digital-services/admin/orders",401,"error")
     check("/api/digital-services/admin/packages",401,"error")
@@ -103,7 +105,7 @@ def main():
     check("/api/digital-services/admin/orders/1/deliverables",401,"error")
     check("/api/digital-services/orders/1/deliverables",401,"error")
     # Validate the *real*, redesigned sandbox pages (not retired marketing copy).
-    check_html("/digital-services",('id="catalog"','id="orderForm"',
+    check_html("/digital-services",('id="catalog"','id="orderForm"','id="notifications"','id="notificationsBadge"',
                                    'href="/signup?auth=login&amp;next=digital-services"'))
     check("/api/digital-services/orders/1/revisions",401,"error")
     check_html("/digital-services/admin",('id="adminAccess"','id="adminDashboard"',
