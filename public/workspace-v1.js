@@ -148,7 +148,12 @@ function setTaskFilterOptions(role){
 function filteredTasks(){
  const term=$("taskSearch").value,choice=$("taskStatusFilter").value,role=currentUser.role;
  return currentTasks.filter(t=>{
-  if(!matchesSearch(term,[t.title,t.description,t.category_name,t.category_slug]))return false;
+  if(!matchesSearch(term,[t.title,t.description,t.category_name,t.category_slug,t.service_name]))return false;
+  if(role==="freelancer"){
+   const category=$("taskCategoryFilter").value,service=$("taskServiceFilter").value;
+   if(category&&Number(t.category_id)!==Number(category))return false;
+   if(service&&Number(t.service_id)!==Number(service))return false;
+  }
   if(choice==="all")return true;
   if(role==="freelancer")return choice==="offered"?Boolean(t.has_proposal):!t.has_proposal;
   return t.status===choice;
@@ -174,6 +179,8 @@ function showRole(){
  $("myEmail").value=u.email||"";
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("navCreate",role==="client");show("navProposals",role==="freelancer");
+ show("taskCategoryFilterWrap",role==="freelancer");show("taskServiceFilterWrap",role==="freelancer");
+ $("taskCategoryFilter").value="";updateFreelancerTaskFilters();
  show("taskTools",role!=="admin");show("orderTools",role!=="admin");
  setTaskFilterOptions(role);
  $("taskSearch").value="";$("orderSearch").value="";
@@ -200,9 +207,54 @@ async function renderLegal(){
  $("legalDocs").innerHTML=rows||empty("لا يوجد مستندات للمراجعة.");
  node.classList.remove("hidden");
 }
+let marketplaceCategories=[],marketplaceSubcategories=[];
+function setMarketOptions(select,items,first){
+ select.replaceChildren();
+ const emptyOption=document.createElement("option");emptyOption.value="";emptyOption.textContent=first;select.append(emptyOption);
+ for(const item of items){
+  const option=document.createElement("option");option.value=String(item.id);option.textContent=item.name_ar;
+  select.append(option);
+ }
+}
+function categoryChildren(categoryId){return marketplaceSubcategories.filter(s=>Number(s.category_id)===Number(categoryId))}
+function updateClientSubcategories(){
+ const parent=$("categories").value,child=$("taskSubcategories");
+ const options=parent?categoryChildren(parent):[];
+ setMarketOptions(child,options,parent?"اختر التخصص الفرعي":"اختر القسم الرئيسي أولًا");
+ child.disabled=!parent||!options.length;child.required=options.length>0;
+ $("taskCategoryGuide").textContent=parent?(options.length?"حدد التخصص الفرعي لمعرفة ما تحتاج كتابته.":"لا توجد تخصصات فرعية لهذا القسم حاليًا؛ اكتب وصفًا تفصيليًا."):"اختر القسم الرئيسي ثم التخصص الفرعي.";
+}
+function updateClientGuidance(){
+ const service=marketplaceSubcategories.find(s=>String(s.id)===$("taskSubcategories").value);
+ if(service)$("taskCategoryGuide").textContent=service.client_guidance||
+  "حدد المطلوب والملفات المتوفرة والنتيجة وموعد التسليم المتوقع.";
+}
+function updateFreelancerSpecialties(){
+ const parent=$("freelancerSpecialtyCategory").value,child=$("freelancerSpecialty");
+ setMarketOptions(child,parent?categoryChildren(parent):[],parent?"اختر التخصص":"اختر المجال أولًا");
+ child.disabled=!parent;
+ $("freelancerSpecialtyGuide").textContent="حدد تخصصك ثم أضفه إلى قائمة مهاراتك، وأرفق نماذج أعمال حقيقية.";
+}
+function updateFreelancerAdvice(){
+ const choice=marketplaceSubcategories.find(s=>String(s.id)===$("freelancerSpecialty").value);
+ if(choice)$("freelancerSpecialtyGuide").textContent=choice.freelancer_guidance||
+  "أضف أعمالًا حقيقية ومعلومات واضحة عن نطاق العمل والمدة.";
+}
+function updateFreelancerTaskFilters(){
+ const parent=$("taskCategoryFilter").value,child=$("taskServiceFilter");
+ setMarketOptions(child,parent?categoryChildren(parent):[],"جميع التخصصات");
+ child.disabled=!parent;
+}
 async function loadCategories(){
- const r=await request("/api/v1/categories");
- $("categories").innerHTML='<option value="">اختر القسم</option>'+(r.items||[]).map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name_ar)+'</option>').join("");
+ const [parents,children]=await Promise.all([
+  request("/api/v1/categories"),request("/api/v1/services")
+ ]);
+ if(!Array.isArray(parents.items)||!Array.isArray(children.items))throw Error("تعذر قراءة أقسام المنصة");
+ marketplaceCategories=parents.items;marketplaceSubcategories=children.items;
+ for(const select of ["categories","taskCategoryFilter","freelancerSpecialtyCategory"]){
+  setMarketOptions($(select),marketplaceCategories,select==="taskCategoryFilter"?"جميع الأقسام":"اختر القسم");
+ }
+ updateClientSubcategories();updateFreelancerSpecialties();updateFreelancerTaskFilters();
 }
 function renderTasks(){
  const role=currentUser.role;
@@ -218,7 +270,7 @@ function renderTasks(){
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
   const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
-  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
+  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",t.service_name||"تخصص عام",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
  }).join(""):empty(currentTasks.length?"لا توجد مشاريع مطابقة للبحث أو التصفية. جرّب تغيير الكلمات أو الحالة.":role==="client"?"ما نشرت مشاريع بعد. ابدأ بنشر أول مشروع من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
 }
 function renderOrders(){
@@ -400,19 +452,43 @@ $("acceptLegal").addEventListener("click",async()=>{
  try{legalInfo=await request("/api/v1/legal/accept",{method:"POST",data:{documents:checked}});await renderLegal();notice("تم حفظ الموافقة على مستندات النسخة التجريبية.","success")}
  catch(e){notice(e.message,"error")}finally{btn.disabled=false}
 });
+$("categories").addEventListener("change",()=>{updateClientSubcategories();pendingTaskKey=""});
+$("taskSubcategories").addEventListener("change",()=>{updateClientGuidance();pendingTaskKey=""});
+$("taskCategoryFilter").addEventListener("change",()=>{
+ updateFreelancerTaskFilters();taskVisibleCount=TASK_PAGE_SIZE;renderTasks();
+});
+$("taskServiceFilter").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE_SIZE;renderTasks()});
+$("freelancerSpecialtyCategory").addEventListener("change",updateFreelancerSpecialties);
+$("freelancerSpecialty").addEventListener("change",updateFreelancerAdvice);
+$("addFreelancerSpecialty").addEventListener("click",()=>{
+ const selected=marketplaceSubcategories.find(s=>String(s.id)===$("freelancerSpecialty").value);
+ if(!selected){notice("اختر التخصص الفرعي الذي تعمل فيه أولًا.","error");return}
+ const input=$("freelancerSkills"),pieces=input.value.split(/[,،]/).map(v=>v.trim()).filter(Boolean);
+ if(!pieces.some(v=>v===selected.name_ar))pieces.push(selected.name_ar);
+ input.value=pieces.join("، ");
+ notice("تمت إضافة التخصص إلى حقل مهاراتك. اضغط حفظ ملف المستقل لتثبيته.","success");
+});
+$("insertTaskTemplate").addEventListener("click",()=>{
+ const subject=marketplaceSubcategories.find(s=>String(s.id)===$("taskSubcategories").value);
+ if(!subject){notice("اختر القسم والتخصص الفرعي قبل إضافة نموذج الوصف.","error");return}
+ const area=$("newTask").elements.namedItem("description");
+ const template="الهدف من المشروع:\\nنطاق العمل المطلوب:\\nالمعلومات والملفات المتوفرة:\\nالتصميم أو الأمثلة المرجعية:\\nالمخرجات المطلوبة:\\nالجدول الزمني والتعديلات المتوقعة:";
+ area.value=(area.value.trim()?area.value.trim()+"\\n\\n":"")+template;
+ area.focus();pendingTaskKey="";
+});
 $("newTask").addEventListener("submit",async e=>{
  e.preventDefault();
  const form=e.currentTarget,fd=new FormData(form);loadingButton(form,true);
  const budget_min=fd.get("budget_min"),budget_max=fd.get("budget_max");
  const payload={title:String(fd.get("title")||"").trim(),description:String(fd.get("description")||"").trim(),
-  category_id:Number(fd.get("category_id")),budget_min:budget_min?Number(budget_min):null,
+  category_id:Number(fd.get("category_id")),service_id:fd.get("service_id")?Number(fd.get("service_id")):null,budget_min:budget_min?Number(budget_min):null,
   budget_max:budget_max?Number(budget_max):null,
   idempotency_key:pendingTaskKey||(pendingTaskKey="work-"+(crypto.randomUUID?.()||Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)))};
  try{
   if(!stagedTaskAttachments)stagedTaskAttachments=await uploadRealAttachments($("taskFiles").files,$("taskUploadStatus"));
   payload.attachments=stagedTaskAttachments;
   await request("/api/v1/tasks",{method:"POST",data:payload});
-  pendingTaskKey="";stagedTaskAttachments=null;form.reset();
+  pendingTaskKey="";stagedTaskAttachments=null;form.reset();updateClientSubcategories();
   $("taskUploadStatus").textContent="يمكن إرفاق ملفات إضافية في المشروع التالي.";
   notice("تم نشر المهمة ومرفقاتها المحفوظة، ويمكن للمستقلين تقديم عروضهم.","success");await loadUserData()
  }catch(err){
