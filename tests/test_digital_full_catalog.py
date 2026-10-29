@@ -85,6 +85,20 @@ class FullCatalog(TestCase):
         self.assertIn("APP_ENV",docker)
         self.assertIn("python migrate.py &&",docker)
         self.assertIn("سعر",frontend)
+        # The public details dialog must be fully read-only until a verified
+        # customer explicitly creates a draft. No fabricated order or payment.
+        for identifier in ("serviceDetailsDialog","serviceDetailsTitle",
+                           "serviceDetailsCategory","serviceDetailsPrice",
+                           "serviceDetailsDuration","serviceDetailsRevisions",
+                           "serviceDetailsShareLink","serviceDetailsRequest",
+                           "serviceDetailsClose","serviceDetailsCopy"):
+            self.assertIn('id="'+identifier+'"',frontend)
+        self.assertIn("function showServiceDetails(p,card)",frontend)
+        self.assertIn("new URL('/digital-services',location.origin)",frontend)
+        self.assertIn("if(btn)beginServiceOrder(p,card,btn)",frontend)
+        self.assertIn("navigator.clipboard?.writeText",frontend)
+        self.assertIn("المدة تقدير",frontend.replace("المدة التقديرية","المدة تقدير"))
+        self.assertNotIn("تم الدفع بنجاح",frontend)
         for control in ("serviceSort","moreServices","categoryFilter","serviceSearch"):
             self.assertIn('id="'+control+'"',frontend)
         for share in ("?service=","encodeURIComponent(p.slug)","catalogDeepLinkChecked","localeCompare"):
