@@ -15,6 +15,11 @@ class BackupContract(unittest.TestCase):
         subprocess.run(['sh','-n',str(ROOT/'scripts'/'backup_minjaz_sandbox.sh')],
                        check=True)
 
+    def test_busybox_compatible_backup_tempfile(self):
+        # postgres:18-alpine uses BusyBox mktemp, which rejects suffix templates.
+        self.assertIn('mktemp /tmp/minjaz-preview-XXXXXXXX)', SH)
+        self.assertNotIn('XXXXXXXX.dump', SH)
+
     def test_postgres_major_matches_sandbox(self):
         self.assertIn('FROM postgres:18-alpine',DOCKER)
         self.assertIn('aws-cli',DOCKER)
