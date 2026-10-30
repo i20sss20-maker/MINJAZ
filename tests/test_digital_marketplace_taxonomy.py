@@ -133,6 +133,16 @@ class MarketplaceHierarchy(unittest.TestCase):
         self.assertIn("تخصصات المستقل",homepage)
         self.assertIn("وليست شهادة أو إثبات خبرة",homepage)
         self.assertIn("freelancer_marketplace_specialties",server)
+        self.assertIn("let freelancerDirectoryTaxonomy=null",homepage)
+        self.assertIn("changeFreelancerDirectoryCategory",homepage)
+        self.assertIn('id="fdCategory"',homepage)
+        self.assertIn('id="fdService"',homepage)
+        self.assertIn("service_id:document.getElementById('fdService')",homepage)
+        self.assertIn("category_id:document.getElementById('fdCategory')",homepage)
+        self.assertIn("freelancerDirectorySelectOptions(",homepage)
+        self.assertIn("freelancerDirectoryTaxonomy.services",homepage)
+        self.assertIn("if category_raw:a=[x for x in a if any",server)
+        self.assertIn("if service_raw:a=[x for x in a if any",server)
 
 if __name__=="__main__":
     unittest.main()
