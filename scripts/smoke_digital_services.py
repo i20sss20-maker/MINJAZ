@@ -110,6 +110,16 @@ def main():
     if not all(item.get("category_id") in parent_ids and item.get("client_guidance")
                and item.get("freelancer_guidance") for item in real_specializations):
         raise AssertionError("subcategory missing parent or role-specific guidance")
+    # Validate real directory category/subcategory filters even when no freelancer
+    # has selected a specialization yet. Do not create demo accounts or records.
+    first=real_specializations[0]
+    filtered=check("/api/v1/freelancers?category_id="+str(first["category_id"])+
+                   "&service_id="+str(first["id"]),200,"items")["items"]
+    if any(not any(int(s.get("service_id") or 0)==int(first["id"])
+                   for s in item.get("marketplace_specialties",[])) for item in filtered):
+        raise AssertionError("directory filter leaked a different freelancer specialty")
+    check("/api/v1/freelancers?category_id=invalid",400,"error")
+    print("PASS verified public freelancer directory category and subcategory filtering")
     print(f"PASS marketplace: {len(parents)} parent categories, "
           f"{len(real_specializations)} guided subcategories; "
           f"{len(services)} first-party offerings currently visible")
