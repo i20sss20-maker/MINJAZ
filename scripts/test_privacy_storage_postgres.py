@@ -4,9 +4,10 @@ import os, sys
 from pathlib import Path
 from urllib.parse import urlparse
 import psycopg2
-from minjaz_privacy_storage import enqueue_deletions,drain_pending,normalize_object_keys
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))  # direct script invocation places scripts/ first
+from minjaz_privacy_storage import enqueue_deletions,drain_pending,normalize_object_keys
 SOURCE=os.environ.get("DIGITAL_TEST_DATABASE_URL","")
 url=urlparse(SOURCE)
 if (os.environ.get("CI")!="true" or url.scheme not in ("postgres","postgresql")
