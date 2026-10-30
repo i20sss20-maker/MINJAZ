@@ -2725,24 +2725,32 @@ async function newTaskModal(){
   if(response.r.ok&&Array.isArray(response.j?.items))catalog=response.j.items;
  }catch(e){}
  minjazDraftServices=catalog;
- const available=categories.map(c=>({
-   c,items:catalog.filter(s=>Number(s.category_id)===Number(c.id))
- }));
- const serviceOptions=available.map(({c,items})=>items.length
-   ?'<optgroup label="'+esc(c.name_ar)+'">'+items.map(s=>'<option value="'+Number(s.id)+'">'+esc(s.name_ar)+'</option>').join('')+'</optgroup>'
-   :'').join('');
  openModal('<div class="modalHead"><h2>انشر طلب خدمة</h2><button class="x" onclick="closeModal()" aria-label="إغلاق">×</button></div>'
   +'<p class="muted" style="font-size:12px">حدد القسم والتخصص المطلوب، أو انشر طلبًا عامًا ضمن القسم؛ المستقلون هم من يقدمون العروض.</p>'
   +'<div class="form2">'
-  +'<div class="field full"><label for="ntSvc">الخدمة المطلوبة (اختياري)</label><select id="ntSvc" onchange="minjazSyncRequestCategory()"><option value="">طلب عام ضمن قسم</option>'+serviceOptions+'</select></div>'
+  +'<div class="field full"><label for="ntCat">القسم الرئيسي</label><select id="ntCat" onchange="minjazSyncRequestService()">'+categories.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name_ar)+'</option>').join('')+'</select></div>'
+  +'<div class="field full"><label for="ntSvc">التخصص الفرعي (اختياري)</label><select id="ntSvc" onchange="minjazSyncRequestCategory()"><option value="">اختر القسم الرئيسي أولًا</option></select></div>'
   +'<div class="field full"><label for="ntTitle">عنوان الطلب</label><input id="ntTitle" maxlength="180" placeholder="مثال: تنسيق بحث وتدقيقه لغويًا"></div>'
   +'<div class="field full"><label for="ntDesc">تفاصيل الطلب</label><textarea id="ntDesc" maxlength="6000" placeholder="اشرح المطلوب والنتيجة المتوقعة وأي تفاصيل مهمة (20 حرفًا على الأقل)"></textarea><small id="ntGuide" role="status" aria-live="polite" class="muted">اختر تخصصًا لعرض تفاصيل تساعدك في صياغة طلبك.</small><button class="btn ghost" style="margin-top:8px" type="button" onclick="minjazAddRequestGuide()">إضافة نموذج تفاصيل المشروع</button></div>'
-  +'<div class="field"><label for="ntCat">القسم</label><select id="ntCat" onchange="minjazSyncRequestService()">'+categories.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name_ar)+'</option>').join('')+'</select></div>'
   +'<div class="field"><label for="ntUrg">الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div>'
   +'<div class="field"><label for="ntMin">ميزانية من (ريال)</label><input id="ntMin" inputmode="decimal" placeholder="49"></div>'
   +'<div class="field"><label for="ntMax">ميزانية إلى (ريال)</label><input id="ntMax" inputmode="decimal" placeholder="149"></div>'
   +'<div class="field full"><label for="ntDue">آخر موعد للتسليم (اختياري)</label><input id="ntDue" type="datetime-local" aria-describedby="ntDueHint"><small id="ntDueHint" class="muted">حدده إذا كان الطلب مرتبطًا بموعد محدد.</small></div>'
   +'</div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button id="publishTaskBtn" class="btn primary" onclick="createTask()">نشر الطلب</button></div>');
+ minjazRefreshRequestServices();
+}
+function minjazRefreshRequestServices(){
+ const parent=$('ntCat'),child=$('ntSvc');if(!parent||!child)return;
+ const previouslySelected=child.value;
+ const items=minjazDraftServices.filter(s=>Number(s.category_id)===Number(parent.value));
+ child.replaceChildren();
+ const empty=document.createElement('option');empty.value='';empty.textContent='طلب عام ضمن هذا القسم';
+ child.append(empty);
+ for(const item of items){
+  const option=document.createElement('option');option.value=String(item.id);option.textContent=item.name_ar;
+  child.append(option);
+ }
+ if(items.some(item=>String(item.id)===previouslySelected))child.value=previouslySelected;
  minjazUpdateRequestGuide();
 }
 function minjazUpdateRequestGuide(){
@@ -2772,7 +2780,7 @@ function minjazSyncRequestCategory(){
 function minjazSyncRequestService(){
  const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
  if(selected&&Number(selected.category_id)!==Number($('ntCat')?.value))$('ntSvc').value='';
- minjazUpdateRequestGuide();
+ minjazRefreshRequestServices();
 }
 async function createTask(){
  if(minjazPublishingBusy)return;
