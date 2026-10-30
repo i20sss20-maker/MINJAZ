@@ -77,7 +77,7 @@ class ErasureTests(unittest.TestCase):
         result=drain_pending(lambda:db,FakeStorage())
         self.assertEqual(result,{"processed":1,"deleted":1,"failed":0})
         self.assertEqual(db.status,"completed")
-        self.assertEqual(db.commits,1)
+        self.assertEqual(db.commits,2)  # object transaction plus final reconciliation
         self.assertTrue(db.closed)
     def test_failed_delete_does_not_claim_completion(self):
         db=FakeDb([{"id":1,"user_id":17,"privacy_request_id":9,"object_key":KEY}])
