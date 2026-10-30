@@ -8,6 +8,7 @@ Future admin republishing is never overridden on subsequent deployments.
 import os
 import psycopg2
 from scripts.seed_minjaz_full_catalog_preview import CATALOG,SANDBOX_PROJECT_ID
+from scripts.seed_digital_services_preview import SAMPLES
 
 APPROVED_SLUGS=frozenset([
     "landing-page",
@@ -69,6 +70,8 @@ APPROVED_SLUGS=frozenset([
     "prototype-mvp-plan",
 ])
 POLICY_VERSION="first-party-executable-only-v1"
+DEMO_POLICY_VERSION="retire-sample-offerings-after-live-catalog-v1"
+DEMO_SLUGS=tuple(row[0] for row in SAMPLES)
 
 def curate(cur):
     known={row[0] for row in CATALOG}
@@ -93,6 +96,25 @@ def curate(cur):
         VALUES (%s,%s)""",(POLICY_VERSION,count))
     return {"applied":True,"disabled":count}
 
+def retire_demos(cur):
+    """One-time deactivation of preview placeholders, without deleting orders.
+
+    The older seed intentionally preserves admin edits and hidden state. When
+    real first-party packages are available, retire sample pricing, and do not
+    force-hide them again if an admin explicitly re-publishes a sample later.
+    """
+    cur.execute("SELECT disabled_count FROM minjaz_preview_catalog_policy WHERE version=%s",
+                (DEMO_POLICY_VERSION,))
+    seen=cur.fetchone()
+    if seen is not None:return {"applied":False,"retired":seen[0]}
+    cur.execute("""UPDATE digital_service_packages
+        SET active=FALSE,updated_at=NOW()
+        WHERE slug=ANY(%s) AND active=TRUE""",(list(DEMO_SLUGS),))
+    n=cur.rowcount
+    cur.execute("""INSERT INTO minjaz_preview_catalog_policy(version,disabled_count)
+        VALUES (%s,%s)""",(DEMO_POLICY_VERSION,n))
+    return {"applied":True,"retired":n}
+
 def main():
     if (os.getenv("APP_ENV")!="preview"
         or os.getenv("RAILWAY_PROJECT_ID")!=SANDBOX_PROJECT_ID
@@ -103,8 +125,11 @@ def main():
     with psycopg2.connect(db_url) as conn:
         with conn.cursor() as cur:
             result=curate(cur)
+            placeholders=retire_demos(cur)
     print(f"[catalog-policy] reviewed={len(CATALOG)} approved={len(APPROVED_SLUGS)} "
           f"disabled_on_first_apply={result['disabled']} applied={result['applied']}")
+    print(f"[catalog-demo-retirement] sample_slugs={len(DEMO_SLUGS)} "
+          f"retired_on_first_apply={placeholders['retired']} applied={placeholders['applied']}")
 
 if __name__=="__main__":
     main()
