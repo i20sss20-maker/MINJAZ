@@ -1897,6 +1897,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                            admin_reply=null,status='closed',updated_at=now() where user_id=%s""",(uid,))
             cur.execute("update privacy_requests set details=null where user_id=%s and id<>%s",(uid,int(pid)))
             cur.execute("update operational_events set user_id=null,meta='{}'::jsonb where user_id=%s",(uid,))
+            cur.execute("delete from freelancer_marketplace_specialties where user_id=%s",(uid,))
             cur.execute("""update freelancer_profiles set bio=null,skills='{}'::text[],rating=0,completed_tasks=0,
                            on_time_rate=100,avg_response_minutes=null,is_available=false,kyc_status='rejected',
                            kyc_provider_reference=null,kyc_verification_url=null,kyc_started_at=null where user_id=%s""",(uid,))
@@ -2386,6 +2387,21 @@ class H(BaseHTTPRequestHandler):
                 payload = self.body() if method in ('POST','PATCH') else None
                 status, response = digital_services_dispatch(method, p, query, payload, actor, db_connect)
                 return self.sendj(status, response)
+            if p=='/api/v1/freelancer/specialties':
+                from minjaz_marketplace_specialties import dispatch as specialty_dispatch
+                actor=auth(self.headers)
+                if method=='PATCH':
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415,{'error':'json_required'})
+                    if actor and actor.get('_auth_transport')=='cookie':
+                        origin=self.headers.get('Origin','').rstrip('/')
+                        allowed=set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL:allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403,{'error':'origin_not_allowed'})
+                payload=self.body() if method=='PATCH' else None
+                status,response=specialty_dispatch(method,p,payload,actor,db_connect)
+                return self.sendj(status,response)
             if p=='/health':
                 started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
@@ -2787,6 +2803,7 @@ class H(BaseHTTPRequestHandler):
                     'roles':enabled_roles(uid),
                     'client_profile':q('select * from client_profiles where user_id=%s',(uid,),'one'),
                     'freelancer_profile':q('select * from freelancer_profiles where user_id=%s',(uid,),'one'),
+                    'freelancer_specialties':q('select service_id,created_at from freelancer_marketplace_specialties where user_id=%s order by service_id',(uid,)),
                     'tasks':q('select * from tasks where client_id=%s order by created_at desc limit 1000',(uid,)),
                     'proposals':q('select * from proposals where freelancer_id=%s order by created_at desc limit 1000',(uid,)),
                     'orders':q('select * from orders where client_id=%s or freelancer_id=%s order by created_at desc limit 1000',(uid,uid)),
@@ -3168,9 +3185,19 @@ class H(BaseHTTPRequestHandler):
                           order by t.created_at desc limit 300""",(u['id'],u['id'],u['id'],u['id'],u['id'],u['id'],u['id']))
                     prof=q('select skills from freelancer_profiles where user_id=%s',(u['id'],),'one') or {}
                     skills=prof.get('skills') or []
+                    saved=q("""select fs.service_id,s.category_id from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        where fs.user_id=%s and s.active=true""",(u['id'],))
+                    specialties={int(row['service_id']) for row in saved}
+                    specialty_categories={int(row['category_id']) for row in saved}
                     for item in a:
                         score,matched=opportunity_relevance(item,skills)
-                        item['match_score']=score; item['matched_skills']=matched
+                        exact=bool(item.get('service_id') and int(item['service_id']) in specialties)
+                        same_category=bool(item.get('category_id') and int(item['category_id']) in specialty_categories)
+                        if exact:score=max(score,95)
+                        elif same_category:score=max(score,60)
+                        item['match_score']=score;item['matched_skills']=matched
+                        item['specialty_match']='exact' if exact else ('category' if same_category else ('text' if score else 'none'))
                     qtext=_match_text((query.get('q') or [''])[0])
                     cat_raw=(query.get('category_id') or [''])[0]
                     urgency=(query.get('urgency') or [''])[0]
