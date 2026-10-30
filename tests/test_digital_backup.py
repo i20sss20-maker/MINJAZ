@@ -24,6 +24,7 @@ class BackupContract(unittest.TestCase):
     def test_postgres_major_matches_sandbox(self):
         self.assertIn('FROM postgres:18-alpine',DOCKER)
         self.assertIn('aws-cli',DOCKER)
+        self.assertIn('su-exec',DOCKER)
         self.assertIn('backup_minjaz_sandbox.sh',DOCKER)
         self.assertIn('pg_dump --version',SH)
 
