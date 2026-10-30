@@ -2968,6 +2968,13 @@ class H(BaseHTTPRequestHandler):
                 fid=int(m.group(1))
                 fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
                 if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                fp['marketplace_specialties']=q("""select s.id service_id,s.name_ar specialization,
+                        c.id category_id,c.name_ar category_name
+                        from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        join categories c on c.id=s.category_id
+                        where fs.user_id=%s and s.active=true and c.is_active=true
+                        order by fs.created_at,fs.service_id limit 12""",(fid,))
                 fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
                 fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
                 viewer=auth(self.headers)
