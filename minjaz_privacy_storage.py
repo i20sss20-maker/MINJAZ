@@ -97,6 +97,24 @@ def drain_pending(connect, storage, max_items=MAX_BATCH):
             except Exception:
                 db.rollback()
                 raise
+        # Reconcile a request whose final keys were deleted concurrently by
+        # separate Railway replicas. No request is marked complete if a pending
+        # object remains, even when the last worker lost a visibility race.
+        try:
+            with db.cursor() as cur:
+                cur.execute("""UPDATE privacy_requests pr SET status='completed',
+                    resolved_at=coalesce(pr.resolved_at,now())
+                    WHERE pr.request_type='delete' AND pr.deletion_executed_at IS NOT NULL
+                    AND pr.status='in_progress'
+                    AND EXISTS(SELECT 1 FROM privacy_storage_deletions d
+                               WHERE d.privacy_request_id=pr.id)
+                    AND NOT EXISTS(SELECT 1 FROM privacy_storage_deletions d
+                                   WHERE d.privacy_request_id=pr.id
+                                     AND d.deleted_at IS NULL)""")
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         return result
     finally:
         db.close()
