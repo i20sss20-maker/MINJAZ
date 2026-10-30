@@ -287,9 +287,13 @@ def opportunity_relevance(task, skills):
             category_hit=True
         if service and (sk in service or service in sk):
             service_hit=True
-    score=25
+    # A zero match must stay zero: no invented "recommended" label for an
+    # unrelated task. This is lexical similarity, not eligibility verification.
+    if not matched and not category_hit and not service_hit:
+        return 0, []
+    score=20
     if category_hit: score+=25
-    if service_hit: score+=10
+    if service_hit: score+=15
     score+=min(40,len(matched)*20)
     return min(score,95), matched[:3]
 
@@ -3204,8 +3208,15 @@ class H(BaseHTTPRequestHandler):
                 if len(desc)>6000:return self.sendj(400,{'error':'description_too_long','maximum':6000})
                 sid=b.get('service_id') or None; category_id=b.get('category_id') or None
                 if sid:
-                    svc=q('select id,category_id from services where id=%s and active=true',(sid,),'one')
+                    if type(sid) not in (str,int) or not re.fullmatch(r'[1-9][0-9]{0,17}',str(sid)):
+                        return self.sendj(400,{'error':'invalid_service'})
+                    svc=q('select id,category_id from services where id=%s and active=true and category_id in (select id from categories where is_active=true)',(int(sid),),'one')
                     if not svc:return self.sendj(400,{'error':'invalid_service'})
+                    if category_id is not None:
+                        if type(category_id) not in (str,int) or not re.fullmatch(r'[1-9][0-9]{0,17}',str(category_id)):
+                            return self.sendj(400,{'error':'invalid_category'})
+                        if int(category_id)!=int(svc['category_id']):
+                            return self.sendj(400,{'error':'category_service_mismatch'})
                     category_id=svc['category_id']; sid=svc['id']
                 else:
                     try: category_id=int(category_id)
