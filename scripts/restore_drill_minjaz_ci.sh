@@ -24,7 +24,7 @@ docker run --rm -d --name "$container" \
   -e POSTGRES_DB=minjaz_backup_source postgres:18-alpine >/dev/null
 healthy=0
 for i in $(seq 1 45); do
-  if docker exec "$container" pg_isready -q -U drill -d minjaz_backup_source >/dev/null 2>&1; then
+  if docker exec "$container" psql -X -qAt -v ON_ERROR_STOP=1 -U drill -d minjaz_backup_source -c "select 1" >/dev/null 2>&1; then
     healthy=1;break
   fi
   sleep 1
