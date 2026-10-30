@@ -22,6 +22,8 @@ on:
       - 'scripts/smoke_digital_services.py'
       - 'scripts/seed_digital_services_preview.py'
       - 'scripts/test_digital_postgres_integration.py'
+      - 'scripts/test_privacy_storage_postgres.py'
+      - 'minjaz_privacy_storage.py'
       - 'tests/test_digital*.py'
       - 'database/migrations/0*.sql'
       - '.github/workflows/digital-services-preview-smoke.yml'
@@ -123,6 +125,10 @@ jobs:
           DIGITAL_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/digital_test
         run: |
           python scripts/test_digital_postgres_integration.py
+      - name: Verify private object erasure outbox against isolated PostgreSQL
+        env:
+          DIGITAL_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/digital_test
+        run: python scripts/test_privacy_storage_postgres.py
       - name: Verify full registration and password reset against isolated PostgreSQL
         env:
           MINJAZ_ACCOUNT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/account_test
