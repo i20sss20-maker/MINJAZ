@@ -95,6 +95,10 @@ def main():
             raise AssertionError(f"{category}: invalid public category filtering")
     # Two distinct catalogs: first-party packages curated by operational scope,
     # versus the broad categories/subcategories that any freelancer can offer.
+    freelancer_directory=check("/api/v1/freelancers",200,"items")
+    if not isinstance(freelancer_directory["items"],list):
+        raise AssertionError("freelancer directory malformed")
+    check("/api/v1/freelancers?service_id=invalid",400,"error")
     parents=check("/api/v1/categories",200,"items")["items"]
     specialties=check("/api/v1/services",200,"items")["items"]
     if len(parents)<35 or len({row.get("slug") for row in parents})<35:
