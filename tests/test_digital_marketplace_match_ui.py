@@ -49,7 +49,7 @@ class MatchingAndFiltering(unittest.TestCase):
         self.assertIn('id="taskMatchGuide"',page)
         self.assertIn('if(matchChoice!=="all"&&!(Number(t.match_score)>0))return false',js)
         self.assertIn('sortFreelancerTasks()',js)
-        self.assertIn('تطابق نصي تقريبي',js)
+        self.assertIn('مؤشر ملاءمة:',js)
         self.assertIn('role==="freelancer"',js)
 
     def test_backend_rejects_mismatched_or_inactive_specializations(self):
