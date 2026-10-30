@@ -118,6 +118,7 @@ async function request(path,body){
  let json={};try{json=await response.json()}catch{}
  if(!response.ok){const labels={
   email_not_configured:"خدمة إرسال البريد لم تُجهز بعد. يلزم إعداد بريد الإرسال أولًا.",
+  test_recipient_only:"هذه نسخة اختبار والبريد المرسل مسموح فقط للحساب المعتمد لدى مزود البريد. لن يصل رابط تفعيل إلى عناوين جديدة حتى توثيق نطاق مِنجاز.",
   email_registration_disabled:"التسجيل بالبريد غير مفعّل في هذه البيئة حاليًا.",
   email_delivery_failed:"تعذّر إرسال البريد. جرّب مجددًا أو تحقق من إعدادات بريد الإرسال.",
   invalid_email:"البريد الإلكتروني غير صحيح.",invalid_phone:"اكتب رقم جوال سعودي صحيح.",
@@ -245,6 +246,8 @@ function applyEmailCapability(info){
    status("تسجيل الدخول بالبريد غير مفعّل في هذه النسخة. لن يتم إنشاء حساب أو إرسال رسالة تفعيل حتى يكتمل تجهيز النظام.",true);
  }else if(!senderReady){
    status("لم تُربط خدمة البريد بعد. إنشاء الحساب والاستعادة غير متاحين، ويمكن لأصحاب الحسابات المفعّلة تسجيل الدخول.",true);
+ }else if(info.test_sender_limited){
+   status("تسجيل مِنجاز تجريبي حاليًا: رسائل التفعيل تصل إلى بريد الاختبار المصرّح به فقط. التسجيل العام يحتاج توثيق نطاق بريد مِنجاز قبل الإطلاق.",true);
  }
 }
 fetch("/api/v1/auth/account-status",{credentials:"same-origin",headers:{"Accept":"application/json"}})
