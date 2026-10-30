@@ -30,6 +30,10 @@ for i in $(seq 1 45); do
   sleep 1
 done
 [[ "$healthy" -eq 1 ]] || { echo "DRILL_FAILED: temporary Postgres unavailable" >&2; exit 5; }
+# The official postgres:18-alpine runtime does not bundle su-exec. The actual
+# dedicated backup image explicitly installs it; add it to this disposable CI
+# container before exercising the production-equivalent restore verifier.
+docker exec "$container" apk add --no-cache su-exec >/dev/null
 
 docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U drill -d minjaz_backup_source <<'SQL'
 CREATE TABLE accounts (
