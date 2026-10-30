@@ -140,7 +140,7 @@ class MarketplaceHierarchy(unittest.TestCase):
         self.assertIn("service_id:document.getElementById('fdService')",homepage)
         self.assertIn("category_id:document.getElementById('fdCategory')",homepage)
         self.assertIn("freelancerDirectorySelectOptions(",homepage)
-        self.assertIn("freelancerDirectoryTaxonomy.services",homepage)
+        self.assertIn("freelancerDirectoryTaxonomy?.services",homepage)
         self.assertIn("if category_raw:a=[x for x in a if any",server)
         self.assertIn("if service_raw:a=[x for x in a if any",server)
 
