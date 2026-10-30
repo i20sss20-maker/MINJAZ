@@ -2987,6 +2987,8 @@ class H(BaseHTTPRequestHandler):
                     x['provider_verified']=bool(KYC_MODE=='adapter' and
                         x.get('kyc_status')=='approved' and x.get('kyc_provider_reference'))
                     x.pop('kyc_provider_reference',None)
+                    if x.get('kyc_status')=='approved' and not x['provider_verified']:
+                        x['kyc_status']='pending'
                 category_raw=(query.get('category_id') or [''])[0]
                 service_raw=(query.get('service_id') or [''])[0]
                 if category_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',category_raw):
@@ -3015,6 +3017,8 @@ class H(BaseHTTPRequestHandler):
                 fp['provider_verified']=bool(KYC_MODE=='adapter' and
                     fp.get('kyc_status')=='approved' and fp.get('kyc_provider_reference'))
                 fp.pop('kyc_provider_reference',None)
+                if fp.get('kyc_status')=='approved' and not fp['provider_verified']:
+                    fp['kyc_status']='pending'
                 fp['marketplace_specialties']=q("""select s.id service_id,s.name_ar specialization,
                         c.id category_id,c.name_ar category_name
                         from freelancer_marketplace_specialties fs
@@ -3439,9 +3443,16 @@ class H(BaseHTTPRequestHandler):
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 if u['role']=='client' and int(t['client_id'])!=int(u['id']):return self.sendj(403,{'error':'forbidden'})
                 if u['role']=='freelancer':
-                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s and p.freelancer_id=%s order by p.created_at",(int(m.group(1)),u['id']))
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s and p.freelancer_id=%s order by p.created_at",(int(m.group(1)),u['id']))
                 else:
-                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s order by p.created_at",(int(m.group(1)),))
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s order by p.created_at",(int(m.group(1)),))
+                for item in a:
+                    is_provider_verified=bool(KYC_MODE=='adapter' and
+                        item.get('kyc_status')=='approved' and item.get('kyc_provider_reference'))
+                    item['provider_verified']=is_provider_verified
+                    item.pop('kyc_provider_reference',None)
+                    if item.get('kyc_status')=='approved' and not is_provider_verified:
+                        item['kyc_status']='pending'
                 return self.sendj(200,{'items':a})
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
