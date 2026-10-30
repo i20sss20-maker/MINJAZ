@@ -8,6 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 SH=(ROOT/'scripts'/'backup_minjaz_sandbox.sh').read_text(encoding='utf-8')
 DOCKER=(ROOT/'Dockerfile.backup').read_text(encoding='utf-8')
 DRILL=(ROOT/'scripts'/'restore_drill_minjaz_ci.sh').read_text(encoding='utf-8')
+VERIFY=(ROOT/'scripts'/'verify_minjaz_backup_restore.sh').read_text(encoding='utf-8')
 
 
 class BackupContract(unittest.TestCase):
@@ -60,6 +61,28 @@ class BackupContract(unittest.TestCase):
         self.assertNotIn('railway.internal',DRILL)
         self.assertNotIn('s3://',DRILL)
         self.assertNotIn('pg_restore -d minjaz_backup_source',DRILL)
+
+    def test_every_real_s3_backup_is_downloaded_and_fully_restored(self):
+        self.assertIn("s3api get-object",SH)
+        self.assertIn('verify-minjaz-restore',SH)
+        self.assertIn('BACKUP_RESTORE_VERIFIED',SH)
+        self.assertIn('RESTORE_EXPECT_TABLES="users tasks proposals orders"',SH)
+        self.assertIn('sha256sum "$archive"',VERIFY)
+        self.assertIn('wc -c < "$archive"',VERIFY)
+        self.assertIn('pg_restore --exit-on-error --single-transaction',VERIFY)
+        self.assertIn("listen_addresses = ''",VERIFY)
+        self.assertIn('unix_socket_directories',VERIFY)
+        self.assertIn('su-exec postgres initdb',VERIFY)
+        self.assertIn('createdb -h "$work/socket"',VERIFY)
+        self.assertIn('rm -rf -- "$work"',VERIFY)
+        self.assertIn('RESTORE_VERIFY_OK',VERIFY)
+        self.assertIn('RESTORE_VERIFY_FAILED',VERIFY)
+        self.assertIn('verify_minjaz_backup_restore.sh',DOCKER)
+        self.assertIn('verify_minjaz_backup_restore.sh',DRILL)
+        self.assertIn('RESTORE_EXPECT_TABLES=accounts work_messages',DRILL)
+        subprocess.run(['sh','-n',str(ROOT/'scripts'/'verify_minjaz_backup_restore.sh')],check=True)
+        self.assertNotIn('DATABASE_URL',VERIFY)
+        self.assertNotIn('railway.internal',VERIFY)
 
     def test_no_drop_or_live_restore_or_exposed_credentials(self):
         self.assertNotRegex(SH,r'\\b(?:dropdb|createdb|psql|pg_restore\\s+--dbname|rm\\s+-rf)\\b')
