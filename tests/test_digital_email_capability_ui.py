@@ -19,6 +19,12 @@ class EmailCapabilityUiTests(unittest.TestCase):
         self.assertIn('forgotAccountPassword").disabled=!enabled||!senderReady',PAGE)
         self.assertIn('email_registration_disabled:',PAGE)
 
+    def test_shared_test_sender_is_disclosed_before_public_signup(self):
+        self.assertIn("else if(info.test_sender_limited)",PAGE)
+        self.assertIn("رسائل التفعيل تصل إلى بريد الاختبار المصرّح به فقط",PAGE)
+        self.assertIn("test_recipient_only:",PAGE)
+        self.assertIn("يحتاج توثيق نطاق بريد مِنجاز",PAGE)
+
     def test_login_still_available_after_mail_sender_failure(self):
         self.assertIn('function canSubmitEmailForm(form)',PAGE)
         self.assertIn('form.id==="existingAccountForm"||form.id==="accountResetForm"',PAGE)
