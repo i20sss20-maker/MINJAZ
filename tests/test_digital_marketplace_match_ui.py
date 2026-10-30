@@ -1,10 +1,20 @@
 """Market opportunity relevance and UI filtering; no external network or writes."""
+import ast
+import re
 import unittest
 from pathlib import Path
 
-from server import opportunity_relevance
-
 ROOT=Path(__file__).resolve().parents[1]
+# Extract only the two pure matching functions to avoid importing the live
+# server, which deliberately refuses startup without PostgreSQL configuration.
+tree=ast.parse((ROOT/"server.py").read_text("utf-8"))
+pure=[node for node in tree.body if isinstance(node,ast.FunctionDef)
+      and node.name in ("_match_text","opportunity_relevance")]
+assert len(pure)==2
+namespace={"re":re}
+exec(compile(ast.fix_missing_locations(ast.Module(body=pure,type_ignores=[])),
+             "server.py:matching-functions","exec"),namespace)
+opportunity_relevance=namespace["opportunity_relevance"]
 
 class MatchingAndFiltering(unittest.TestCase):
     def test_unrelated_projects_are_not_marked_matched(self):
