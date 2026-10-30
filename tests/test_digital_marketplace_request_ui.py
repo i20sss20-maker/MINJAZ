@@ -54,6 +54,15 @@ class MarketplaceRequestUiTests(unittest.TestCase):
         self.assertIn("due_at=parsed.toISOString()", self.frontend)
         self.assertIn("budget_min:bmin||null,budget_max:bmax||null,due_at", self.frontend)
 
+    def test_main_app_guides_client_with_real_specialty_requirements(self):
+        self.assertIn('id="ntGuide"', self.frontend)
+        self.assertIn('minjazUpdateRequestGuide()', self.frontend)
+        self.assertIn('minjazAddRequestGuide()', self.frontend)
+        self.assertIn('selected?.client_guidance', self.frontend)
+        self.assertIn('إضافة نموذج تفاصيل المشروع', self.frontend)
+        self.assertIn('textarea.value.length+template.length+2>6000', self.frontend)
+        self.assertIn("minjazTaskDraftKey=minjazNewTaskIdempotencyKey();textarea.focus()", self.frontend)
+
     def test_existing_accounts_and_marketplace_routes_stay_present(self):
         for route in ("/api/v1/tasks", "/api/v1/services", "/api/v1/orders",
                       "/api/v1/auth/register", "/api/v1/auth/login-email",
