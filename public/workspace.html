@@ -92,7 +92,10 @@ dialog{border:1px solid var(--line);border-radius:20px;padding:24px;width:min(48
   <label for="taskStatusFilter"><span>تصفية حسب الحالة</span><select id="taskStatusFilter" aria-controls="taskItems"><option value="all">جميع المشاريع</option></select></label>
   <label for="taskCategoryFilter" id="taskCategoryFilterWrap" class="hidden"><span>القسم الرئيسي</span><select id="taskCategoryFilter" aria-controls="taskItems"><option value="">جميع الأقسام</option></select></label>
   <label for="taskServiceFilter" id="taskServiceFilterWrap" class="hidden"><span>القسم الفرعي</span><select id="taskServiceFilter" aria-controls="taskItems" disabled><option value="">جميع التخصصات</option></select></label>
+  <label for="taskMatchFilter" id="taskMatchFilterWrap" class="hidden"><span>مدى مطابقة مهاراتي</span><select id="taskMatchFilter" aria-controls="taskItems"><option value="all">جميع الفرص</option><option value="matched">الفرص ذات التطابق النصي فقط</option><option value="unoffered_matched">المطابقة ولم أقدم عليها</option></select></label>
+  <label for="taskSort" id="taskSortWrap" class="hidden"><span>ترتيب الفرص</span><select id="taskSort" aria-controls="taskItems"><option value="match">الأقرب لمهاراتي</option><option value="latest">الأحدث</option><option value="budget_desc">الميزانية الأعلى</option></select></label>
  </div>
+ <p id="taskMatchGuide" class="note hidden">التطابق يُحسب آليًا من كلمات المهارات والعنوان والقسم والتخصص، وليس تقييمًا لجودة المستقل ولا ضمانًا لقبوله. إذا لم تضف مهارات لملفك، ستظهر جميع الفرص.</p>
  <div id="tasksResultCount" class="list-count" role="status" aria-live="polite"></div>
  <div id="taskItems" class="items" aria-live="polite"></div><button id="moreTasks" class="list-more hidden" type="button">عرض مشاريع أخرى ↓</button></section>
  <section id="proposalPanel" class="panel hidden"><h2>عروضي المقدّمة</h2><p class="subtitle">عرض كل العروض المرسلة وحالتها وسحب العرض المفتوح فقط.</p><div id="proposalItems" class="items"></div></section>
