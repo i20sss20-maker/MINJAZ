@@ -52,6 +52,17 @@ if [ "$remote_size" != "$size" ] || [ "$remote_sha" != "$sha" ]; then
   exit 5
 fi
 echo "BACKUP_OK key=$key bytes=$size sha256=$sha"
+# Head-object alone cannot prove the archive can be restored. Re-download the
+# exact private S3 object, verify content bytes and SHA-256, and restore its
+# entire schema/data into an isolated temporary PG18 cluster (no TCP listeners).
+# Fail the cron when this cannot be proven; the uploaded object is retained.
+downloaded="$(mktemp /tmp/minjaz-preview-remote-XXXXXXXX)"
+trap 'rm -f "$file" "$downloaded"' EXIT HUP INT TERM
+aws --endpoint-url "$BACKUP_ENDPOINT" s3api get-object \
+  --bucket "$BACKUP_BUCKET" --key "$key" "$downloaded" --no-cli-pager >/dev/null
+RESTORE_EXPECT_TABLES="users tasks proposals orders" \
+  sh /usr/local/bin/verify-minjaz-restore "$downloaded" "$sha" "$size"
+echo "BACKUP_RESTORE_VERIFIED key=$key"
 # No automatic deletion: retention must be reviewed before enabling it.
-# Note: pg_restore --list checks archive structure, not full restore. Restore
-# drills must happen against an isolated database; never restore over live.
+# Both integrity and complete isolated restore are required for success.
+# No restore connection is ever opened to the real Railway database.
