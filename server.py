@@ -2963,7 +2963,7 @@ class H(BaseHTTPRequestHandler):
                           returning user_id,company_name,bio,city,sector,updated_at""",(u['id'],company,bio,city,sector),'one')
                     return self.sendj(200,r)
             if method=='GET' and p=='/api/v1/freelancers':
-                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
+                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
                 viewer=auth(self.headers)
                 if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
                 # Fetch every selected specialization in one query, never N+1.
@@ -2980,7 +2980,13 @@ class H(BaseHTTPRequestHandler):
                     if len(listed[row['user_id']])<12:listed[row['user_id']].append({
                         'service_id':row['service_id'],'specialization':row['specialization'],
                         'category_id':row['category_id'],'category_name':row['category_name']})
-                for x in a:x['marketplace_specialties']=listed.get(x['user_id'],[])
+                for x in a:
+                    x['marketplace_specialties']=listed.get(x['user_id'],[])
+                    # A manual admin flag is NOT third-party identity
+                    # verification. Only a provider-confirmed reference counts.
+                    x['provider_verified']=bool(KYC_MODE=='adapter' and
+                        x.get('kyc_status')=='approved' and x.get('kyc_provider_reference'))
+                    x.pop('kyc_provider_reference',None)
                 category_raw=(query.get('category_id') or [''])[0]
                 service_raw=(query.get('service_id') or [''])[0]
                 if category_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',category_raw):
@@ -2993,7 +2999,7 @@ class H(BaseHTTPRequestHandler):
                 if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or []),' '.join(sp['specialization']+' '+sp['category_name'] for sp in x.get('marketplace_specialties',[]))]))]
                 if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or [])) or any(skill in _match_text(sp['specialization']+' '+sp['category_name']) for sp in x.get('marketplace_specialties',[]))]
                 if avail=='1':a=[x for x in a if bool(x.get('is_available'))]
-                if verified=='1':a=[x for x in a if x.get('kyc_status')=='approved']
+                if verified=='1':a=[x for x in a if x.get('provider_verified') is True]
                 sort=(query.get('sort') or ['rating'])[0]
                 if sort=='completed':a.sort(key=lambda x:(int(x.get('completed_tasks') or 0),float(x.get('rating') or 0)),reverse=True)
                 elif sort=='response':a.sort(key=lambda x:(int(x.get('avg_response_minutes') or 999999),-float(x.get('rating') or 0)))
@@ -3004,8 +3010,11 @@ class H(BaseHTTPRequestHandler):
             m=re.fullmatch(r'/api/v1/freelancers/(\d+)/public',p)
             if m and method=='GET':
                 fid=int(m.group(1))
-                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
+                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
                 if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                fp['provider_verified']=bool(KYC_MODE=='adapter' and
+                    fp.get('kyc_status')=='approved' and fp.get('kyc_provider_reference'))
+                fp.pop('kyc_provider_reference',None)
                 fp['marketplace_specialties']=q("""select s.id service_id,s.name_ar specialization,
                         c.id category_id,c.name_ar category_name
                         from freelancer_marketplace_specialties fs
