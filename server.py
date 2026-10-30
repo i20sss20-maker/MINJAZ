@@ -1832,7 +1832,9 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             if pr.get('role')=='admin':
                 c.rollback();return None,dict(pr),False,{},'admin_deletion_requires_security_review'
             if pr.get('deletion_executed_at') or pr.get('deleted_at'):
-                row=dict(pr);row['status']='completed';row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
+                # The database identity may be erased while S3 deletion is
+                # still pending. Never fabricate a completed privacy request.
+                row=dict(pr);row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
                 c.rollback();return {k:as_json(v) for k,v in row.items()},dict(pr),False,{},None
 
             uid=int(pr['user_id']); original_phone=str(pr.get('original_phone') or '')
@@ -1854,8 +1856,20 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             if blockers:
                 c.rollback();return None,dict(pr),False,blockers,'account_deletion_blocked'
 
-            cur.execute("select storage_key from attachments where uploaded_by=%s and storage_key is not null",(uid,))
-            storage_keys=[str(x['storage_key']) for x in cur.fetchall() if x.get('storage_key')]
+            from minjaz_privacy_storage import normalize_object_keys,enqueue_deletions
+            # Include unconsumed upload intents: bytes can exist in the private
+            # bucket even before being linked to an attachment.
+            cur.execute("""select storage_key object_key from attachments
+                           where uploaded_by=%s and storage_key is not null
+                           union select object_key from upload_intents where user_id=%s""",(uid,uid))
+            try:
+                storage_keys=normalize_object_keys([x['object_key'] for x in cur.fetchall()],
+                                                   uid,BUCKET_STORAGE)
+            except ValueError:
+                c.rollback();return None,dict(pr),False,{'unsafe_storage_keys':True},'account_deletion_blocked'
+            if storage_keys and (STORAGE_MODE!='railway_bucket' or not BUCKET_READY):
+                c.rollback();return None,dict(pr),False,{'storage_unavailable':True},'account_deletion_blocked'
+            enqueue_deletions(cur,int(pid),uid,storage_keys)
 
             cur.execute("delete from attachments where uploaded_by=%s",(uid,))
             cur.execute("delete from upload_intents where user_id=%s",(uid,))
@@ -1911,9 +1925,13 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                            name='مستخدم محذوف',is_verified=false,deleted_at=now()
                            where id=%s""",(deleted_phone,uid))
             note=str(admin_note or '').strip()[:1200] or 'تم تنفيذ حذف الحساب وإخفاء الهوية وفق سياسة الخصوصية.'
-            cur.execute("""update privacy_requests set status='completed',details=null,admin_note=%s,
-                           resolved_at=coalesce(resolved_at,now()),deletion_executed_at=coalesce(deletion_executed_at,now())
-                           where id=%s returning *""",(note,int(pid)))
+            # The user is de-identified, but a request with private files must
+            # remain in_progress until S3 has CONFIRMED their removal.
+            final_status='in_progress' if storage_keys else 'completed'
+            cur.execute("""update privacy_requests set status=%s,details=null,admin_note=%s,
+                           resolved_at=case when %s='completed' then coalesce(resolved_at,now()) else null end,
+                           deletion_executed_at=coalesce(deletion_executed_at,now())
+                           where id=%s returning *""",(final_status,note,final_status,int(pid)))
             result=dict(cur.fetchone())
         c.commit()
     except Exception:
@@ -1921,11 +1939,8 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
     finally:
         c.close()
 
-    if BUCKET_READY:
-        for key in storage_keys:
-            try:BUCKET_STORAGE.delete(key)
-            except Exception as exc:
-                operational_event('warning','privacy','storage_delete_failed',repr(exc),None,None,'privacy_request',pid,{'storage_key_hash':sha(key)[:16]})
+    # Durable, retryable queue is drained by a guarded preview worker. A
+    # failed S3 DELETE never silently turns a privacy request into completed.
     return {k:as_json(v) for k,v in result.items()},dict(pr),True,{},None
 
 def update_privacy_request(pid,status,admin_note=None):
@@ -4059,6 +4074,13 @@ class H(BaseHTTPRequestHandler):
                                'support')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
                 if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
+                if p=='/api/admin/privacy/storage-erasure' and method=='GET':
+                    tally=q("""select count(*)::int total,
+                              count(*) filter(where deleted_at is not null)::int confirmed,
+                              count(*) filter(where deleted_at is null)::int pending,
+                              count(*) filter(where deleted_at is null and attempts>0)::int retrying
+                              from privacy_storage_deletions""",(), 'one')
+                    return self.sendj(200,{'counts':tally})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
                 if m and method=='PATCH':
                     b=self.body();st=str(b.get('status') or 'in_progress')
@@ -4073,7 +4095,9 @@ class H(BaseHTTPRequestHandler):
                         if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                         if err:return self.sendj(409,{'error':err})
                         if changed:admin_audit(u['id'],'account_deletion_executed','privacy_request',pid,{'user_id':pr.get('user_id')})
-                        return self.sendj(200,{**r,'idempotent_replay':not changed,'account_deleted':True})
+                        return self.sendj(200,{**r,'idempotent_replay':not changed,
+                                               'account_deleted':True,
+                                               'storage_deletion_pending':r.get('status')!='completed'})
                     r,pr,changed,err=update_privacy_request(pid,st,b.get('admin_note'))
                     if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
@@ -4118,4 +4142,9 @@ if __name__=='__main__':
             # Storage CORS setup should not take down the marketplace. Uploaded
             # files remain private until this is fixed and verified.
             print('STORAGE_CORS_WARNING',type(exc).__name__,flush=True)
+    from minjaz_privacy_storage import start_preview_worker
+    running=start_preview_worker(db_connect,BUCKET_STORAGE,APP_ENV,
+                                os.getenv('RAILWAY_PROJECT_ID',''),
+                                os.getenv('MINJAZ_PRIVACY_STORAGE_WORKER','off'))
+    print('PRIVACY_STORAGE_WORKER', 'enabled' if running else 'disabled',flush=True)
     ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
