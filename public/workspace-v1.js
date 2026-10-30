@@ -10,6 +10,11 @@ const ERROR={
  legal_acceptance_required:"راجع مستندات الشروط والخصوصية ووافق عليها قبل تنفيذ الطلب.",
  invalid_category:"اختر قسمًا متاحًا.",
  invalid_service:"اختر تخصصًا فرعيًا متاحًا.",
+ invalid_specialty_payload:"بيانات التخصصات غير صحيحة.",
+ invalid_specialty_count:"الحد الأعلى 12 تخصصًا للمستقل.",
+ invalid_specialty_id:"يوجد رقم تخصص غير صالح.",
+ duplicate_specialty:"يوجد تخصص مكرر في اختياراتك.",
+ inactive_or_invalid_specialty:"أحد التخصصات غير متاح؛ حدّث القائمة وأعد المحاولة.",
  category_service_mismatch:"التخصص لا يتبع القسم المحدد. أعد اختيار القسم والتخصص.",
  invalid_price:"اكتب سعرًا صحيحًا.",
  invalid_budget:"راجع الميزانية.",
@@ -215,6 +220,35 @@ async function renderLegal(){
  node.classList.remove("hidden");
 }
 let marketplaceCategories=[],marketplaceSubcategories=[];
+let selectedSpecialtyIds=[],specialtiesLoaded=false,specialtiesSaving=false;
+function renderSavedSpecialties(){
+ const box=$("selectedSpecialties");box.replaceChildren();
+ if(!specialtiesLoaded){
+  $("selectedSpecialtiesStatus").textContent="تعذر تحميل تخصصاتك المحفوظة. أعد تحديث الصفحة قبل التعديل.";
+  $("addFreelancerSpecialty").disabled=true;$("saveFreelancerSpecialties").disabled=true;return;
+ }
+ for(const id of selectedSpecialtyIds){
+  const service=marketplaceSubcategories.find(s=>Number(s.id)===id);
+  if(!service)continue;
+  const chip=document.createElement("button");chip.type="button";chip.className="btn-lite";
+  chip.textContent="✕ "+service.name_ar;chip.title="حذف "+service.name_ar;
+  chip.disabled=specialtiesSaving;
+  chip.addEventListener("click",()=>{selectedSpecialtyIds=selectedSpecialtyIds.filter(x=>x!==id);renderSavedSpecialties()});
+  box.append(chip);
+ }
+ $("selectedSpecialtiesStatus").textContent="التخصصات المختارة: "+selectedSpecialtyIds.length+" من 12. اضغط حفظ تخصصاتي لتثبيت التغييرات.";
+ $("addFreelancerSpecialty").disabled=specialtiesSaving||selectedSpecialtyIds.length>=12;
+ $("saveFreelancerSpecialties").disabled=specialtiesSaving;
+}
+async function loadSavedSpecialties(){
+ specialtiesLoaded=false;$("saveFreelancerSpecialties").disabled=true;$("addFreelancerSpecialty").disabled=true;
+ $("selectedSpecialtiesStatus").textContent="جاري تحميل تخصصاتك المحفوظة…";
+ const result=await request("/api/v1/freelancer/specialties");
+ if(!Array.isArray(result.items))throw Error("تعذر قراءة التخصصات المحفوظة");
+ selectedSpecialtyIds=result.items.map(row=>Number(row.service_id));
+ specialtiesLoaded=true;renderSavedSpecialties();
+}
+
 function setMarketOptions(select,items,first){
  select.replaceChildren();
  const emptyOption=document.createElement("option");emptyOption.value="";emptyOption.textContent=first;select.append(emptyOption);
@@ -262,6 +296,10 @@ async function loadCategories(){
   setMarketOptions($(select),marketplaceCategories,select==="taskCategoryFilter"?"جميع الأقسام":"اختر القسم");
  }
  updateClientSubcategories();updateFreelancerSpecialties();updateFreelancerTaskFilters();
+ if(currentUser?.role==="freelancer"){
+  try{await loadSavedSpecialties()}
+  catch(error){specialtiesLoaded=false;renderSavedSpecialties();notice("تعذر جلب تخصصات المستقل: "+error.message,"error")}
+ }
 }
 function sortFreelancerTasks(){
  const choice=$("taskSort").value;
@@ -285,8 +323,9 @@ function renderTasks(){
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
   const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
+  const reason=t.specialty_match==="exact"?"تخصصك المحفوظ مطابق":t.specialty_match==="category"?"ينتمي إلى مجال من تخصصاتك":"تطابق كلمات المهارات";
   const matchLabel=role==="freelancer"?(Number(t.match_score)>0?
-    ("تطابق نصي تقريبي: "+Math.round(Number(t.match_score))+" / 100"):"لا توجد كلمات مطابقة لمهارات ملفك"):"";
+    (reason+" • مؤشر ملاءمة: "+Math.round(Number(t.match_score))+" / 100"):"لا يوجد تطابق مع مهاراتك أو تخصصاتك المحفوظة"):"";
   const meta=[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",t.service_name||"تخصص عام",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")];
   if(matchLabel)meta.push(matchLabel);
   return entry(t.title,t.description,meta,fullActions);
@@ -483,12 +522,26 @@ $("taskServiceFilter").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE
 $("freelancerSpecialtyCategory").addEventListener("change",updateFreelancerSpecialties);
 $("freelancerSpecialty").addEventListener("change",updateFreelancerAdvice);
 $("addFreelancerSpecialty").addEventListener("click",()=>{
+ if(!specialtiesLoaded||specialtiesSaving)return;
  const selected=marketplaceSubcategories.find(s=>String(s.id)===$("freelancerSpecialty").value);
  if(!selected){notice("اختر التخصص الفرعي الذي تعمل فيه أولًا.","error");return}
- const input=$("freelancerSkills"),pieces=input.value.split(/[,،]/).map(v=>v.trim()).filter(Boolean);
- if(!pieces.some(v=>v===selected.name_ar))pieces.push(selected.name_ar);
- input.value=pieces.join("، ");
- notice("تمت إضافة التخصص إلى حقل مهاراتك. اضغط حفظ ملف المستقل لتثبيته.","success");
+ if(selectedSpecialtyIds.includes(Number(selected.id))){notice("هذا التخصص موجود في قائمتك.","success");return}
+ if(selectedSpecialtyIds.length>=12){notice("يسمح باختيار 12 تخصصًا كحد أقصى.","error");return}
+ selectedSpecialtyIds.push(Number(selected.id));renderSavedSpecialties();
+ notice("أُضيف إلى قائمتك. اضغط حفظ تخصصاتي لتأكيد الاختيار.","success");
+});
+$("saveFreelancerSpecialties").addEventListener("click",async()=>{
+ if(!specialtiesLoaded||specialtiesSaving)return;
+ const button=$("saveFreelancerSpecialties");specialtiesSaving=true;renderSavedSpecialties();
+ try{
+  const data=await request("/api/v1/freelancer/specialties",{
+   method:"PATCH",data:{service_ids:selectedSpecialtyIds}
+  });
+  selectedSpecialtyIds=(data.items||[]).map(x=>Number(x.service_id));
+  notice("تم حفظ تخصصاتك في قاعدة البيانات. ستُستخدم لترتيب فرص العمل.","success");
+  if(currentUser?.role==="freelancer")await loadUserData();
+ }catch(error){notice("تعذر حفظ التخصصات: "+error.message,"error")}
+ finally{specialtiesSaving=false;renderSavedSpecialties()}
 });
 $("insertTaskTemplate").addEventListener("click",()=>{
  const subject=marketplaceSubcategories.find(s=>String(s.id)===$("taskSubcategories").value);
