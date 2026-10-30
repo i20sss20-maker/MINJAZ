@@ -107,6 +107,17 @@ class ErasureTests(unittest.TestCase):
             with patch("minjaz_privacy_storage.threading.Thread") as thread:
                 self.assertFalse(start_preview_worker(lambda:None,FakeStorage(),env,project,enabled))
                 thread.assert_not_called()
+    def test_real_admin_dashboard_displays_pending_and_confirmed_erasure(self):
+        html=(ROOT/"public/index.html").read_text("utf-8")
+        server=(ROOT/"server.py").read_text("utf-8")
+        self.assertIn("api('/api/admin/privacy/storage-erasure')",html)
+        self.assertIn("['ملفات قيد الحذف',erasure?.counts?.pending??'—']",html)
+        self.assertIn("['ملفات حُذفت',erasure?.counts?.confirmed??'—']",html)
+        self.assertIn("الحساب محذوف · ملفات قيد الحذف",html)
+        self.assertIn("j?.storage_deletion_pending?",html)
+        self.assertIn("if p=='/api/admin/privacy/storage-erasure' and method=='GET':",server)
+        self.assertIn("count(*) filter(where deleted_at is null)::int pending",server)
+
     def test_end_to_end_deletion_never_silently_ignores_failed_storage(self):
         src=(ROOT/"server.py").read_text("utf-8")
         start=src.index("def execute_account_deletion(")
