@@ -151,8 +151,11 @@ function filteredTasks(){
   if(!matchesSearch(term,[t.title,t.description,t.category_name,t.category_slug,t.service_name]))return false;
   if(role==="freelancer"){
    const category=$("taskCategoryFilter").value,service=$("taskServiceFilter").value;
+   const matchChoice=$("taskMatchFilter").value;
    if(category&&Number(t.category_id)!==Number(category))return false;
    if(service&&Number(t.service_id)!==Number(service))return false;
+   if(matchChoice!=="all"&&!(Number(t.match_score)>0))return false;
+   if(matchChoice==="unoffered_matched"&&t.has_proposal)return false;
   }
   if(choice==="all")return true;
   if(role==="freelancer")return choice==="offered"?Boolean(t.has_proposal):!t.has_proposal;
@@ -180,6 +183,8 @@ function showRole(){
  show("clientAction",role==="client");show("freelancerAction",role==="freelancer");show("adminAction",role==="admin");
  show("navCreate",role==="client");show("navProposals",role==="freelancer");
  show("taskCategoryFilterWrap",role==="freelancer");show("taskServiceFilterWrap",role==="freelancer");
+ show("taskMatchFilterWrap",role==="freelancer");show("taskSortWrap",role==="freelancer");
+ show("taskMatchGuide",role==="freelancer");
  $("taskCategoryFilter").value="";updateFreelancerTaskFilters();
  show("taskTools",role!=="admin");show("orderTools",role!=="admin");
  setTaskFilterOptions(role);
@@ -256,8 +261,16 @@ async function loadCategories(){
  }
  updateClientSubcategories();updateFreelancerSpecialties();updateFreelancerTaskFilters();
 }
+function sortFreelancerTasks(){
+ const choice=$("taskSort").value;
+ if(choice==="latest")currentTasks.sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
+ else if(choice==="budget_desc")currentTasks.sort((a,b)=>Number(b.budget_max||b.budget_min||0)-Number(a.budget_max||a.budget_min||0));
+ else currentTasks.sort((a,b)=>Number(b.match_score||0)-Number(a.match_score||0)||
+          String(b.created_at||"").localeCompare(String(a.created_at||"")));
+}
 function renderTasks(){
  const role=currentUser.role;
+ if(role==="freelancer")sortFreelancerTasks();
  if(role==="admin"){$("taskItems").innerHTML=empty("تتوفر تفاصيل المهام من الواجهة الإدارية الكاملة.");$("tasksResultCount").textContent="";show("moreTasks",false);return}
  if(loadErrors.tasks){$("taskItems").innerHTML=empty("تعذّر الاتصال بالمشاريع الآن. اضغط تحديث البيانات للمحاولة مجددًا.");$("tasksResultCount").textContent="البيانات غير متاحة مؤقتًا";show("moreTasks",false);return}
  const tasks=filteredTasks();
@@ -270,7 +283,11 @@ function renderTasks(){
    canOffer?'<button type="button" data-action="new-offer" data-id="'+Number(t.id)+'">قدّم عرضًا</button>':
     (t.has_proposal?'<span class="chip">قدّمت عرضًا</span>':"");
   const fullActions=role==="freelancer"?actions+'<button type="button" data-action="report-task" data-id="'+Number(t.id)+'">إبلاغ عن المهمة</button>':actions;
-  return entry(t.title,t.description,[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",t.service_name||"تخصص عام",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")],fullActions);
+  const matchLabel=role==="freelancer"?(Number(t.match_score)>0?
+    ("تطابق نصي تقريبي: "+Math.round(Number(t.match_score))+" / 100"):"لا توجد كلمات مطابقة لمهارات ملفك"):"";
+  const meta=[humanStatus(t.status),t.category_name||t.category_slug||"مهمة",t.service_name||"تخصص عام",(t.budget_min?money(t.budget_min):"السعر حسب الاتفاق")];
+  if(matchLabel)meta.push(matchLabel);
+  return entry(t.title,t.description,meta,fullActions);
  }).join(""):empty(currentTasks.length?"لا توجد مشاريع مطابقة للبحث أو التصفية. جرّب تغيير الكلمات أو الحالة.":role==="client"?"ما نشرت مشاريع بعد. ابدأ بنشر أول مشروع من النموذج أعلاه.":"لا توجد فرص عمل متاحة في الوقت الحالي.");
 }
 function renderOrders(){
@@ -318,6 +335,7 @@ async function loadUserData(){
  loadErrors.tasks=t.status!=="fulfilled";
  if(!loadErrors.tasks)currentTasks=t.value.items||[];
  else{currentTasks=[];notice("تعذر تحميل المشاريع: "+t.reason.message,"error")}
+ if(role==="freelancer"&&!loadErrors.tasks)sortFreelancerTasks();
  loadErrors.orders=o.status!=="fulfilled";
  if(!loadErrors.orders)currentOrders=o.value.items||[];
  else{currentOrders=[];notice("تعذر تحميل الطلبات: "+o.reason.message,"error")}
@@ -393,6 +411,8 @@ async function load(){
 }
 $("taskSearch").addEventListener("input",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderTasks()});
 $("taskStatusFilter").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderTasks()});
+$("taskMatchFilter").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser?.role==="freelancer")renderTasks()});
+$("taskSort").addEventListener("change",()=>{taskVisibleCount=TASK_PAGE_SIZE;if(currentUser?.role==="freelancer")renderTasks()});
 $("orderSearch").addEventListener("input",()=>{orderVisibleCount=ORDER_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderOrders()});
 $("orderStatusFilter").addEventListener("change",()=>{orderVisibleCount=ORDER_PAGE_SIZE;if(currentUser&&currentUser.role!=="admin")renderOrders()});
 $("refreshWorkspace").addEventListener("click",()=>{if(!loading)load()});
