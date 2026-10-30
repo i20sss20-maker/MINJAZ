@@ -117,7 +117,7 @@ class MarketplaceHierarchy(unittest.TestCase):
         self.assertIn('specialtiesLoaded=false',js)
         self.assertIn('specialty_match',server)
         self.assertIn("if exact:score=max(score,95)",server)
-        self.assertIn("if matchChoice!==\"all\"&&!(Number(t.match_score)>0)",js)
+        self.assertIn("if(matchChoice!==\"all\"&&!(Number(t.match_score)>0))",js)
         self.assertIn('specialty?.freelancer_guidance',js)
         self.assertIn("s.client_guidance,s.freelancer_guidance",server)
         self.assertIn("select id,slug,name_ar,icon from categories where is_active=true",server)
