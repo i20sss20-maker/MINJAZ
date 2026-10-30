@@ -122,6 +122,12 @@ class MarketplaceHierarchy(unittest.TestCase):
         self.assertIn("s.client_guidance,s.freelancer_guidance",server)
         self.assertIn("select id,slug,name_ar,icon from categories where is_active=true",server)
         self.assertIn("left join services s on s.id=t.service_id",server)
+        homepage=(ROOT/"public/index.html").read_text("utf-8")
+        self.assertIn("marketplace_specialties",server)
+        self.assertIn("specialties.map(item=>",homepage)
+        self.assertIn("تخصصات المستقل",homepage)
+        self.assertIn("وليست شهادة أو إثبات خبرة",homepage)
+        self.assertIn("freelancer_marketplace_specialties",server)
 
 if __name__=="__main__":
     unittest.main()
