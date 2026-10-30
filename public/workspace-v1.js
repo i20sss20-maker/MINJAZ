@@ -9,6 +9,8 @@ const ERROR={
  unauthorized:"انتهت جلستك. سجّل الدخول مجددًا.",
  legal_acceptance_required:"راجع مستندات الشروط والخصوصية ووافق عليها قبل تنفيذ الطلب.",
  invalid_category:"اختر قسمًا متاحًا.",
+ invalid_service:"اختر تخصصًا فرعيًا متاحًا.",
+ category_service_mismatch:"التخصص لا يتبع القسم المحدد. أعد اختيار القسم والتخصص.",
  invalid_price:"اكتب سعرًا صحيحًا.",
  invalid_budget:"راجع الميزانية.",
  invalid_budget_range:"الحد الأعلى أقل من الحد الأدنى.",
