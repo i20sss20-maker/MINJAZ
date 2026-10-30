@@ -6,6 +6,7 @@ on:
     paths:
       - "scripts/backup_minjaz_sandbox.sh"
       - "scripts/restore_drill_minjaz_ci.sh"
+      - "scripts/verify_minjaz_backup_restore.sh"
       - "tests/test_digital_backup.py"
       - "Dockerfile.backup"
       - ".github/workflows/minjaz-backup-restore-drill.yml"
@@ -15,6 +16,7 @@ on:
     paths:
       - "scripts/backup_minjaz_sandbox.sh"
       - "scripts/restore_drill_minjaz_ci.sh"
+      - "scripts/verify_minjaz_backup_restore.sh"
       - "tests/test_digital_backup.py"
       - "Dockerfile.backup"
       - ".github/workflows/minjaz-backup-restore-drill.yml"
@@ -39,6 +41,7 @@ jobs:
         run: |
           bash -n scripts/restore_drill_minjaz_ci.sh
           sh -n scripts/backup_minjaz_sandbox.sh
+          sh -n scripts/verify_minjaz_backup_restore.sh
           python3 -m unittest discover -s tests -p 'test_digital_backup.py' -v
       - name: Dump and restore isolated PostgreSQL 18 with real constraints and Arabic rows
         shell: bash
