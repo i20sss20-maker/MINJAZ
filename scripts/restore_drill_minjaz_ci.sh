@@ -63,6 +63,19 @@ docker exec "$container" rm -f /tmp/minjaz-source.dump
 docker cp "$work/source.dump" "$container:/tmp/minjaz-restore.dump" >/dev/null
 
 docker exec "$container" pg_restore --list /tmp/minjaz-restore.dump >/dev/null
+
+# Exercise the exact isolation and restore verifier used by the sandbox S3
+# cron, but ONLY with synthetic data created inside this disposable container.
+docker cp scripts/verify_minjaz_backup_restore.sh "$container:/tmp/verify-minjaz.sh" >/dev/null
+bytes="$(wc -c < "$work/source.dump" | tr -d ' ')"
+docker exec -e "RESTORE_EXPECT_TABLES=accounts work_messages" "$container" \
+  sh /tmp/verify-minjaz.sh /tmp/minjaz-restore.dump "$sha" "$bytes"
+if docker exec -e "RESTORE_EXPECT_TABLES=accounts work_messages" "$container" \
+  sh /tmp/verify-minjaz.sh /tmp/minjaz-restore.dump \
+  0000000000000000000000000000000000000000000000000000000000000000 "$bytes" >/dev/null 2>&1; then
+  echo "DRILL_FAILED: restore verifier accepted corrupt checksum" >&2; exit 6
+fi
+
 docker exec "$container" createdb -U drill minjaz_restore_drill_ci
 docker exec "$container" pg_restore --exit-on-error --no-owner --no-privileges \
   -U drill -d minjaz_restore_drill_ci /tmp/minjaz-restore.dump
