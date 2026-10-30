@@ -2951,6 +2951,29 @@ class H(BaseHTTPRequestHandler):
                 a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
                 viewer=auth(self.headers)
                 if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
+                # Fetch every selected specialization in one query, never N+1.
+                directory_ids=[int(x['user_id']) for x in a]
+                selected_rows=q("""select fs.user_id,s.id service_id,s.name_ar specialization,
+                        c.id category_id,c.name_ar category_name
+                        from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        join categories c on c.id=s.category_id
+                        where fs.user_id=any(%s) and s.active=true and c.is_active=true
+                        order by fs.user_id,fs.created_at,fs.service_id""",(directory_ids,)) if directory_ids else []
+                listed={uid:[] for uid in directory_ids}
+                for row in selected_rows:
+                    if len(listed[row['user_id']])<12:listed[row['user_id']].append({
+                        'service_id':row['service_id'],'specialization':row['specialization'],
+                        'category_id':row['category_id'],'category_name':row['category_name']})
+                for x in a:x['marketplace_specialties']=listed.get(x['user_id'],[])
+                category_raw=(query.get('category_id') or [''])[0]
+                service_raw=(query.get('service_id') or [''])[0]
+                if category_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',category_raw):
+                    return self.sendj(400,{'error':'invalid_category'})
+                if service_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',service_raw):
+                    return self.sendj(400,{'error':'invalid_service'})
+                if category_raw:a=[x for x in a if any(int(v['category_id'])==int(category_raw) for v in x['marketplace_specialties'])]
+                if service_raw:a=[x for x in a if any(int(v['service_id'])==int(service_raw) for v in x['marketplace_specialties'])]
                 qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
                 if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
                 if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or []))]
