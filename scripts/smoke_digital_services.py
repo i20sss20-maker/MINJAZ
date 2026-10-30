@@ -113,6 +113,7 @@ def main():
     check("/api/digital-services/orders",401,"error")
     check("/api/digital-services/activity",401,"error")
     check("/api/digital-services/notifications",401,"error")
+    check("/api/v1/freelancer/specialties",401,"error")
     check("/api/digital-services/notifications/read",401,"error")
     check("/api/digital-services/orders/1",401,"error")
     check("/api/digital-services/admin/orders",401,"error")
