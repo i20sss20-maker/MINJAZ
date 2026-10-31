@@ -13,10 +13,11 @@ const en = read('android-preview/app/src/main/res/values-en/strings.xml');
 
 test('native catalog is reachable internally, never as an external deep link', () => {
   assert.match(main, /startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
-  assert.match(main, /root\.addView\(discover, discoverParams\)/);
+  assert.match(main, /private void navigateNativeTab\(int tab\)/);
+  assert.match(main, /tab == 0[\s\S]*startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
   assert.match(manifest, /android:name="\.DiscoverActivity"\s+android:exported="false"/);
   assert.match(manifest, /android:name="\.MainActivity"\s+android:exported="true"/);
-  assert.match(preview, /versionCode 17\s+versionName "0\.17-mobile-account-beta"/);
+  assert.match(preview, /versionCode 18\s+versionName "0\.18-native-navigation-beta"/);
   assert.match(preview, /preview\s*\{[\s\S]*?APP_URL", '"https:\/\/beta\.minjazapp\.com\/workspace"'/);
 });
 
