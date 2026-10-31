@@ -165,9 +165,9 @@ jobs:
           mkdir -p /tmp/minjaz-unsigned-ipa-stage/Payload
           ditto "$APP" /tmp/minjaz-unsigned-ipa-stage/Payload/Minjaz.app
           cd /tmp/minjaz-unsigned-ipa-stage
-          zip -qry /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa Payload
-          test -s /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa
-          unzip -Z -1 /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa | grep -q '^Payload/Minjaz.app/Info.plist
+          zip -qry /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa Payload
+          test -s /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa
+          unzip -Z -1 /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa | grep -q '^Payload/Minjaz.app/Info.plist
       - uses: actions/upload-artifact@v4
         with:
           name: MINJAZ-iPhone-Simulator-beta
@@ -177,15 +177,15 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-          shasum -a 256 /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa > /tmp/MINJAZ-iPhone-0.17-UNSIGNED.sha256
+          shasum -a 256 /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa > /tmp/MINJAZ-iPhone-beta-UNSIGNED.sha256
           printf '%s\n' 'UNSIGNED: Apple code signing and a matching provisioning profile are required before installation on a physical iPhone.' > /tmp/README-UNSIGNED-IPA.txt
           echo 'MINJAZ_IOS_UNSIGNED_IPA_PACKAGED_NOT_INSTALLABLE'
       - uses: actions/upload-artifact@v4
         with:
-          name: MINJAZ-iPhone-0.17-UNSIGNED-IPA
+          name: MINJAZ-iPhone-beta-UNSIGNED-IPA
           path: |
-            /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa
-            /tmp/MINJAZ-iPhone-0.17-UNSIGNED.sha256
+            /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa
+            /tmp/MINJAZ-iPhone-beta-UNSIGNED.sha256
             /tmp/README-UNSIGNED-IPA.txt
           retention-days: 14
           if-no-files-found: error
