@@ -16,4 +16,10 @@
     <string name="discovery_no_results">لا توجد تخصصات مطابقة حاليًا.</string>
     <string name="discovery_more">عرض المزيد</string>
     <string name="discovery_connection_error">تعذر جلب الأقسام من السيرفر. تحقق من الإنترنت ثم أعد المحاولة.</string>
+    <string name="account_floating">حسابي والخصوصية</string>
+    <string name="account_menu_title">حسابي والخصوصية</string>
+    <string name="account_login">تسجيل الدخول أو إنشاء حساب</string>
+    <string name="account_profile">الملف الشخصي</string>
+    <string name="account_privacy">سياسة الخصوصية</string>
+    <string name="account_deletion">طلب حذف الحساب</string>
 </resources>
