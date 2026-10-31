@@ -53,17 +53,18 @@ struct ContentView: View {
     @State private var showingWorkflow = false
     @State private var accountSection: NativeSection = .account
 
-    private let blue = Color(red: 101/255, green: 88/255, blue: 245/255)
+    private let blue = MinjazUI.primary
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.system(size: 23, weight: .bold))
-                    .foregroundStyle(blue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("مِنجاز").font(.system(size: 20, weight: .heavy))
-                    Text(selected == .discover ? "اكتشف تخصصات المستقلين" : selected.title)
-                        .font(.caption).foregroundStyle(.secondary)
+                MinjazBrandMark(dimension: 38)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("مِنجاز")
+                        .font(MinjazUI.heading(23))
+                        .foregroundStyle(MinjazUI.ink)
+                    Text(selected == .discover ? "منصة الخدمات" : selected.title)
+                        .font(MinjazUI.body(12))
+                        .foregroundStyle(MinjazUI.muted)
                 }
                 Spacer()
                 if selected != .discover {
@@ -80,16 +81,22 @@ struct ContentView: View {
                 }
                 Button { showingAccountActions = true } label: {
                     Image(systemName: "person.crop.circle")
-                        .frame(width: 37, height: 37)
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 43, height: 43)
+                        .background(MinjazUI.tinted, in: RoundedRectangle(cornerRadius: 13))
                 }
                 .accessibilityLabel("الحساب والخصوصية")
                 Button { sharing = true } label: {
-                    Image(systemName: "square.and.arrow.up").frame(width: 37, height: 37)
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 43, height: 43)
+                        .background(MinjazUI.tinted, in: RoundedRectangle(cornerRadius: 13))
                 }
                 .accessibilityLabel("مشاركة مِنجاز")
             }
-            .padding(.horizontal, 16).padding(.vertical, 9)
+            .padding(.horizontal, 17).padding(.vertical, 12)
             .background(.white)
+            .foregroundStyle(MinjazUI.primary)
 
             Group {
                 if selected == .discover || selected == .services {
@@ -117,14 +124,17 @@ struct ContentView: View {
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: tab.symbol)
-                                .font(.system(size: 19, weight: .semibold))
+                                .font(.system(size: 19, weight: selected == tab ? .semibold : .regular))
                             Text(tab.title)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(MinjazUI.body(11, weight: selected == tab ? .bold : .medium))
                                 .minimumScaleFactor(0.85)
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(selected == tab ? blue : Color.secondary)
-                        .frame(maxWidth: .infinity).frame(height: 54)
+                        .foregroundStyle(selected == tab ? MinjazUI.deep : MinjazUI.muted)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 59)
+                        .background(selected == tab ? MinjazUI.tinted : .clear,
+                                    in: RoundedRectangle(cornerRadius: 15))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -132,7 +142,7 @@ struct ContentView: View {
                     .accessibilityAddTraits(selected == tab ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 8).padding(.top, 5).padding(.bottom, 2)
+            .padding(.horizontal, 9).padding(.top, 8).padding(.bottom, 5)
             .background(.white)
             .overlay(alignment: .top) {
                 Rectangle()
@@ -140,7 +150,7 @@ struct ContentView: View {
                     .frame(height: 1)
             }
         }
-        .background(Color(red: 0.97, green: 0.97, blue: 0.98))
+        .background(MinjazUI.canvas)
         .confirmationDialog(
             "حسابي والخصوصية",
             isPresented: $showingAccountActions,
