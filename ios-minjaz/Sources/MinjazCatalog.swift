@@ -98,124 +98,213 @@ struct CatalogView: View {
 
     @State private var keyword = ""
     @State private var selectedCategory: Int?
-    private let blue = Color(red: 0.29, green: 0.32, blue: 0.84)
 
     private var filtered: [MinjazService] {
-        catalog.services.filter { item in
+        let term = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        return catalog.services.filter { item in
             (selectedCategory == nil || item.category_id == selectedCategory) &&
-            (keyword.isEmpty || item.name_ar.localizedStandardContains(keyword) ||
-             (item.client_guidance ?? "").localizedStandardContains(keyword))
+            (term.isEmpty || item.name_ar.localizedStandardContains(term) ||
+             (item.client_guidance ?? "").localizedStandardContains(term) ||
+             (catalog.categories.first(where: { $0.id == item.category_id })?.name_ar ?? "")
+                .localizedStandardContains(term))
         }
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("تخصصات تناسب مشروعك")
-                        .font(.system(size: 25, weight: .heavy))
-                    Text("ابحث عن نوع الخدمة، وبعدها انشر مشروعك ليقدم المستقلون عروضهم.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                .padding(.top, 18)
-
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("ابحث في التخصصات", text: $keyword)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityLabel("البحث في التخصصات")
-                    if !keyword.isEmpty {
-                        Button { keyword = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }.accessibilityLabel("مسح البحث")
-                    }
-                }
-                .padding(13)
-                .background(.white, in: RoundedRectangle(cornerRadius: 14))
+            LazyVStack(alignment: .leading, spacing: 22) {
+                introduction
+                searchInput
 
                 if catalog.loading {
-                    HStack(spacing: 10) {
-                        ProgressView()
+                    HStack(spacing: 12) {
+                        ProgressView().tint(MinjazUI.primary)
                         Text("جاري تحميل الأقسام…")
-                    }.frame(maxWidth: .infinity).padding(30)
+                            .font(MinjazUI.body()).foregroundStyle(MinjazUI.muted)
+                    }
+                    .frame(maxWidth: .infinity).padding(28)
                 } else if let error = catalog.error {
-                    VStack(spacing: 12) {
-                        Text(error).multilineTextAlignment(.center)
-                        Button("إعادة المحاولة") {
-                            Task { await catalog.retry() }
-                        }.buttonStyle(.borderedProminent)
-                    }
-                    .frame(maxWidth: .infinity).padding(24)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
-                } else {
-                    Text("الأقسام الرئيسية").font(.headline)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            categoryButton(nil, name: "الكل")
-                            ForEach(catalog.categories) { category in
-                                categoryButton(category.id, name: category.name_ar)
-                            }
+                    MinjazSurface {
+                        VStack(spacing: 12) {
+                            Image(systemName: "wifi.exclamationmark")
+                                .font(.title).foregroundStyle(MinjazUI.primary)
+                            Text(error).multilineTextAlignment(.center)
+                                .font(MinjazUI.body())
+                            Button("إعادة المحاولة") { Task { await catalog.retry() } }
+                                .buttonStyle(.borderedProminent).tint(MinjazUI.primary)
                         }
-                        .padding(.vertical, 2)
+                        .padding(22)
+                        .frame(maxWidth: .infinity)
                     }
-
-                    HStack {
-                        Text("التخصصات").font(.headline)
-                        Spacer()
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionHeading("الأقسام الرئيسية")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                categoryButton(nil, name: "الكل")
+                                ForEach(catalog.categories) { category in
+                                    categoryButton(category.id, name: category.name_ar)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    HStack(alignment: .firstTextBaseline) {
+                        sectionHeading("التخصصات")
+                        Spacer(minLength: 8)
                         Text("\(filtered.count) تخصص")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(MinjazUI.body(13)).foregroundStyle(MinjazUI.muted)
+                            .monospacedDigit()
                     }
                     if filtered.isEmpty {
-                        Text("لا توجد تخصصات مطابقة. غيّر كلمة البحث أو القسم.")
-                            .frame(maxWidth: .infinity).padding(25)
-                    }
-
-                    LazyVStack(spacing: 10) {
-                        ForEach(filtered) { service in
-                            Button { onOpen(service) } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "briefcase.fill")
-                                        .foregroundStyle(blue)
-                                        .frame(width: 36, height: 36)
-                                        .background(blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(service.name_ar)
-                                            .foregroundStyle(.primary).font(.subheadline.bold())
-                                        if let category = catalog.categories.first(where: { $0.id == service.category_id }) {
-                                            Text(category.name_ar)
-                                                .foregroundStyle(.secondary).font(.caption)
-                                        }
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.left")
-                                        .font(.caption.bold()).foregroundStyle(.tertiary)
-                                }
-                                .padding(14)
-                                .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                        MinjazSurface {
+                            VStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.title).foregroundStyle(MinjazUI.primary)
+                                Text("لا توجد تخصصات مطابقة")
+                                    .font(MinjazUI.body(16, weight: .semibold))
+                                Text("جرّب تغيير القسم أو عبارة البحث")
+                                    .font(MinjazUI.body(14)).foregroundStyle(MinjazUI.muted)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("فتح مشاريع مِنجاز لهذا النوع من الخدمات")
+                            .frame(maxWidth: .infinity).padding(30)
+                        }
+                    } else {
+                        LazyVStack(spacing: 10) {
+                            ForEach(filtered) { service in
+                                serviceRow(service)
+                            }
                         }
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 25)
+            .padding(.horizontal, 17)
+            .padding(.top, 22)
+            .padding(.bottom, 28)
         }
-        .background(Color(red: 0.97, green: 0.97, blue: 0.98))
+        .background(MinjazUI.canvas)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("تخصصات تناسب مشروعك")
+                        .font(MinjazUI.heading(25))
+                        .foregroundStyle(MinjazUI.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("ابحث عن نوع الخدمة، ثم انشر مشروعك ليتقدم المستقلون بعروضهم.")
+                        .font(MinjazUI.body(14))
+                        .foregroundStyle(MinjazUI.muted)
+                        .lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "briefcase.fill")
+                    .font(.system(size: 27, weight: .medium))
+                    .foregroundStyle(MinjazUI.primary)
+                    .frame(width: 56, height: 56)
+                    .background(MinjazUI.tinted, in: RoundedRectangle(cornerRadius: 17))
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(18)
+        .background(
+            LinearGradient(colors: [.white, MinjazUI.tinted.opacity(0.72)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 22)
+        )
+    }
+
+    private var searchInput: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(MinjazUI.primary)
+                .frame(width: 37, height: 37)
+                .background(MinjazUI.tinted, in: RoundedRectangle(cornerRadius: 11))
+            TextField("ابحث في التخصصات", text: $keyword)
+                .font(MinjazUI.body(15))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .accessibilityLabel("البحث في التخصصات")
+            if !keyword.isEmpty {
+                Button { keyword = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(MinjazUI.muted)
+                }
+                .accessibilityLabel("مسح البحث")
+            }
+        }
+        .padding(.horizontal, 13)
+        .frame(minHeight: 55)
+        .background(.white, in: RoundedRectangle(cornerRadius: 17))
+        .overlay(
+            RoundedRectangle(cornerRadius: 17)
+                .stroke(MinjazUI.border, lineWidth: 1)
+        )
+    }
+
+    private func sectionHeading(_ title: String) -> some View {
+        Text(title).font(MinjazUI.heading(19))
+            .foregroundStyle(MinjazUI.ink)
+    }
+
+    private func serviceRow(_ service: MinjazService) -> some View {
+        Button { onOpen(service) } label: {
+            MinjazSurface {
+                HStack(spacing: 13) {
+                    Image(systemName: "briefcase")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(MinjazUI.primary)
+                        .frame(width: 46, height: 46)
+                        .background(MinjazUI.tinted, in: RoundedRectangle(cornerRadius: 13))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(service.name_ar)
+                            .font(MinjazUI.body(15, weight: .semibold))
+                            .foregroundStyle(MinjazUI.ink)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let category = catalog.categories.first(where: { $0.id == service.category_id }) {
+                            Text(category.name_ar)
+                                .font(MinjazUI.body(12))
+                                .foregroundStyle(MinjazUI.muted)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(MinjazUI.muted.opacity(0.65))
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 15)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(service.name_ar)
+        .accessibilityHint("عرض المشاريع ونشر طلب في هذا التخصص")
     }
 
     private func categoryButton(_ id: Int?, name: String) -> some View {
-        Button { selectedCategory = id } label: {
+        let isSelected = selectedCategory == id
+        return Button { selectedCategory = id } label: {
             Text(name)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .background(selectedCategory == id ? blue : .white,
-                            in: Capsule())
-                .foregroundStyle(selectedCategory == id ? Color.white : Color.primary)
+                .font(MinjazUI.body(13, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 43)
+                .foregroundStyle(isSelected ? .white : MinjazUI.ink)
+                .background(isSelected ? MinjazUI.primary : .white, in: Capsule())
+                .overlay(Capsule().stroke(isSelected ? MinjazUI.primary : MinjazUI.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(selectedCategory == id ? .isSelected : [])
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

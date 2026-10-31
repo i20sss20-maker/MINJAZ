@@ -7,8 +7,9 @@
     <string name="file_picker_unavailable">تعذر فتح اختيار الملفات. تحقق من توفر تطبيق للملفات وحاول مجددًا.</string>
     <string name="discovery_floating">استكشف التخصصات</string>
     <string name="discovery_back">رجوع</string>
-    <string name="discovery_title">استكشف تخصصات منجاز</string>
-    <string name="discovery_subtitle">اختر التخصص المناسب ثم انشر مشروعًا أو تصفّح فرص العمل من حسابك.</string>
+    <string name="discovery_title">تخصصات تناسب مشروعك</string>
+    <string name="discovery_subtitle">ابحث عن نوع الخدمة، ثم انشر مشروعك ليتقدم المستقلون بعروضهم.</string>
+    <string name="discovery_categories">الأقسام الرئيسية</string>
     <string name="discovery_search">ابحث عن تخصص أو مجال</string>
     <string name="discovery_loading">جاري تحميل التخصصات الفعلية…</string>
     <string name="discovery_all">الكل</string>

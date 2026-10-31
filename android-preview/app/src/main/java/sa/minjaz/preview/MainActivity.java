@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
     private FrameLayout root;
     private WebView webView;
     private LinearLayout bottomNav;
-    private TextView[] navIcons;
+    private MinjazStyle.Glyph[] navIcons;
     private TextView[] navLabels;
     private LinearLayout[] navItems;
     private int activeTab = 1;
@@ -145,8 +145,8 @@ public class MainActivity extends Activity {
     }
 
     private void buildNativeHeaderAndNavigation() {
-        final int dark = Color.rgb(17, 21, 42);
-        final int accent = Color.rgb(101, 88, 245);
+        final int dark = MinjazStyle.INK;
+        final int accent = MinjazStyle.PURPLE;
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -154,12 +154,16 @@ public class MainActivity extends Activity {
         header.setBackgroundColor(Color.WHITE);
         header.setElevation(dp(3));
 
+        View brandMark = MinjazStyle.icon(this, MinjazStyle.MARK, accent);
+        header.addView(brandMark, new LinearLayout.LayoutParams(dp(38), dp(38)));
         TextView brand = new TextView(this);
         brand.setText(getString(R.string.app_name));
         brand.setTextSize(21);
         brand.setTextColor(dark);
-        brand.setTypeface(null, android.graphics.Typeface.BOLD);
-        header.addView(brand, new LinearLayout.LayoutParams(0, dp(58), 1));
+        MinjazStyle.text(brand, true);
+        LinearLayout.LayoutParams brandLayout = new LinearLayout.LayoutParams(0, dp(58), 1);
+        brandLayout.setMargins(dp(8), 0, 0, 0);
+        header.addView(brand, brandLayout);
 
         Button account = new Button(this);
         account.setText(R.string.account_menu_title);
@@ -185,9 +189,10 @@ public class MainActivity extends Activity {
         bottomNav.setElevation(dp(8));
         int[] labels = {R.string.nav_discover, R.string.nav_projects, R.string.nav_orders,
             R.string.nav_services, R.string.nav_account};
-        String[] glyphs = {"⌕", "▤", "☷", "▦", "◉"};
+        int[] glyphs = {MinjazStyle.GRID, MinjazStyle.BRIEFCASE, MinjazStyle.INBOX,
+            MinjazStyle.SERVICES, MinjazStyle.USER};
         navItems = new LinearLayout[labels.length];
-        navIcons = new TextView[labels.length];
+        navIcons = new MinjazStyle.Glyph[labels.length];
         navLabels = new TextView[labels.length];
         for (int i = 0; i < labels.length; i++) {
             final int tab = i;
@@ -199,18 +204,17 @@ public class MainActivity extends Activity {
             item.setContentDescription(getString(labels[i]));
             item.setOnClickListener(v -> navigateNativeTab(tab));
 
-            TextView icon = new TextView(this);
-            icon.setText(glyphs[i]);
-            icon.setTextSize(23);
-            icon.setGravity(Gravity.CENTER);
+            MinjazStyle.Glyph icon = (MinjazStyle.Glyph)
+                MinjazStyle.icon(this, glyphs[i], MinjazStyle.MUTED);
             item.addView(icon, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
+                dp(28), dp(32)));
 
             TextView label = new TextView(this);
             label.setText(labels[i]);
             label.setTextSize(11);
             label.setSingleLine(true);
             label.setGravity(Gravity.CENTER);
+            MinjazStyle.text(label, false);
             item.addView(label, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(21)));
             navItems[i] = item;
@@ -228,17 +232,16 @@ public class MainActivity extends Activity {
     private void highlightTab(int tab) {
         if (navItems == null || tab < 0 || tab >= navItems.length) return;
         activeTab = tab;
-        int accent = Color.rgb(101, 88, 245);
-        int muted = Color.rgb(107, 118, 140);
+        int accent = MinjazStyle.PURPLE;
+        int muted = MinjazStyle.MUTED;
         for (int i = 0; i < navItems.length; i++) {
             boolean selected = i == tab;
             navItems[i].setSelected(selected);
-            navIcons[i].setTextColor(selected ? accent : muted);
+            navIcons[i].setTint(selected ? accent : muted);
             navLabels[i].setTextColor(selected ? accent : muted);
-            navLabels[i].setTypeface(null, selected
-                ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            MinjazStyle.text(navLabels[i], selected);
             navItems[i].setBackground(selected
-                ? panelBackground(Color.rgb(246, 244, 255), 13)
+                ? panelBackground(MinjazStyle.PALE, 13)
                 : panelBackground(Color.WHITE, 13));
         }
     }
