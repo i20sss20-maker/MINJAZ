@@ -5,13 +5,15 @@ This module is the installable Android shell for the MINJAZ beta web application
 - applicationId: `sa.minjaz.preview`
 - minSdk: 24
 - targetSdk / compileSdk: 36
-- preview version: `0.15-minjaz-mobile-beta` (`versionCode 15`)
+- preview version: `0.16-native-specialties-beta` (`versionCode 16`)
 - production version remains `1.0.0-rc4` (`versionCode 14`) until intentionally approved
 - form factors: phones, tablets, foldables, ChromeOS / resizable windows
 - preview origin: `https://beta.minjazapp.com/workspace` (isolated sandbox)
 - production origin (unchanged): `https://minjaz-app-prod-production.up.railway.app`
 - each Android flavor has its own HTTPS deep-link host; preview must not access production.
 - source and CI for iPhone/iPad are in `ios-minjaz/` and `.github/workflows/minjaz-mobile-beta.yml`.
+
+Native Android specialty discovery is now accessible with the **استكشف التخصصات** button. It reads only the sandbox's public `/api/v1/categories` and `/api/v1/services` endpoints, searches and filters real specialties, and forwards the selected category/service pair to the existing client/freelancer workspace. Server-side role and data checks remain mandatory. Offline/error states show an explicit retry. Native discovery is preview-tested and not a replacement for authenticated forms.
 
 The shell keeps first-party MINJAZ pages inside the app, opens external links with the system browser/app, supports file upload, restores WebView state after rotation/resize, handles system-bar insets, and shows a native retry screen for main-frame load failures.
 

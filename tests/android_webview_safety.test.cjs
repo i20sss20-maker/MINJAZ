@@ -38,7 +38,7 @@ for (const scheme of ['https', 'http', 'mailto', 'tel', 'sms', 'smsto', 'market'
   assert.ok(external.includes('"' + scheme + '".equals(scheme)'), 'Missing allowlisted scheme: ' + scheme);
 }
 assert.match(gradle, /versionCode 14\s*versionName "1\.0\.0-rc4"/);
-assert.match(gradle, /versionCode 15\s*versionName "0\.15-minjaz-mobile-beta"/);
+assert.match(gradle, /versionCode 16\s*versionName "0\.16-native-specialties-beta"/);
 assert.match(gradle, /buildConfigField "String", "APP_URL", '"https:\/\/beta\.minjazapp\.com\/workspace"'/);
 assert.match(gradle, /buildConfigField "String", "APP_URL", '"https:\/\/minjaz-app-prod-production\.up\.railway\.app"'/);
 assert.match(source, /private static final String APP_URL = BuildConfig\.APP_URL/);
