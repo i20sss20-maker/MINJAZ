@@ -79,9 +79,11 @@ struct ContentView: View {
             Group {
                 if selected == .discover {
                     CatalogView(catalog: catalog) { service in
-                        // Only open a known first-party page. Service choices
-                        // are still validated by the backend, never trusted here.
-                        browser.open(path: "/workspace#tasks-section")
+                        // Preserve the category and specialty selected natively.
+                        // The web workspace checks these IDs against its live API,
+                        // and the server still validates every actual submission.
+                        guard service.id > 0, service.category_id > 0 else { return }
+                        browser.open(path: "/workspace?category_id=\(service.category_id)&service_id=\(service.id)#tasks-section")
                         selected = .workspace
                     }
                 } else {
