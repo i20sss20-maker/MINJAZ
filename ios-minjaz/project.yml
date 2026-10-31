@@ -19,7 +19,10 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: '16.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     SUPPORTS_MACCATALYST: NO
+    # Keep our checked-in Info.plist; XcodeGen info.path recreates the file
+    # and silently drops MinjazBaseURL, causing a physical-device app crash.
     GENERATE_INFOPLIST_FILE: NO
+    INFOPLIST_FILE: Sources/Info.plist
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
@@ -30,8 +33,6 @@ targets:
       - path: Sources
         excludes:
           - "Info.plist"
-    info:
-      path: Sources/Info.plist
     settings:
       base:
         PRODUCT_NAME: Minjaz
