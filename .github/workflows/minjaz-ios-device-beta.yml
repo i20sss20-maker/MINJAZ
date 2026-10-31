@@ -58,7 +58,8 @@ jobs:
       - name: Generate official opaque app icon and native project
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet cairosvg pillow
+          command -v rsvg-convert >/dev/null || brew install librsvg
+          python3 -m pip install --quiet pillow
           python3 scripts/prepare_minjaz_ios_icon.py
           command -v xcodegen >/dev/null || brew install xcodegen
           xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
