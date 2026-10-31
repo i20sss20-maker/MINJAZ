@@ -19,7 +19,8 @@ workflows. All marketplace writes remain authorized by the existing server.
 
 | Xcode config | Bundle id | HTTPS origin |
 | --- | --- | --- |
-| Debug | `sa.minjaz.preview` | `https://beta.minjazapp.com` |
+| Debug (simulator) | `sa.minjaz.preview` | `https://beta.minjazapp.com` |
+| BetaRelease (physical iPhone) | `sa.minjaz.preview` | `https://beta.minjazapp.com` |
 | Release | `sa.minjaz.app` | `https://minjaz-app-prod-production.up.railway.app` |
 
 The app refuses unintended origins, keeps sessions in the persistent first-party
@@ -52,3 +53,39 @@ Do not embed `AUTH_SECRET`, payment provider tokens, backend credentials or
 customer passwords. Do not activate direct production payments during
 mobile-beta validation. iOS ATS enforces HTTPS; no unrestricted arbitrary
 loads and no JavaScript auth bridge are used.
+
+## Physical iPhone beta / TestFlight preparation
+
+The new `BetaRelease` configuration enables a **separate, release-optimized iPhone
+build that still points ONLY to the real MINJAZ sandbox**. It does not alter the
+production `Release` bundle, payment settings or Railway. Runtime origin checks
+are enforced by `MINJAZ_PREVIEW_BUILD` instead of assuming release implies production.
+
+- Generate the source icon from the existing `public/icon.svg`: `python3 scripts/prepare_minjaz_ios_icon.py`.
+  Requires the developer dependency `cairosvg` (`python3 -m pip install cairosvg`).
+  This produces a 1024px **opaque** PNG at `ios-minjaz/Sources/Assets.xcassets/AppIcon.appiconset/Minjaz-1024.png`.
+  The generated PNG is ignored by Git and must be recreated before local builds.
+- The **MINJAZ iPhone device beta (signed IPA)** GitHub Actions workflow is manual only.
+  It requires typing `PREPARE_MINJAZ_IPA`; it does NOT push to TestFlight by itself.
+- Configure GitHub Actions secrets (never commit them):
+  `MINJAZ_IOS_TEAM_ID`, `MINJAZ_IOS_CERT_P12_BASE64`,
+  `MINJAZ_IOS_CERT_PASSWORD`, `MINJAZ_IOS_PROFILE_BASE64`.
+  The Apple Distribution .p12 and App Store distribution provisioning profile
+  must belong to the **`sa.minjaz.preview`** App ID in your own Apple Developer team.
+- The workflow validates the installed profile's team ID, app identifier,
+  `get-task-allow=false`, expiry and distribution method *before* signing.
+  It creates a temporary macOS keychain and removes both the keychain and
+  embedded credentials at the end of the run. The artifact is a signed IPA
+  (retained for 7 days), **not** an App Store submission.
+- Set up the matching `sa.minjaz.preview` app record in App Store Connect.
+  Upload the signed IPA using Transporter or Xcode after explicit approval,
+  and add internal testers through TestFlight. Do not invite external testers
+  without the appropriate beta review readiness.
+- Full launch still requires approved legal text, mail sender, correct privacy
+  disclosures, review credentials, actual customer/freelancer tests, account
+  deletion, and properly classified IAP vs freelancer payouts. Signing is not
+  proof of commercial readiness.
+
+A real installable iPhone IPA cannot be produced until the **user's own**
+distribution certificate, profile and team ID are supplied securely to CI.
+No Apple signing identity is embedded in this repository.
