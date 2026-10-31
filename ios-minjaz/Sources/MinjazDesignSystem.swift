@@ -19,18 +19,37 @@ enum MinjazUI {
     }
 }
 
+/// The three parallelograms and checkmark are the same geometry as
+/// public/icon.svg and the Android launcher icon, not a generic stacked icon.
 struct MinjazBrandMark: View {
     var dimension: CGFloat = 34
 
     var body: some View {
-        ZStack {
-            ForEach(0..<3, id: \.self) { layer in
-                RoundedRectangle(cornerRadius: dimension * 0.10, style: .continuous)
-                    .fill(layer == 0 ? MinjazUI.deep : MinjazUI.primary)
-                    .frame(width: dimension * 0.74, height: dimension * 0.48)
-                    .rotationEffect(.degrees(-35))
-                    .offset(y: CGFloat(layer - 1) * dimension * 0.16)
+        Canvas { context, size in
+            func polygon(_ points: [(CGFloat, CGFloat)]) -> Path {
+                var path = Path()
+                for (index, pair) in points.enumerated() {
+                    let point = CGPoint(x: pair.0 * size.width / 28,
+                                        y: pair.1 * size.height / 28)
+                    if index == 0 { path.move(to: point) }
+                    else { path.addLine(to: point) }
+                }
+                path.closeSubpath()
+                return path
             }
+            context.fill(polygon([(5, 19), (15, 19), (17, 15), (7, 15)]),
+                         with: .color(Color(red: 44/255, green: 201/255, blue: 183/255)))
+            context.fill(polygon([(7, 14), (18, 14), (20, 10), (9, 10)]),
+                         with: .color(Color(red: 138/255, green: 125/255, blue: 255/255)))
+            context.fill(polygon([(9, 9), (21, 9), (19, 13), (7, 13)]),
+                         with: .color(MinjazUI.primary))
+            var tick = Path()
+            tick.move(to: CGPoint(x: 19 * size.width / 28, y: 18 * size.height / 28))
+            tick.addLine(to: CGPoint(x: 21 * size.width / 28, y: 20 * size.height / 28))
+            tick.addLine(to: CGPoint(x: 25 * size.width / 28, y: 16 * size.height / 28))
+            context.stroke(tick, with: .color(MinjazUI.deep),
+                           style: StrokeStyle(lineWidth: size.width * 0.065,
+                                              lineCap: .round, lineJoin: .round))
         }
         .frame(width: dimension, height: dimension)
         .accessibilityHidden(true)
