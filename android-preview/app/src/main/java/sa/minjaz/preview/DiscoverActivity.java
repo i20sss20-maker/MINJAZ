@@ -1,6 +1,7 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -75,8 +76,10 @@ public final class DiscoverActivity extends Activity {
         final long id;
         final long categoryId;
         final String title;
-        Service(long id, long categoryId, String title) {
+        final String guidance;
+        Service(long id, long categoryId, String title, String guidance) {
             this.id = id; this.categoryId = categoryId; this.title = title;
+            this.guidance = guidance;
         }
     }
 
@@ -116,16 +119,16 @@ public final class DiscoverActivity extends Activity {
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1);
         brandParams.setMargins(dp(8), 0, dp(8), 0);
         brandBar.addView(brand, brandParams);
-        Button back = new Button(this);
-        back.setText(R.string.discovery_back);
-        back.setAllCaps(false);
-        back.setTextSize(12);
-        back.setTextColor(VIOLET);
-        back.setBackgroundTintList(ColorStateList.valueOf(MinjazStyle.PALE));
-        back.setMinWidth(0);
-        back.setMinHeight(0);
-        back.setOnClickListener(v -> finish());
-        brandBar.addView(back, new LinearLayout.LayoutParams(dp(70), dp(43)));
+        Button account = new Button(this);
+        account.setText(R.string.nav_account);
+        account.setAllCaps(false);
+        account.setTextSize(12);
+        account.setTextColor(VIOLET);
+        account.setBackgroundTintList(ColorStateList.valueOf(MinjazStyle.PALE));
+        account.setMinWidth(0);
+        account.setMinHeight(0);
+        account.setOnClickListener(v -> openNativeTab(4));
+        brandBar.addView(account, new LinearLayout.LayoutParams(dp(76), dp(43)));
         root.addView(brandBar, new LinearLayout.LayoutParams(-1, dp(67)));
 
         LinearLayout hero = new LinearLayout(this);
@@ -189,6 +192,7 @@ public final class DiscoverActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(results);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        addNativeBottomNavigation();
 
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -198,6 +202,61 @@ public final class DiscoverActivity extends Activity {
             }
             @Override public void afterTextChanged(Editable s) {}
         });
+    }
+
+    private void addNativeBottomNavigation() {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setGravity(Gravity.CENTER);
+        nav.setPadding(dp(4), dp(6), dp(4), dp(7));
+        nav.setBackgroundColor(Color.WHITE);
+        nav.setElevation(dp(7));
+        int[] labels = {R.string.nav_discover, R.string.nav_projects, R.string.nav_orders,
+            R.string.nav_services, R.string.nav_account};
+        int[] icons = {MinjazStyle.GRID, MinjazStyle.BRIEFCASE, MinjazStyle.INBOX,
+            MinjazStyle.SERVICES, MinjazStyle.USER};
+        for (int i = 0; i < labels.length; i++) {
+            final int tab = i;
+            final boolean active = i == 0;
+            LinearLayout item = new LinearLayout(this);
+            item.setGravity(Gravity.CENTER);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setClickable(true);
+            item.setFocusable(true);
+            item.setContentDescription(getString(labels[i]));
+            item.setSelected(active);
+            item.setBackground(MinjazStyle.surface(this,
+                active ? MinjazStyle.PALE : Color.WHITE, 14, false));
+            item.setOnClickListener(v -> { if (!active) openNativeTab(tab); });
+
+            View icon = MinjazStyle.icon(this, icons[i], active ? VIOLET : MUTED);
+            item.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28)));
+            TextView label = label(getString(labels[i]), 11, active ? VIOLET : MUTED, active);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-1, -2);
+            labelParams.topMargin = dp(3);
+            item.addView(label, labelParams);
+            nav.addView(item, new LinearLayout.LayoutParams(0, -1, 1));
+        }
+        root.addView(nav, new LinearLayout.LayoutParams(-1, dp(70)));
+    }
+
+    private void openNativeTab(int tab) {
+        if (tab == 0) return;
+        if (tab == 3) {
+            // Separate services filter reuses the first-party public catalog.
+            // Never accidentally turn "Services" into an auth-gated project tab.
+            selectedCategory = 0;
+            search.setText("");
+            renderFilters();
+            render();
+            return;
+        }
+        Intent intent = new Intent(this, NativeWorkspaceActivity.class);
+        intent.putExtra("minjaz_tab", tab);
+        startActivity(intent);
+        finish();
     }
 
     private void loadCatalog() {
@@ -234,7 +293,9 @@ public final class DiscoverActivity extends Activity {
                     String title = row.optString("name_ar", "").trim();
                     if (validId(id) && nextNames.containsKey(categoryId)
                         && !title.isEmpty() && title.length() <= 160) {
-                        nextServices.add(new Service(id, categoryId, title));
+                        String guidance = row.optString("client_guidance", "").trim();
+                        if (guidance.length() > 1200) guidance = guidance.substring(0, 1200);
+                        nextServices.add(new Service(id, categoryId, title, guidance));
                     }
                 }
                 runOnUiThread(() -> {
@@ -398,6 +459,21 @@ public final class DiscoverActivity extends Activity {
     }
 
     private void openService(Service service) {
+        if (!validId(service.id) || !validId(service.categoryId)
+            || !categoryNames.containsKey(service.categoryId)) return;
+        String category = categoryNames.get(service.categoryId);
+        String explanation = service.guidance.isEmpty()
+            ? getString(R.string.discovery_detail_hint) : service.guidance;
+        new AlertDialog.Builder(this)
+            .setTitle(service.title)
+            .setMessage(category + "\n\n" + explanation)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.discovery_detail_continue, (dialog, which) ->
+                continueToService(service))
+            .show();
+    }
+
+    private void continueToService(Service service) {
         if (!validId(service.id) || !validId(service.categoryId)
             || !categoryNames.containsKey(service.categoryId)) return;
         Uri base = Uri.parse(BuildConfig.APP_URL);

@@ -42,4 +42,6 @@
     <string name="native_empty_desc">Your actual items will appear as soon as they are available</string>
     <string name="native_results">results</string>
     <string name="native_unread">New</string>
+    <string name="discovery_detail_continue">Continue to project</string>
+    <string name="discovery_detail_hint">Review the specialty and continue to the real project workflow.</string>
 </resources>

@@ -17,12 +17,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
+        <!-- Visitors land in the public native directory, not an auth wall. -->
         <activity
             android:name=".DiscoverActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified" />
-        <activity
-            android:name=".NativeWorkspaceActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
@@ -30,6 +27,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".NativeWorkspaceActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -15,9 +15,9 @@ test('native catalog is reachable internally, never as an external deep link', (
   assert.match(main, /startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
   assert.match(main, /private void navigateNativeTab\(int tab\)/);
   assert.match(main, /tab == 0[\s\S]*startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
-  assert.match(manifest, /android:name="\.DiscoverActivity"\s+android:exported="false"/);
+  assert.match(manifest, /android:name="\.DiscoverActivity"\s+android:exported="true"[\s\S]*?android\.intent\.action\.MAIN/);
   assert.match(manifest, /android:name="\.MainActivity"\s+android:exported="true"/);
-  assert.match(preview, /versionCode 20\s+versionName "0\.20-visual-ux-beta"/);
+  assert.match(preview, /versionCode 21\s+versionName "0\.21-native-discovery-beta"/);
   assert.match(preview, /preview\s*\{[\s\S]*?APP_URL", '"https:\/\/beta\.minjazapp\.com\/workspace"'/);
 });
 
@@ -44,6 +44,8 @@ test('catalog data are limited to returned active categories and matching servic
 
 test('only an explicit in-app selection can navigate to the role-aware workspace', () => {
   assert.match(discovery, /card\.setOnClickListener\(v -> openService\(service\)\)/);
+  assert.match(discovery, /new AlertDialog\.Builder\(this\)/);
+  assert.match(discovery, /continueToService\(service\)/);
   assert.match(discovery, /\.path\("\/workspace"\)\.clearQuery\(\)/);
   assert.match(discovery, /\.appendQueryParameter\("category_id", Long\.toString\(service\.categoryId\)\)/);
   assert.match(discovery, /\.appendQueryParameter\("service_id", Long\.toString\(service\.id\)\)/);
