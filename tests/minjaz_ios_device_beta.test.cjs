@@ -8,6 +8,7 @@ const browser = read('ios-minjaz/Sources/MinjazBrowser.swift');
 const workflow = read('.github/workflows/minjaz-ios-device-beta.yml');
 const mainCI = read('.github/workflows/minjaz-mobile-beta.yml');
 const generator = read('scripts/prepare_minjaz_ios_icon.py');
+const plist = read('ios-minjaz/Sources/Info.plist');
 const icon = JSON.parse(read('ios-minjaz/Sources/Assets.xcassets/AppIcon.appiconset/Contents.json'));
 
 test('iOS physical beta remains separate from protected production bundle and host', () => {
@@ -24,6 +25,15 @@ test('iOS physical beta remains separate from protected production bundle and ho
   assert.match(browser, /precondition\(host == "beta\.minjazapp\.com"/);
   assert.match(browser, /#else\s+precondition\(host == "minjaz-app-prod-production\.up\.railway\.app"/);
   assert.match(project, /ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon/);
+  assert.match(project, /INFOPLIST_FILE: Sources\/Info\.plist/);
+  assert.match(project, /GENERATE_INFOPLIST_FILE: NO/);
+  assert.doesNotMatch(project, /^    info:/m, 'XcodeGen must never overwrite the checked-in plist');
+  assert.match(plist, /<key>MinjazBaseURL<\/key>/);
+  assert.match(plist, /<string>\$\(MINJAZ_BASE_URL\)<\/string>/);
+  for (const key of ['CFBundleIdentifier','CFBundleExecutable','CFBundlePackageType','CFBundleName',
+                     'CFBundleShortVersionString','CFBundleVersion']) {
+    assert.match(plist, new RegExp('<key>'+key+'</key>'));
+  }
 });
 
 test('iPhone profile signing is human-triggered, manual, beta-only, no automatic upload', () => {
