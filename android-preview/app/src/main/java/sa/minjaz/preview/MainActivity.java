@@ -7,6 +7,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -50,6 +51,12 @@ public class MainActivity extends Activity {
 
     private FrameLayout root;
     private WebView webView;
+    private LinearLayout bottomNav;
+    private TextView[] navIcons;
+    private TextView[] navLabels;
+    private LinearLayout[] navItems;
+    private int activeTab = 1;
+    private boolean pageHasRendered = false;
     private View loadingView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
@@ -91,60 +98,15 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(surfaceColor());
 
         webView = new WebView(this);
-        webView.setLayoutParams(new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        webView.setLayoutParams(browserContentParams());
         root.addView(webView);
 
-        // Native discovery is available without login; browsing never creates a task.
-        Button discover = new Button(this);
-        discover.setText(R.string.discovery_floating);
-        discover.setAllCaps(false);
-        discover.setTextSize(12);
-        discover.setTextColor(Color.WHITE);
-        discover.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
-            Color.rgb(74, 53, 167)));
-        discover.setElevation(dp(5));
-        discover.setOnClickListener(v ->
-            startActivity(new Intent(MainActivity.this, DiscoverActivity.class)));
-        FrameLayout.LayoutParams discoverParams = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
-            Gravity.BOTTOM | Gravity.END
-        );
-        discoverParams.setMargins(dp(12), dp(12), dp(12), dp(18));
-        root.addView(discover, discoverParams);
-
-        // Keep verified sign-in, privacy and account-deletion accessible
-        // without exposing user credentials to a native JS bridge.
-        Button account = new Button(this);
-        account.setText(R.string.account_floating);
-        account.setAllCaps(false);
-        account.setTextSize(12);
-        account.setTextColor(Color.WHITE);
-        account.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
-            Color.rgb(52, 48, 90)));
-        account.setElevation(dp(5));
-        account.setOnClickListener(v -> showAccountMenu());
-        FrameLayout.LayoutParams accountParams = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
-            Gravity.BOTTOM | Gravity.START
-        );
-        accountParams.setMargins(dp(12), dp(12), dp(12), dp(18));
-        root.addView(account, accountParams);
-
         loadingView = buildLoadingView();
-        root.addView(loadingView, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        root.addView(loadingView, browserContentParams());
 
         errorView = buildErrorView();
         errorView.setVisibility(View.GONE);
-        root.addView(errorView, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        root.addView(errorView, browserContentParams());
 
         if (Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -158,7 +120,159 @@ public class MainActivity extends Activity {
             });
         }
 
+        // Native controls sit above the WebView and its network overlays,
+        // while the content has its own reserved bounds. No floating CTA
+        // can cover a marketplace form field or the Android keyboard.
+        buildNativeHeaderAndNavigation();
         setContentView(root);
+    }
+
+    private FrameLayout.LayoutParams browserContentParams() {
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        p.topMargin = dp(58);
+        p.bottomMargin = dp(70);
+        return p;
+    }
+
+    private GradientDrawable panelBackground(int color, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radius));
+        return drawable;
+    }
+
+    private void buildNativeHeaderAndNavigation() {
+        final int dark = Color.rgb(17, 21, 42);
+        final int accent = Color.rgb(101, 88, 245);
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setPadding(dp(16), 0, dp(16), 0);
+        header.setBackgroundColor(Color.WHITE);
+        header.setElevation(dp(3));
+
+        TextView brand = new TextView(this);
+        brand.setText(getString(R.string.app_name));
+        brand.setTextSize(21);
+        brand.setTextColor(dark);
+        brand.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(brand, new LinearLayout.LayoutParams(0, dp(58), 1));
+
+        Button account = new Button(this);
+        account.setText(R.string.account_menu_title);
+        account.setTextSize(12);
+        account.setAllCaps(false);
+        account.setTextColor(accent);
+        account.setMinHeight(0);
+        account.setMinWidth(0);
+        account.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(243, 240, 255)));
+        account.setOnClickListener(v -> showAccountMenu());
+        header.addView(account, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        FrameLayout.LayoutParams headerParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(58), Gravity.TOP);
+        root.addView(header, headerParams);
+
+        bottomNav = new LinearLayout(this);
+        bottomNav.setOrientation(LinearLayout.HORIZONTAL);
+        bottomNav.setGravity(Gravity.CENTER);
+        bottomNav.setPadding(dp(3), dp(5), dp(3), dp(4));
+        bottomNav.setBackgroundColor(Color.WHITE);
+        bottomNav.setElevation(dp(8));
+        int[] labels = {R.string.nav_discover, R.string.nav_projects, R.string.nav_orders,
+            R.string.nav_services, R.string.nav_account};
+        String[] glyphs = {"⌕", "▤", "☷", "▦", "◉"};
+        navItems = new LinearLayout[labels.length];
+        navIcons = new TextView[labels.length];
+        navLabels = new TextView[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            final int tab = i;
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            item.setClickable(true);
+            item.setFocusable(true);
+            item.setContentDescription(getString(labels[i]));
+            item.setOnClickListener(v -> navigateNativeTab(tab));
+
+            TextView icon = new TextView(this);
+            icon.setText(glyphs[i]);
+            icon.setTextSize(23);
+            icon.setGravity(Gravity.CENTER);
+            item.addView(icon, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
+
+            TextView label = new TextView(this);
+            label.setText(labels[i]);
+            label.setTextSize(11);
+            label.setSingleLine(true);
+            label.setGravity(Gravity.CENTER);
+            item.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(21)));
+            navItems[i] = item;
+            navIcons[i] = icon;
+            navLabels[i] = label;
+            bottomNav.addView(item, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        }
+        FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(70), Gravity.BOTTOM);
+        root.addView(bottomNav, bottomParams);
+        highlightTab(activeTab);
+    }
+
+    private void highlightTab(int tab) {
+        if (navItems == null || tab < 0 || tab >= navItems.length) return;
+        activeTab = tab;
+        int accent = Color.rgb(101, 88, 245);
+        int muted = Color.rgb(107, 118, 140);
+        for (int i = 0; i < navItems.length; i++) {
+            boolean selected = i == tab;
+            navItems[i].setSelected(selected);
+            navIcons[i].setTextColor(selected ? accent : muted);
+            navLabels[i].setTextColor(selected ? accent : muted);
+            navLabels[i].setTypeface(null, selected
+                ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            navItems[i].setBackground(selected
+                ? panelBackground(Color.rgb(246, 244, 255), 13)
+                : panelBackground(Color.WHITE, 13));
+        }
+    }
+
+    private void navigateNativeTab(int tab) {
+        if (tab == 0) {
+            startActivity(new Intent(MainActivity.this, DiscoverActivity.class));
+            return;
+        }
+        if (tab == 4) {
+            openInternalAccountPage("/workspace", null, null, "profile");
+        } else if (tab == 3) {
+            openInternalAccountPage("/digital-services", null, null);
+        } else if (tab == 2) {
+            openInternalAccountPage("/workspace", null, null, "orders-section");
+        } else if (tab == 1) {
+            openInternalAccountPage("/workspace", null, null, "tasks-section");
+        }
+        highlightTab(tab);
+    }
+
+    private void syncSelectedTab(String url) {
+        if (!safeInternalUrl(url)) return;
+        Uri uri = Uri.parse(url);
+        String path = uri.getPath();
+        if ("/digital-services".equals(path)) highlightTab(3);
+        else if ("/account-deletion".equals(path) || "/privacy".equals(path)
+                || "/signup".equals(path)) highlightTab(4);
+        else if ("/workspace".equals(path)) {
+            String fragment = uri.getFragment();
+            if ("profile".equals(fragment)) highlightTab(4);
+            else if ("orders-section".equals(fragment)) highlightTab(2);
+            else highlightTab(1);
+        }
     }
 
     private void showAccountMenu() {
@@ -185,14 +299,21 @@ public class MainActivity extends Activity {
 
     private void openInternalAccountPage(String path, String queryKey, String queryValue) {
         if (webView == null) return;
+        openInternalAccountPage(path, queryKey, queryValue, null);
+    }
+
+    private void openInternalAccountPage(
+        String path, String queryKey, String queryValue, String fragment
+    ) {
         Uri.Builder builder = Uri.parse(APP_URL).buildUpon()
-            .path(path).clearQuery().fragment(null);
+            .path(path).clearQuery().fragment(fragment);
         if (queryKey != null && queryValue != null) {
             builder.appendQueryParameter(queryKey, queryValue);
         }
         Uri target = builder.build();
         if (!isInternalUri(target)) return;
         webView.loadUrl(localizedInternalUrl(target));
+        syncSelectedTab(target.toString());
     }
 
     private View buildLoadingView() {
@@ -520,10 +641,14 @@ public class MainActivity extends Activity {
             if (url != null) {
                 try {
                     Uri uri = Uri.parse(url);
-                    if (isInternalUri(uri)) lastGoodUrl = localizedInternalUrl(uri);
+                    if (isInternalUri(uri)) {
+                        lastGoodUrl = localizedInternalUrl(uri);
+                        syncSelectedTab(url);
+                    }
                 } catch (Exception ignored) {
                 }
             }
+            pageHasRendered = true;
             hideError();
             hideLoading();
             super.onPageCommitVisible(view, url);
@@ -639,19 +764,22 @@ public class MainActivity extends Activity {
         }
 
         webView = new WebView(this);
-        webView.setLayoutParams(new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        webView.setLayoutParams(browserContentParams());
         root.addView(webView, 0);
         configureWebView();
+        pageHasRendered = false;
         hideError();
         showLoading();
         webView.loadUrl(lastUrl);
     }
 
     private void showLoading() {
-        if (loadingView != null) loadingView.setVisibility(View.VISIBLE);
+        // Avoid repeatedly masking interactive forms and the browser as the
+        // customer moves between authenticated sections. Keep the first-load
+        // full-screen state and error fallback for actual connection failures.
+        if (loadingView != null) {
+            loadingView.setVisibility(pageHasRendered ? View.GONE : View.VISIBLE);
+        }
     }
 
     private void hideLoading() {

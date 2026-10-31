@@ -107,3 +107,12 @@ an Apple distribution-signed IPA only when GitHub Actions secrets
 have been configured by the owner. The workflow does **not** upload
 to App Store Connect automatically. Do not rename simulator ZIPs to IPA
 or present an unsigned IPA as a working installable iPhone build.
+
+## Mobile shell UX improvements
+- SwiftUI navigation now matches MINJAZ's existing purple identity without a
+  misleading verified-account icon.
+- An unobtrusive loading bar does not obscure active forms and messages.
+- Pull to refresh the first-party workspace in iPhone/iPad WebKit; refresh
+  finishes on navigation success, failure, 5xx and process termination.
+- This is UX iteration, **not** evidence that all iPhone/Android functional
+  and accessibility tests on real devices have been performed.

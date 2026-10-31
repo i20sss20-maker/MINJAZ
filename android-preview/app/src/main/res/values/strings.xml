@@ -22,4 +22,9 @@
     <string name="account_profile">الملف الشخصي</string>
     <string name="account_privacy">سياسة الخصوصية</string>
     <string name="account_deletion">طلب حذف الحساب</string>
+    <string name="nav_discover">استكشف</string>
+    <string name="nav_projects">المشاريع</string>
+    <string name="nav_orders">طلباتي</string>
+    <string name="nav_services">الخدمات</string>
+    <string name="nav_account">حسابي</string>
 </resources>

@@ -50,11 +50,11 @@ struct ContentView: View {
     @State private var sharing = false
     @State private var showingAccountActions = false
 
-    private let blue = Color(red: 0.29, green: 0.32, blue: 0.84)
+    private let blue = Color(red: 101/255, green: 88/255, blue: 245/255)
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: "square.stack.3d.up.fill")
                     .font(.system(size: 23, weight: .bold))
                     .foregroundStyle(blue)
                 VStack(alignment: .leading, spacing: 2) {
@@ -70,7 +70,7 @@ struct ContentView: View {
                     .accessibilityLabel("تحديث الصفحة")
                 }
                 Button { showingAccountActions = true } label: {
-                    Image(systemName: "person.crop.circle.badge.checkmark")
+                    Image(systemName: "person.crop.circle")
                         .frame(width: 37, height: 37)
                 }
                 .accessibilityLabel("الحساب والخصوصية")
@@ -93,15 +93,17 @@ struct ContentView: View {
                         selected = .workspace
                     }
                 } else {
-                    ZStack {
+                    ZStack(alignment: .top) {
                         MinjazWebView(browser: browser)
-                        if browser.isLoading {
-                            VStack(spacing: 12) {
-                                ProgressView()
-                                Text("جاري فتح مِنجاز…").font(.subheadline)
-                            }
-                            .padding(20)
-                            .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 16))
+                        if browser.isLoading && browser.error == nil {
+                            // Small top progress bar, rather than a blocking modal.
+                            // Login forms and task drafts remain visible while a
+                            // first-party page finishes loading.
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(blue)
+                                .padding(.horizontal, 8)
+                                .accessibilityLabel("جاري تحميل الصفحة")
                         }
                         if let error = browser.error {
                             VStack(spacing: 16) {
@@ -132,18 +134,27 @@ struct ContentView: View {
                         VStack(spacing: 5) {
                             Image(systemName: tab.symbol)
                                 .font(.system(size: 19, weight: .semibold))
-                            Text(tab.title).font(.system(size: 10, weight: .semibold))
+                            Text(tab.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .minimumScaleFactor(0.85)
+                                .lineLimit(1)
                         }
                         .foregroundStyle(selected == tab ? blue : Color.secondary)
                         .frame(maxWidth: .infinity).frame(height: 54)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(tab.title)
                     .accessibilityAddTraits(selected == tab ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 8).padding(.top, 5).padding(.bottom, 2)
             .background(.white)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color(red: 0.91, green: 0.91, blue: 0.95))
+                    .frame(height: 1)
+            }
         }
         .background(Color(red: 0.97, green: 0.97, blue: 0.98))
         .confirmationDialog(
