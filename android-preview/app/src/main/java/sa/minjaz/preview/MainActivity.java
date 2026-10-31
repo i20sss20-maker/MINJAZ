@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private TextView[] navLabels;
     private LinearLayout[] navItems;
     private int activeTab = 1;
+    private boolean pageHasRendered = false;
     private View loadingView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
@@ -647,6 +648,7 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) {
                 }
             }
+            pageHasRendered = true;
             hideError();
             hideLoading();
             super.onPageCommitVisible(view, url);
@@ -765,13 +767,19 @@ public class MainActivity extends Activity {
         webView.setLayoutParams(browserContentParams());
         root.addView(webView, 0);
         configureWebView();
+        pageHasRendered = false;
         hideError();
         showLoading();
         webView.loadUrl(lastUrl);
     }
 
     private void showLoading() {
-        if (loadingView != null) loadingView.setVisibility(View.VISIBLE);
+        // Avoid repeatedly masking interactive forms and the browser as the
+        // customer moves between authenticated sections. Keep the first-load
+        // full-screen state and error fallback for actual connection failures.
+        if (loadingView != null) {
+            loadingView.setVisibility(pageHasRendered ? View.GONE : View.VISIBLE);
+        }
     }
 
     private void hideLoading() {
