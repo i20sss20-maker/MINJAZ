@@ -96,6 +96,24 @@ public class MainActivity extends Activity {
         ));
         root.addView(webView);
 
+        // Native discovery is available without login; browsing never creates a task.
+        Button discover = new Button(this);
+        discover.setText(R.string.discovery_floating);
+        discover.setAllCaps(false);
+        discover.setTextSize(12);
+        discover.setTextColor(Color.WHITE);
+        discover.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(74, 53, 167)));
+        discover.setElevation(dp(5));
+        discover.setOnClickListener(v ->
+            startActivity(new Intent(MainActivity.this, DiscoverActivity.class)));
+        FrameLayout.LayoutParams discoverParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
+            Gravity.BOTTOM | Gravity.END
+        );
+        discoverParams.setMargins(dp(12), dp(12), dp(12), dp(18));
+        root.addView(discover, discoverParams);
+
         loadingView = buildLoadingView();
         root.addView(loadingView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
