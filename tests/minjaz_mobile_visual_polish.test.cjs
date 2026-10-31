@@ -29,7 +29,8 @@ test('brand palette, accessible Arabic type and real logo are used throughout iP
   assert.match(swiftCatalog, /LazyVStack\(spacing: 10\)/);
   assert.match(swiftCatalog, /\.lineLimit\(1\)[\s\S]*?\.fixedSize\(horizontal: true, vertical: false\)/);
   assert.match(swiftCatalog, /categoryButton\(category\.id, name: category\.name_ar\)/);
-  assert.match(swiftCatalog, /Button \{ onOpen\(service\) \}/);
+  assert.match(swiftCatalog, /Button \{ chosenService = service \}/);
+  assert.match(swiftCatalog, /onOpen\(service\)/);
   assert.doesNotMatch(swiftCatalog, /https?:\/\/(?:placehold|fake|lorem)/);
 });
 
