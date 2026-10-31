@@ -22,6 +22,15 @@
             android:exported="false"
             android:screenOrientation="unspecified" />
         <activity
+            android:name=".NativeWorkspaceActivity"
+            android:exported="true"
+            android:screenOrientation="unspecified">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
@@ -30,11 +39,6 @@
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="true"
             android:configChanges="orientation|screenSize|keyboardHidden">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
         </activity>
     </application>
 </manifest>
