@@ -136,6 +136,20 @@ jobs:
           cd /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator
           zip -qr /tmp/MINJAZ-iPhone-simulator.app.zip Minjaz.app
           shasum -a 256 /tmp/MINJAZ-iPhone-simulator.app.zip > /tmp/MINJAZ-iPhone-simulator.sha256
+      - name: Compile unsigned physical iPhone sandbox configuration and verify app origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration BetaRelease -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath /tmp/minjaz-ios-device-unsigned \
+            CODE_SIGNING_ALLOWED=NO build
+          APP="/tmp/minjaz-ios-device-unsigned/Build/Products/BetaRelease-iphoneos/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "sa.minjaz.preview"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = "https://beta.minjazapp.com"
+          echo 'MINJAZ_IOS_DEVICE_BETA_UNSIGNED_COMPILE_OK_NOT_INSTALLABLE'
       - uses: actions/upload-artifact@v4
         with:
           name: MINJAZ-iPhone-Simulator-beta
