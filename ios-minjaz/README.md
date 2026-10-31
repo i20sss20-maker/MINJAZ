@@ -62,7 +62,7 @@ production `Release` bundle, payment settings or Railway. Runtime origin checks
 are enforced by `MINJAZ_PREVIEW_BUILD` instead of assuming release implies production.
 
 - Generate the source icon from the existing `public/icon.svg`: `python3 scripts/prepare_minjaz_ios_icon.py`.
-  Requires the developer dependency `cairosvg` (`python3 -m pip install cairosvg`).
+  Requires `librsvg` (`brew install librsvg`) and Pillow (`python3 -m pip install pillow`).
   This produces a 1024px **opaque** PNG at `ios-minjaz/Sources/Assets.xcassets/AppIcon.appiconset/Minjaz-1024.png`.
   The generated PNG is ignored by Git and must be recreated before local builds.
 - The **MINJAZ iPhone device beta (signed IPA)** GitHub Actions workflow is manual only.
