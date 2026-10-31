@@ -53,7 +53,7 @@ test('Android app uses drawn vector icons and readable text rather than font gly
   assert.doesNotMatch(javaWorkspace, /String\[\] icons = \{"⌕"/);
   assert.match(ar, /<string name="discovery_categories">الأقسام الرئيسية<\/string>/);
   assert.match(en, /<string name="discovery_categories">Main categories<\/string>/);
-  assert.match(gradle, /versionCode 20\s*versionName "0\.20-visual-ux-beta"/);
+  assert.match(gradle, /versionCode 21\s*versionName "0\.21-native-discovery-beta"/);
 });
 
 test('native screenshots show real API data and cannot bypass marketplace rules', () => {
