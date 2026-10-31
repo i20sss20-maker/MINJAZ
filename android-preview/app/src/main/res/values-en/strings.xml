@@ -5,4 +5,21 @@
     <string name="retry">Try again</string>
     <string name="loading">Preparing MINJAZ…</string>
     <string name="file_picker_unavailable">Could not open the file picker. Install a file app and try again.</string>
+    <string name="discovery_floating">Explore services</string>
+    <string name="discovery_back">Back</string>
+    <string name="discovery_title">Explore MINJAZ services</string>
+    <string name="discovery_subtitle">Choose a specialty and publish a project or browse real opportunities.</string>
+    <string name="discovery_search">Search for a specialty</string>
+    <string name="discovery_loading">Loading live specialties…</string>
+    <string name="discovery_all">All</string>
+    <string name="discovery_count">%1$d available specialties</string>
+    <string name="discovery_no_results">No matching specialties are available.</string>
+    <string name="discovery_more">Show more</string>
+    <string name="discovery_connection_error">Could not load the catalog. Check your connection and retry.</string>
+    <string name="account_floating">Account &amp; privacy</string>
+    <string name="account_menu_title">Account &amp; privacy</string>
+    <string name="account_login">Sign in or sign up</string>
+    <string name="account_profile">My profile</string>
+    <string name="account_privacy">Privacy policy</string>
+    <string name="account_deletion">Request account deletion</string>
 </resources>

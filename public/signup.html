@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#10182b">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest-workspace.webmanifest">
+<link rel="stylesheet" href="/minjaz-signature.css?v=1">
+<title>انضم إلى مِنجاز | إنشاء حساب أو تسجيل الدخول</title>
+<meta name="description" content="أنشئ حسابك في مِنجاز ببريد موثّق، وابدأ نشر مشاريعك أو تقديم العروض ضمن مساحة عمل واحدة.">
+<style>
+:root{color-scheme:light;--ink:#17243d;--muted:#68788d;--line:#dce4ef;--main:#514bdf;--danger:#b91c1c;--ok:#126c4c}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font:15px/1.7 system-ui,Tahoma,sans-serif;background:radial-gradient(circle at 80% 0%,#dcdffd 0,transparent 38%),#f5f7fc;color:var(--ink)}
+main{width:min(460px,calc(100% - 32px));margin:34px auto 45px;background:white;border:1px solid var(--line);border-radius:23px;box-shadow:0 20px 65px #1c23521a;padding:28px}
+.brand{display:flex;gap:11px;align-items:center;font-size:24px;font-weight:850}.mark{display:grid;place-items:center;width:43px;height:43px;border-radius:14px;background:#554de0;color:#fff;font-size:27px}
+.kicker{font-size:12px;color:var(--main);font-weight:800;margin:18px 0 4px}
+h1{font-size:26px;margin:0 0 9px;line-height:1.45}
+.sub{font-size:13px;color:var(--muted);margin:0 0 18px}
+.tabs{display:flex;gap:8px;background:#f4f5ff;padding:6px;border-radius:14px;margin-bottom:20px}
+.tabs button{flex:1;background:transparent;border:0;box-shadow:none;color:#68738c;border-radius:10px;padding:10px;font-weight:750;cursor:pointer}
+.tabs button.active{background:#fff;color:#3b33b1;box-shadow:0 2px 10px #1c235216}
+label{display:block;font-size:13px;font-weight:750;margin-top:13px}
+input{width:100%;margin-top:5px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:46px;color:var(--ink);font:inherit;outline-offset:2px}
+input:focus{outline:2px solid #b9b5fc;border-color:var(--main)}
+select{font:inherit}
+.role{display:flex;gap:12px;padding:7px 0}.role label{margin:0;display:flex;align-items:center;gap:5px;font-weight:600}.role input{width:auto;min-height:auto;margin:0}
+.primary{border:0;display:block;width:100%;margin-top:22px;padding:13px;border-radius:12px;background:var(--main);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.6}
+.link{background:none;border:0;color:var(--main);padding:7px 0;font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px}
+#message{margin:16px 0 0;border-radius:12px;padding:12px;font-size:13px;white-space:pre-wrap;display:none;background:#f0f3ff;color:#342d98}
+#message.error{background:#fef0f0;color:var(--danger)}#message.good{background:#eaf8f1;color:var(--ok)}
+.note{font-size:12px;margin-top:19px;color:var(--muted)}
+footer{text-align:center;font-size:12px;color:var(--muted)}
+footer a{color:#463cbd;text-decoration:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body class="minjaz-auth">
+<div class="auth-layout">
+<aside class="auth-showcase" aria-label="تعريف بمنصة مِنجاز">
+ <div class="showcase-top">
+  <a class="auth-brand" href="/discover"><img src="/icon.svg" alt="" width="44" height="44">مِنجاز</a>
+  <a class="showcase-link" href="/discover">اكتشف المنصة ←</a>
+ </div>
+ <div class="showcase-body">
+  <div class="kicker">منصة للإنجاز والعمل المستقل</div>
+  <h2>الأفكار الجيدة <em>تستحق تنفيذًا يليق بها.</em></h2>
+  <p>سواء عندك مشروع تبي ينجز أو خبرة تبي تقدمها، مِنجاز يجمع الطلب والعرض والمحادثة في مسار واضح.</p>
+  <div class="showcase-steps" aria-label="كيف تعمل المنصة">
+   <div class="showcase-step"><span>01</span><b>قدّم طلبك</b><small>أوضح المطلوب والميزانية.</small></div>
+   <div class="showcase-step"><span>02</span><b>اختر المناسب</b><small>راجع العروض وتفاصيلها.</small></div>
+   <div class="showcase-step"><span>03</span><b>تابع بثقة</b><small>تفاصيل الطلب ومحادثته بمكان واحد.</small></div>
+  </div>
+ </div>
+ <div class="showcase-footer"><span>MINJAZ · صُمم لتكون الخطوة التالية أوضح.</span><a href="/privacy">الخصوصية</a></div>
+</aside>
+<div class="auth-entry">
+<main class="auth-entry-main">
+  <p class="auth-overline">حسابك، بداية إنجازك</p>
+  <h1>أهلًا بك في مِنجاز.</h1>
+  <p class="sub">أنشئ حسابك في دقائق أو سجّل دخولك لتتابع مشاريعك وعروضك. تفعيل البريد ضروري لحماية حسابك.</p>
+  <div class="tabs" role="tablist">
+    <button type="button" id="signupTab" class="active">إنشاء حساب</button>
+    <button type="button" id="loginTab">تسجيل الدخول</button>
+  </div>
+  <form id="signup">
+    <label>نوع الحساب</label>
+    <div class="role"><label><input type="radio" name="role" value="client" checked> عميل</label><label><input type="radio" name="role" value="freelancer"> مستقل</label></div>
+    <label for="name">الاسم الكامل</label><input id="name" name="name" required minlength="2" maxlength="120" autocomplete="name" placeholder="اسمك">
+    <label for="phone">رقم الجوال السعودي</label><input id="phone" name="phone" type="tel" required inputmode="tel" autocomplete="tel" placeholder="05xxxxxxxx" dir="ltr">
+    <label for="email">البريد الإلكتروني</label><input id="email" name="email" type="email" autocomplete="email" required placeholder="name@example.com" dir="ltr">
+    <label for="password">كلمة المرور (10 أحرف على الأقل)</label><input id="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128">
+    <label for="confirm">تأكيد كلمة المرور</label><input id="confirm" type="password" autocomplete="new-password" required minlength="10">
+    <button type="submit" class="primary">إنشاء حساب وإرسال رابط التفعيل</button>
+  </form>
+  <form id="login" hidden>
+    <label for="loginEmail">البريد الإلكتروني</label><input id="loginEmail" type="email" required autocomplete="email" dir="ltr" placeholder="name@example.com">
+    <label for="loginPass">كلمة المرور</label><input id="loginPass" type="password" required autocomplete="current-password">
+    <button type="submit" class="primary">دخول</button>
+  </form>
+  <form id="recover" hidden>
+    <h2>استعادة كلمة المرور</h2>
+    <label for="recoverEmail">بريد الحساب</label><input id="recoverEmail" type="email" required autocomplete="email" dir="ltr">
+    <button type="submit" class="primary">إرسال رابط استعادة كلمة المرور</button>
+  </form>
+  <form id="reset" hidden>
+    <h2>كلمة مرور جديدة</h2>
+    <label for="resetPassword">كلمة المرور الجديدة</label><input id="resetPassword" type="password" required minlength="10" maxlength="128">
+    <label for="resetConfirm">تأكيدها</label><input id="resetConfirm" type="password" required minlength="10">
+    <button type="submit" class="primary">تحديث كلمة المرور</button>
+  </form>
+  <div class="actions">
+    <button type="button" id="resend" class="link">إعادة إرسال التفعيل</button>
+    <button type="button" id="forgot" class="link">نسيت كلمة المرور؟</button>
+    <button type="button" id="back" class="link" hidden>رجوع لتسجيل الدخول</button>
+  </div>
+  <div id="message" role="status" aria-live="polite"></div>
+  <p class="auth-disclaimer">نرسل رابط التفعيل إلى بريدك الإلكتروني. لا تشارك كلمة المرور أو رابط التفعيل مع أي شخص. قد تجد الرسالة في البريد غير المرغوب فيه.</p>
+  <p class="auth-legal-status">حاليًا المنصة في مرحلة التهيئة التشغيلية؛ المدفوعات والتسويات المالية غير متاحة حتى اعتمادها رسميًا.</p>
+</main>
+<footer class="auth-footer"><a href="/digital-services">تصفح الخدمات</a> · <a href="/workspace">مركز العمل</a> · <a href="/privacy">الخصوصية</a></footer>
+</div>
+</div>
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const sections=["signup","login","recover","reset"];
+  const messages={
+    email_not_configured:"خدمة البريد غير مهيأة في هذه البيئة.",
+    email_registration_disabled:"التسجيل بالبريد غير مفعل.",
+    email_delivery_failed:"تعذّر إرسال رسالة التفعيل؛ يمكن إعادة الإرسال بعد قليل.",
+    invalid_email:"البريد الإلكتروني غير صحيح.",
+    invalid_phone:"اكتب رقم جوال سعودي صحيح.",
+    invalid_name:"الاسم يجب أن يتكون من حرفين على الأقل.",
+    invalid_password:"كلمة المرور يجب أن تتكون من 10 أحرف على الأقل.",
+    invalid_role:"اختر نوع الحساب.",
+    account_already_exists:"البريد أو الجوال مرتبط بحساب. استخدم الدخول أو الاستعادة.",
+    invalid_credentials:"البريد أو كلمة المرور غير صحيحين.",
+    email_not_verified:"افتح رابط التفعيل المرسل إلى بريدك أولاً.",
+    invalid_or_used_link:"الرابط غير صالح أو تم استخدامه.",
+    email_link_expired:"انتهت صلاحية الرابط، اطلب رابطًا جديدًا.",
+    otp_wait:"انتظر دقيقة قبل إعادة الإرسال.",
+    otp_rate_limited:"طلبات كثيرة. حاول بعد ساعة.",
+    registration_rate_limited:"محاولات تسجيل كثيرة. حاول لاحقًا."
+  };
+  let resetToken="";
+  function status(message,kind){
+    const n=$("message");n.textContent=message||"";n.className=kind||"";n.style.display=message?"block":"none";
+  }
+  function show(view,keepMessage){
+    sections.forEach(id=>{$(id).hidden=id!==view});
+    $("signupTab").classList.toggle("active",view==="signup");
+    $("loginTab").classList.toggle("active",view!=="signup");
+    $("back").hidden=!(view==="recover"||view==="reset");
+    $("forgot").hidden=view==="recover"||view==="reset";
+    $("resend").hidden=view==="recover"||view==="reset";
+    if(!keepMessage)status("");
+  }
+  async function call(path,data,method){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),15000);
+    try{
+      const result=await fetch(path,{
+        method:method||"POST",
+        credentials:"same-origin",
+        headers:{"Accept":"application/json","Content-Type":"application/json"},
+        body:data===undefined?undefined:JSON.stringify(data),
+        cache:"no-store",
+        signal:controller.signal
+      });
+      const payload=await result.json().catch(()=>({}));
+      if(!result.ok)throw Error(messages[payload.error]||payload.error||"تعذّر إكمال الطلب.");
+      return payload;
+    }catch(error){
+      if(error.name==="AbortError")throw Error("الخدمة لم تستجب خلال 15 ثانية. أعد المحاولة.");
+      throw error;
+    }finally{clearTimeout(timer)}
+  }
+  async function submit(event,handler){
+    event.preventDefault();
+    const button=event.currentTarget.querySelector('button[type="submit"]');
+    if(button.disabled)return;
+    button.disabled=true;status("جارٍ تنفيذ الطلب…");
+    try{await handler()}catch(error){status(error.message||"حصل خطأ، حاول مرة أخرى.","error")}
+    finally{button.disabled=false}
+  }
+  $("signupTab").addEventListener("click",()=>show("signup"));
+  $("loginTab").addEventListener("click",()=>show("login"));
+  $("forgot").addEventListener("click",()=>{ $("recoverEmail").value=$("loginEmail").value||$("email").value; show("recover") });
+  $("back").addEventListener("click",()=>show("login"));
+  $("signup").addEventListener("submit",e=>submit(e,async()=>{
+    const password=$("password").value;
+    if(password!==$("confirm").value)throw Error("تأكيد كلمة المرور غير مطابق.");
+    const email=$("email").value.trim().toLowerCase();
+    const role=document.querySelector('input[name="role"]:checked').value;
+    const response=await call("/api/v1/auth/register",{name:$("name").value.trim(),phone:$("phone").value.trim(),email,password,role});
+    if(response.registered){
+      $("password").value="";$("confirm").value="";$("loginEmail").value=email;
+      show("login",true);
+      status("تم إنشاء الحساب. افتح رسالة التفعيل في بريدك (راجع الرسائل غير المرغوب فيها Spam) ثم سجّل الدخول.","good");
+    }
+  }));
+  $("login").addEventListener("submit",e=>submit(e,async()=>{
+    await call("/api/v1/auth/login-email",{email:$("loginEmail").value.trim().toLowerCase(),password:$("loginPass").value});
+    const me=await call("/api/v1/me",undefined,"GET");
+    if(!me.user)throw Error("تعذّر تأكيد تسجيل الدخول.");
+    const backToStore=new URLSearchParams(location.search).get("next")==="digital-services";
+    window.location.assign(backToStore?"/digital-services":"/workspace");
+  }));
+  $("recover").addEventListener("submit",e=>submit(e,async()=>{
+    await call("/api/v1/auth/forgot-password",{email:$("recoverEmail").value.trim().toLowerCase()});
+    status("إذا كان البريد مرتبطًا بحساب مفعل، ستصلك رسالة استعادة كلمة المرور.","good");
+  }));
+  $("reset").addEventListener("submit",e=>submit(e,async()=>{
+    const password=$("resetPassword").value;
+    if(password!==$("resetConfirm").value)throw Error("تأكيد كلمة المرور غير مطابق.");
+    await call("/api/v1/auth/reset-password",{token:resetToken,password});
+    resetToken="";show("login",true);status("تم تغيير كلمة المرور. يمكنك الدخول الآن.","good");
+  }));
+  $("resend").addEventListener("click",async()=>{
+    const email=($("login").hidden?$("email").value:$("loginEmail").value).trim().toLowerCase();
+    if(!email){status("اكتب بريد حسابك أولًا.","error");return}
+    $("resend").disabled=true;
+    try{await call("/api/v1/auth/resend-verification",{email});status("إذا كان الحساب يحتاج تفعيلًا، سيصلك رابط جديد.","good")}
+    catch(error){status(error.message,"error")}
+    finally{$("resend").disabled=false}
+  });
+  async function handleActionLink(){
+    const hash=window.location.hash.substring(1);
+    const match=/^(verify-email|reset-password)=([A-Za-z0-9_-]{35,160})$/.exec(hash);
+    if(!match)return;
+    history.replaceState(null,"",window.location.pathname+window.location.search);
+    show("login");
+    if(match[1]==="reset-password"){resetToken=match[2];show("reset");status("اختر كلمة مرور جديدة.");return}
+    status("جارٍ تفعيل الحساب…");
+    try{await call("/api/v1/auth/confirm-email",{token:match[2]});status("تم تفعيل البريد بنجاح. يمكنك تسجيل الدخول.","good")}
+    catch(error){status(error.message,"error")}
+  }
+  const entryQuery=new URLSearchParams(window.location.search);
+  const chosenRole=entryQuery.get("role");
+  if(chosenRole==="client"||chosenRole==="freelancer"){
+    const roleInput=document.querySelector('input[name="role"][value="'+chosenRole+'"]');
+    if(roleInput)roleInput.checked=true;
+  }
+  // Direct /login links must open the sign-in tab, not registration.
+  if(entryQuery.get("auth")==="login" || /^\/login\/?$/.test(window.location.pathname))show("login");
+  handleActionLink();
+  call("/api/v1/auth/account-status",undefined,"GET").then(info=>{
+    const enabled=info.enabled===true && info.configured===true;
+    $("signup").querySelector('button[type="submit"]').disabled=!enabled;
+    $("recover").querySelector('button[type="submit"]').disabled=!enabled;
+    $("resend").disabled=!enabled;
+    if(!enabled&&!$("message").textContent)status("التسجيل غير جاهز حاليًا؛ تم تعطيل الإرسال لحماية بياناتك.","error");
+  }).catch(()=>{if(!$("message").textContent)status("تعذّر التحقق من جاهزية التسجيل. حاول تحديث الصفحة.","error")});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{
+  "name": "مِنجاز | مساحة العمل",
+  "short_name": "مِنجاز",
+  "description": "مساحة مِنجاز للعمل المستقل والمشاريع والعروض والمحادثات.",
+  "lang": "ar",
+  "dir": "rtl",
+  "id": "/workspace",
+  "start_url": "/workspace",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#10182b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "المشاريع والفرص",
+      "short_name": "المشاريع",
+      "url": "/workspace#tasks-section",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "الطلبات والمحادثات",
+      "short_name": "طلباتي",
+      "url": "/workspace#orders-section",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "ملفي الشخصي",
+      "short_name": "حسابي",
+      "url": "/workspace#profile",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

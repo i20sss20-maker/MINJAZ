@@ -5,4 +5,21 @@
     <string name="retry">إعادة المحاولة</string>
     <string name="loading">جاري تجهيز مِنجاز…</string>
     <string name="file_picker_unavailable">تعذر فتح اختيار الملفات. تحقق من توفر تطبيق للملفات وحاول مجددًا.</string>
+    <string name="discovery_floating">استكشف التخصصات</string>
+    <string name="discovery_back">رجوع</string>
+    <string name="discovery_title">استكشف تخصصات منجاز</string>
+    <string name="discovery_subtitle">اختر التخصص المناسب ثم انشر مشروعًا أو تصفّح فرص العمل من حسابك.</string>
+    <string name="discovery_search">ابحث عن تخصص أو مجال</string>
+    <string name="discovery_loading">جاري تحميل التخصصات الفعلية…</string>
+    <string name="discovery_all">الكل</string>
+    <string name="discovery_count">%1$d تخصص متاح</string>
+    <string name="discovery_no_results">لا توجد تخصصات مطابقة حاليًا.</string>
+    <string name="discovery_more">عرض المزيد</string>
+    <string name="discovery_connection_error">تعذر جلب الأقسام من السيرفر. تحقق من الإنترنت ثم أعد المحاولة.</string>
+    <string name="account_floating">حسابي والخصوصية</string>
+    <string name="account_menu_title">حسابي والخصوصية</string>
+    <string name="account_login">تسجيل الدخول أو إنشاء حساب</string>
+    <string name="account_profile">الملف الشخصي</string>
+    <string name="account_privacy">سياسة الخصوصية</string>
+    <string name="account_deletion">طلب حذف الحساب</string>
 </resources>

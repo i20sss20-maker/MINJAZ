@@ -1,6 +1,7 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
@@ -40,8 +41,9 @@ import android.widget.Toast;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
-    private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
+    // Distribution-specific HTTPS origin. Preview can NEVER silently use production.
+    private static final String APP_URL = BuildConfig.APP_URL;
+    private static final String APP_HOST = Uri.parse(APP_URL).getHost();
     private static final int FILE_CHOOSER_REQUEST = 7001;
     private static final long PAGE_LOAD_TIMEOUT_MS = 20000L;
     private static final long BACK_HANDLER_TIMEOUT_MS = 1500L;
@@ -95,6 +97,42 @@ public class MainActivity extends Activity {
         ));
         root.addView(webView);
 
+        // Native discovery is available without login; browsing never creates a task.
+        Button discover = new Button(this);
+        discover.setText(R.string.discovery_floating);
+        discover.setAllCaps(false);
+        discover.setTextSize(12);
+        discover.setTextColor(Color.WHITE);
+        discover.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(74, 53, 167)));
+        discover.setElevation(dp(5));
+        discover.setOnClickListener(v ->
+            startActivity(new Intent(MainActivity.this, DiscoverActivity.class)));
+        FrameLayout.LayoutParams discoverParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
+            Gravity.BOTTOM | Gravity.END
+        );
+        discoverParams.setMargins(dp(12), dp(12), dp(12), dp(18));
+        root.addView(discover, discoverParams);
+
+        // Keep verified sign-in, privacy and account-deletion accessible
+        // without exposing user credentials to a native JS bridge.
+        Button account = new Button(this);
+        account.setText(R.string.account_floating);
+        account.setAllCaps(false);
+        account.setTextSize(12);
+        account.setTextColor(Color.WHITE);
+        account.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(52, 48, 90)));
+        account.setElevation(dp(5));
+        account.setOnClickListener(v -> showAccountMenu());
+        FrameLayout.LayoutParams accountParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
+            Gravity.BOTTOM | Gravity.START
+        );
+        accountParams.setMargins(dp(12), dp(12), dp(12), dp(18));
+        root.addView(account, accountParams);
+
         loadingView = buildLoadingView();
         root.addView(loadingView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -121,6 +159,40 @@ public class MainActivity extends Activity {
         }
 
         setContentView(root);
+    }
+
+    private void showAccountMenu() {
+        String[] actions = {
+            getString(R.string.account_login),
+            getString(R.string.account_profile),
+            getString(R.string.account_privacy),
+            getString(R.string.account_deletion)
+        };
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.account_menu_title)
+            .setItems(actions, (dialog, selection) -> {
+                switch (selection) {
+                    case 0: openInternalAccountPage("/signup", "auth", "login"); break;
+                    case 1: openInternalAccountPage("/workspace", null, null); break;
+                    case 2: openInternalAccountPage("/privacy", null, null); break;
+                    case 3: openInternalAccountPage("/account-deletion", null, null); break;
+                    default: break;
+                }
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private void openInternalAccountPage(String path, String queryKey, String queryValue) {
+        if (webView == null) return;
+        Uri.Builder builder = Uri.parse(APP_URL).buildUpon()
+            .path(path).clearQuery().fragment(null);
+        if (queryKey != null && queryValue != null) {
+            builder.appendQueryParameter(queryKey, queryValue);
+        }
+        Uri target = builder.build();
+        if (!isInternalUri(target)) return;
+        webView.loadUrl(localizedInternalUrl(target));
     }
 
     private View buildLoadingView() {
