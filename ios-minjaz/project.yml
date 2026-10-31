@@ -7,6 +7,12 @@ options:
     iOS: '16.0'
   developmentLanguage: ar
   createIntermediateGroups: true
+# XcodeGen maps BetaRelease to a release-mode iPhone build, distinct from
+# both Debug (simulator) and Release (protected production bundle/origin).
+configs:
+  Debug: debug
+  BetaRelease: release
+  Release: release
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -34,11 +40,16 @@ targets:
         CURRENT_PROJECT_VERSION: '1'
         TARGETED_DEVICE_FAMILY: '1,2'
         SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview
           MINJAZ_BASE_URL: 'https://beta.minjazapp.com'
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'DEBUG'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'DEBUG MINJAZ_PREVIEW_BUILD'
+        BetaRelease:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview
+          MINJAZ_BASE_URL: 'https://beta.minjazapp.com'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'MINJAZ_PREVIEW_BUILD'
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.app
           MINJAZ_BASE_URL: 'https://minjaz-app-prod-production.up.railway.app'
