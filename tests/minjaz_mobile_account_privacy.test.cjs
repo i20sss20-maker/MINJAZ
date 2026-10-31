@@ -30,7 +30,8 @@ test('Android native account menu keeps its original authenticated WebView sessi
   assert.match(android, /private void showAccountMenu\(\)/);
   assert.match(android, /new AlertDialog\.Builder\(this\)/);
   assert.match(android, /account\.setOnClickListener\(v -> showAccountMenu\(\)\)/);
-  assert.match(android, /root\.addView\(account, accountParams\)/);
+  assert.match(android, /header\.addView\(account, new LinearLayout\.LayoutParams\(/);
+  assert.match(android, /root\.addView\(header, headerParams\)/);
   assert.match(android, /openInternalAccountPage\("\/signup", "auth", "login"\)/);
   for (const path of ['/workspace', '/privacy', '/account-deletion']) {
     assert.ok(android.includes('openInternalAccountPage("'+path+'", null, null)'));
