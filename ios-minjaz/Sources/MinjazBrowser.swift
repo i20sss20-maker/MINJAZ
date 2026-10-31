@@ -221,7 +221,7 @@ extension MinjazBrowser: WKUIDelegate, UIDocumentPickerDelegate {
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        alert(message, completion: { _ in completion() }, confirmation: false)
+        alert(message, completion: { _ in completionHandler() }, confirmation: false)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
