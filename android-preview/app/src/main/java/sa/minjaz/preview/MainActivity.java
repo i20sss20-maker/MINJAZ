@@ -40,8 +40,9 @@ import android.widget.Toast;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
-    private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
+    // Distribution-specific HTTPS origin. Preview can NEVER silently use production.
+    private static final String APP_URL = BuildConfig.APP_URL;
+    private static final String APP_HOST = Uri.parse(APP_URL).getHost();
     private static final int FILE_CHOOSER_REQUEST = 7001;
     private static final long PAGE_LOAD_TIMEOUT_MS = 20000L;
     private static final long BACK_HANDLER_TIMEOUT_MS = 1500L;
