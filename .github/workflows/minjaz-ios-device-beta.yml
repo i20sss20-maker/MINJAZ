@@ -69,6 +69,7 @@ jobs:
           xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
           test -f ios-minjaz/Minjaz.xcodeproj/project.pbxproj
           plutil -lint ios-minjaz/Sources/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' ios-minjaz/Sources/Info.plist)" = '$(MINJAZ_BASE_URL)'
           xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
             -configuration BetaRelease -showBuildSettings > "$RUNNER_TEMP/minjaz-settings.txt"
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER = sa.minjaz.preview' "$RUNNER_TEMP/minjaz-settings.txt"
