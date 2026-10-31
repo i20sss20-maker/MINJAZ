@@ -9,6 +9,7 @@ on:
       - 'android-preview/**'
       - 'public/workspace-v1.js'
       - 'tests/minjaz_mobile_service_deeplink.test.cjs'
+      - 'tests/minjaz_android_native_discovery.test.cjs'
       - '.github/workflows/minjaz-mobile-beta.yml'
   pull_request:
     branches:
@@ -18,6 +19,7 @@ on:
       - 'android-preview/**'
       - 'public/workspace-v1.js'
       - 'tests/minjaz_mobile_service_deeplink.test.cjs'
+      - 'tests/minjaz_android_native_discovery.test.cjs'
       - '.github/workflows/minjaz-mobile-beta.yml'
   workflow_dispatch:
 
@@ -36,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate native-to-marketplace links
-        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs
+        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/android_webview_safety.test.cjs
 
   android-preview:
     name: Installable MINJAZ Android test APK
