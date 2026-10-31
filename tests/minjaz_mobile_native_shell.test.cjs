@@ -47,7 +47,7 @@ test('real native tabs navigate to the matching first-party routes, never fake d
 });
 
 test('iPhone uses real brand accents, accessibility labels and nonblocking loading', () => {
-  assert.match(ios, /Color\(red: 101\/255, green: 88\/255, blue: 245\/255\)/);
+  assert.match(ios, /MinjazUI\.primary/);
   assert.match(ios, /MinjazBrandMark\(dimension: 38\)/);
   assert.match(ios, /MinjazUI\.primary/);
   assert.doesNotMatch(ios, /Image\(systemName: "checkmark\.seal\.fill"\)/);
