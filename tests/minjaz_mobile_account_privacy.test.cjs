@@ -21,7 +21,7 @@ test('iPhone has native first-party account/privacy/deletion menu across every t
     assert.ok(ios.includes('openAccountPage("'+route+'")'), 'Missing iOS route '+route);
   }
   assert.match(ios, /selected = \.account/);
-  assert.match(ios, /selected != tab \|\| tab == \.account/);
+  assert.match(ios, /if tab == \.account \{ accountSection = \.account \}/);
   assert.match(browser, /func open\(path: String\)/);
   assert.match(browser, /isFirstParty\(url\)/);
 });
