@@ -39,10 +39,10 @@ import javax.net.ssl.HttpsURLConnection;
  * established, authenticated workflow until native write contracts are tested.
  */
 public final class NativeWorkspaceActivity extends Activity {
-    private static final int INK = Color.rgb(17, 21, 42);
-    private static final int PURPLE = Color.rgb(101, 88, 245);
-    private static final int MUTED = Color.rgb(103, 111, 132);
-    private static final int BACKGROUND = Color.rgb(247, 248, 252);
+    private static final int INK = MinjazStyle.INK;
+    private static final int PURPLE = MinjazStyle.PURPLE;
+    private static final int MUTED = MinjazStyle.MUTED;
+    private static final int BACKGROUND = MinjazStyle.CANVAS;
     private static final int MAX_BYTES = 1500000;
     private static final long MAX_ID = 999999999999999L;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -95,8 +95,12 @@ public final class NativeWorkspaceActivity extends Activity {
         top.setPadding(dp(18), 0, dp(18), 0);
         top.setBackgroundColor(Color.WHITE);
         top.setElevation(dp(3));
+        View mark = MinjazStyle.icon(this, MinjazStyle.MARK, PURPLE);
+        top.addView(mark, new LinearLayout.LayoutParams(dp(39), dp(39)));
         TextView brand = text(getString(R.string.app_name), 22, INK, true);
-        top.addView(brand, new LinearLayout.LayoutParams(0, dp(60), 1));
+        LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, dp(60), 1);
+        brandParams.setMargins(dp(7), 0, 0, 0);
+        top.addView(brand, brandParams);
         Button refresh = button(getString(R.string.native_refresh), false);
         refresh.setContentDescription(getString(R.string.native_refresh));
         refresh.setOnClickListener(v -> refresh());
@@ -108,7 +112,7 @@ public final class NativeWorkspaceActivity extends Activity {
         scroll.setFillViewport(true);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(18), dp(20), dp(18), dp(32));
+        content.setPadding(dp(17), dp(20), dp(17), dp(32));
         scroll.addView(content);
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -119,7 +123,8 @@ public final class NativeWorkspaceActivity extends Activity {
         bar.setElevation(dp(7));
         int[] labels = {R.string.nav_discover, R.string.nav_projects, R.string.nav_orders,
             R.string.nav_services, R.string.nav_account};
-        String[] icons = {"⌕", "▤", "☷", "▦", "◉"};
+        int[] icons = {MinjazStyle.GRID, MinjazStyle.BRIEFCASE, MinjazStyle.INBOX,
+            MinjazStyle.SERVICES, MinjazStyle.USER};
         tabs = new LinearLayout[5];
         for (int i = 0; i < 5; i++) {
             final int tab = i;
@@ -130,13 +135,14 @@ public final class NativeWorkspaceActivity extends Activity {
             item.setFocusable(true);
             item.setContentDescription(getString(labels[i]));
             item.setOnClickListener(v -> selectTab(tab));
-            TextView icon = text(icons[i], 22, MUTED, false);
-            icon.setGravity(Gravity.CENTER);
-            item.addView(icon);
+            View icon = MinjazStyle.icon(this, icons[i], MUTED);
+            item.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28)));
             TextView label = text(getString(labels[i]), 11, MUTED, false);
             label.setSingleLine(true);
             label.setGravity(Gravity.CENTER);
-            item.addView(label);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-1, -2);
+            labelParams.topMargin = dp(4);
+            item.addView(label, labelParams);
             tabs[i] = item;
             bar.addView(item, new LinearLayout.LayoutParams(0, -1, 1));
         }
@@ -172,10 +178,13 @@ public final class NativeWorkspaceActivity extends Activity {
             tabs[i].setSelected(on);
             tabs[i].setBackground(rounded(on ? Color.rgb(241, 239, 255) : Color.WHITE, 12));
             for (int j = 0; j < tabs[i].getChildCount(); j++) {
-                if (tabs[i].getChildAt(j) instanceof TextView) {
-                    TextView t = (TextView) tabs[i].getChildAt(j);
+                View child = tabs[i].getChildAt(j);
+                if (child instanceof TextView) {
+                    TextView t = (TextView) child;
                     t.setTextColor(on ? PURPLE : MUTED);
-                    t.setTypeface(null, on ? Typeface.BOLD : Typeface.NORMAL);
+                    MinjazStyle.text(t, on);
+                } else if (child instanceof MinjazStyle.Glyph) {
+                    ((MinjazStyle.Glyph) child).setTint(on ? PURPLE : MUTED);
                 }
             }
         }
@@ -363,7 +372,7 @@ public final class NativeWorkspaceActivity extends Activity {
     }
 
     private void header(String title, String subtitle) {
-        TextView h = text(title, 26, INK, true);
+        TextView h = text(title, 23, INK, true);
         h.setPadding(0, 0, 0, dp(6));
         content.addView(h);
         TextView p = text(subtitle, 13, MUTED, false);
@@ -440,7 +449,7 @@ public final class NativeWorkspaceActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(17), dp(16), dp(17), dp(16));
-        box.setBackground(rounded(Color.WHITE, 16));
+        box.setBackground(MinjazStyle.surface(this, Color.WHITE, 18, true));
         return box;
     }
 
@@ -462,7 +471,7 @@ public final class NativeWorkspaceActivity extends Activity {
         view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
-        if (bold) view.setTypeface(null, Typeface.BOLD);
+        MinjazStyle.text(view, bold);
         return view;
     }
 
