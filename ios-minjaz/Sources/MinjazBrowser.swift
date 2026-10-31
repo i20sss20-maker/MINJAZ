@@ -21,6 +21,7 @@ final class MinjazBrowser: NSObject, ObservableObject {
 
     private var openPanel: (([URL]?) -> Void)?
     private var downloadDestinations: [ObjectIdentifier: URL] = [:]
+    private let pullToRefresh = UIRefreshControl()
 
     override init() {
         let raw = (Bundle.main.object(forInfoDictionaryKey: "MinjazBaseURL") as? String) ?? ""
@@ -50,6 +51,9 @@ final class MinjazBrowser: NSObject, ObservableObject {
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.isScrollEnabled = true
+        pullToRefresh.tintColor = UIColor(red: 101/255, green: 88/255, blue: 245/255, alpha: 1)
+        pullToRefresh.addTarget(self, action: #selector(refreshFromGesture), for: .valueChanged)
+        webView.scrollView.refreshControl = pullToRefresh
         #if DEBUG
         if #available(iOS 16.4, *) { webView.isInspectable = true }
         #endif
@@ -67,10 +71,18 @@ final class MinjazBrowser: NSObject, ObservableObject {
                                 timeoutInterval: 25))
     }
 
+    @objc private func refreshFromGesture() {
+        reload()
+    }
+
     func reload() {
         error = nil
         if webView.url == nil { open(path: "/workspace") }
         else { webView.reload() }
+    }
+
+    private func stopRefreshing() {
+        if pullToRefresh.isRefreshing { pullToRefresh.endRefreshing() }
     }
 
     private func isFirstParty(_ url: URL) -> Bool {
@@ -124,6 +136,7 @@ extension MinjazBrowser: WKNavigationDelegate {
            http.statusCode >= 500 {
             error = "تعذر الوصول إلى مِنجاز حاليًا. حاول التحديث."
             isLoading = false
+            stopRefreshing()
             decisionHandler(.cancel)
             return
         }
@@ -139,11 +152,13 @@ extension MinjazBrowser: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         error = nil
         isLoading = false
+        stopRefreshing()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
         isLoading = false
+        stopRefreshing()
         if (error as NSError).code != NSURLErrorCancelled {
             self.error = "الاتصال غير متاح. تأكد من الإنترنت وأعد المحاولة."
         }
@@ -152,6 +167,7 @@ extension MinjazBrowser: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
                  withError error: Error) {
         isLoading = false
+        stopRefreshing()
         if (error as NSError).code != NSURLErrorCancelled {
             self.error = "تعذر فتح الصفحة. حاول مرة أخرى."
         }
@@ -160,6 +176,7 @@ extension MinjazBrowser: WKNavigationDelegate {
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         error = "توقفت الصفحة عن العمل. يمكنك إعادة تحميلها."
         isLoading = false
+        stopRefreshing()
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction,
