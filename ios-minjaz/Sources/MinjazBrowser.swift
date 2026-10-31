@@ -182,6 +182,7 @@ extension MinjazBrowser: WKUIDelegate, UIDocumentPickerDelegate {
         return nil
     }
 
+    @available(iOS 18.4, *)
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping ([URL]?) -> Void) {
