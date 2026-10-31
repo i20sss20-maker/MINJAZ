@@ -56,7 +56,7 @@ test('native discovery has paging, search, explicit error/retry and lifecycle ca
   assert.match(discovery, /visibleLimit \+= 40/);
   assert.match(discovery, /search\.addTextChangedListener/);
   assert.match(discovery, /selectedCategory = id/);
-  assert.match(discovery, /getString\(R\.string\.discovery_connection_error\)/);
+  assert.match(discovery, /status\.setText\(R\.string\.discovery_connection_error\)/);
   assert.match(discovery, /executor\.shutdownNow\(\)/);
   assert.match(discovery, /generation == loadGeneration && !isFinishing\(\) && !isDestroyed\(\)/);
   for (const key of ['discovery_floating', 'discovery_title', 'discovery_search',
