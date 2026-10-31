@@ -1,0 +1,46 @@
+# Generate Minjaz.xcodeproj with XcodeGen, then open it in Xcode.
+# Debug = private beta, Release = established production domain.
+# Never change a signing target or release to production without a deliberate review.
+name: Minjaz
+options:
+  deploymentTarget:
+    iOS: '16.0'
+  developmentLanguage: ar
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '16.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    SUPPORTS_MACCATALYST: NO
+    GENERATE_INFOPLIST_FILE: NO
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Minjaz:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+    info:
+      path: Sources/Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: Minjaz
+        PRODUCT_MODULE_NAME: Minjaz
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        TARGETED_DEVICE_FAMILY: '1,2'
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview
+          MINJAZ_BASE_URL: 'https://beta.minjazapp.com'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'DEBUG'
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.app
+          MINJAZ_BASE_URL: 'https://minjaz-app-prod-production.up.railway.app'
+    scheme:
+      testTargets: []
