@@ -9,6 +9,7 @@
     <string name="discovery_back">Back</string>
     <string name="discovery_title">Explore MINJAZ services</string>
     <string name="discovery_subtitle">Choose a specialty and publish a project or browse real opportunities.</string>
+    <string name="discovery_categories">Main categories</string>
     <string name="discovery_search">Search for a specialty</string>
     <string name="discovery_loading">Loading live specialties…</string>
     <string name="discovery_all">All</string>
