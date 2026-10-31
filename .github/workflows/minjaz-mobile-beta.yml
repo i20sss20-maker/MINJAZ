@@ -10,6 +10,9 @@ on:
       - 'public/workspace-v1.js'
       - 'tests/minjaz_mobile_service_deeplink.test.cjs'
       - 'tests/minjaz_android_native_discovery.test.cjs'
+      - 'tests/minjaz_ios_device_beta.test.cjs'
+      - 'scripts/prepare_minjaz_ios_icon.py'
+      - '.github/workflows/minjaz-ios-device-beta.yml'
       - '.github/workflows/minjaz-mobile-beta.yml'
   pull_request:
     branches:
@@ -20,6 +23,9 @@ on:
       - 'public/workspace-v1.js'
       - 'tests/minjaz_mobile_service_deeplink.test.cjs'
       - 'tests/minjaz_android_native_discovery.test.cjs'
+      - 'tests/minjaz_ios_device_beta.test.cjs'
+      - 'scripts/prepare_minjaz_ios_icon.py'
+      - '.github/workflows/minjaz-ios-device-beta.yml'
       - '.github/workflows/minjaz-mobile-beta.yml'
   workflow_dispatch:
 
@@ -38,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate native-to-marketplace links
-        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/android_webview_safety.test.cjs
+        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/minjaz_ios_device_beta.test.cjs tests/android_webview_safety.test.cjs
 
   android-preview:
     name: Installable MINJAZ Android test APK
@@ -95,6 +101,16 @@ jobs:
         run: |
           set -euo pipefail
           command -v xcodegen || brew install xcodegen
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare App Store sized opaque MINJAZ app icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rsvg-convert >/dev/null || brew install librsvg
+          python3 -m pip install --quiet pillow
+          python3 scripts/prepare_minjaz_ios_icon.py
       - name: Validate origins and generate Xcode project
         shell: bash
         run: |
@@ -105,6 +121,7 @@ jobs:
           xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
           test -f ios-minjaz/Minjaz.xcodeproj/project.pbxproj
           plutil -lint ios-minjaz/Sources/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' ios-minjaz/Sources/Info.plist)" = '$(MINJAZ_BASE_URL)'
       - name: Build for iPhone Simulator without publishing or signing
         shell: bash
         run: |
@@ -117,9 +134,24 @@ jobs:
           test -d /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
             /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist | grep -q sa.minjaz.preview
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist)" = "https://beta.minjazapp.com"
           cd /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator
           zip -qr /tmp/MINJAZ-iPhone-simulator.app.zip Minjaz.app
           shasum -a 256 /tmp/MINJAZ-iPhone-simulator.app.zip > /tmp/MINJAZ-iPhone-simulator.sha256
+      - name: Compile unsigned physical iPhone sandbox configuration and verify app origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration BetaRelease -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath /tmp/minjaz-ios-device-unsigned \
+            CODE_SIGNING_ALLOWED=NO build
+          APP="/tmp/minjaz-ios-device-unsigned/Build/Products/BetaRelease-iphoneos/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "sa.minjaz.preview"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = "https://beta.minjazapp.com"
+          echo 'MINJAZ_IOS_DEVICE_BETA_UNSIGNED_COMPILE_OK_NOT_INSTALLABLE'
       - uses: actions/upload-artifact@v4
         with:
           name: MINJAZ-iPhone-Simulator-beta

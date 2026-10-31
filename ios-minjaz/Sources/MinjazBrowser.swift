@@ -31,8 +31,8 @@ final class MinjazBrowser: NSObject, ObservableObject {
               (url.path.isEmpty || url.path == "/") else {
             preconditionFailure("MINJAZ HTTPS origin must be configured in Info.plist")
         }
-        #if DEBUG
-        precondition(host == "beta.minjazapp.com", "iOS debug must not use production")
+        #if MINJAZ_PREVIEW_BUILD
+        precondition(host == "beta.minjazapp.com", "iOS preview must not use production")
         #else
         precondition(host == "minjaz-app-prod-production.up.railway.app",
                      "iOS release must not use preview")
