@@ -89,3 +89,21 @@ are enforced by `MINJAZ_PREVIEW_BUILD` instead of assuming release implies produ
 A real installable iPhone IPA cannot be produced until the **user's own**
 distribution certificate, profile and team ID are supplied securely to CI.
 No Apple signing identity is embedded in this repository.
+
+## Unsigned physical iPhone IPA for external signing
+
+The regular **MINJAZ iPhone and Android beta** CI now also produces
+`MINJAZ-iPhone-beta-UNSIGNED-IPA` containing
+`MINJAZ-iPhone-beta-UNSIGNED.ipa` and its SHA-256 checksum.
+This is an **iPhoneOS build** packaged as `Payload/Minjaz.app` rather than a
+simulator artifact, but it is **not signed and cannot be installed on an
+iPhone** until it has been signed with the owner's matching Apple
+Developer distribution credentials and provisioning profile.
+
+For installation via TestFlight, prefer the separately prepared
+`MINJAZ iPhone device beta - signed IPA (manual only)` workflow. It
+checks `sa.minjaz.preview` and the sandbox server, then creates
+an Apple distribution-signed IPA only when GitHub Actions secrets
+have been configured by the owner. The workflow does **not** upload
+to App Store Connect automatically. Do not rename simulator ZIPs to IPA
+or present an unsigned IPA as a working installable iPhone build.
