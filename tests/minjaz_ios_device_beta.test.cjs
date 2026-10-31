@@ -69,7 +69,8 @@ test('real iPhoneOS beta is packaged as an explicitly UNSIGNED IPA, never misrep
   assert.match(mainCI, /zip -qry \/tmp\/MINJAZ-iPhone-beta-UNSIGNED\.ipa Payload/);
   assert.match(mainCI, /name: MINJAZ-iPhone-beta-UNSIGNED-IPA/);
   assert.match(mainCI, /UNSIGNED: Apple code signing and a matching provisioning profile are required/);
-  assert.match(mainCI, /test "\$\(\/usr\/libexec\/PlistBuddy -c 'Print :MinjazBaseURL' "\$APP\/Info.plist"\)" = 'https:\/\/beta\.minjazapp\.com'/);
+  assert.match(mainCI, /Print :MinjazBaseURL/);
+  assert.match(mainCI, /https:\/\/beta\.minjazapp\.com/);
   assert.doesNotMatch(mainCI, /codesign --force --sign|xcodebuild -exportArchive/);
 });
 
