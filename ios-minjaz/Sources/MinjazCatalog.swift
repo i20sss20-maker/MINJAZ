@@ -39,9 +39,24 @@ final class MinjazCatalog: ObservableObject {
                 get("/api/v1/categories", origin: origin),
                 get("/api/v1/services", origin: origin)
             )
-            categories = parents
-            services = children
-            if parents.isEmpty { error = "لم تتوفر الأقسام بعد." }
+            // The catalog is public, but it is still remote data. Reject
+            // invalid identifiers, duplicates and orphan specialties before
+            // presenting links that users might act on.
+            let validCategories = parents.filter { item in
+                item.id > 0 && item.id <= 999_999_999_999_999 &&
+                !item.name_ar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }.prefix(300)
+            let categoryIDs = Set(validCategories.map(\.id))
+            var serviceIDs = Set<Int>()
+            let validServices = children.filter { item in
+                item.id > 0 && item.id <= 999_999_999_999_999 &&
+                categoryIDs.contains(item.category_id) &&
+                !item.name_ar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                serviceIDs.insert(item.id).inserted
+            }.prefix(500)
+            categories = Array(validCategories)
+            services = Array(validServices)
+            if categories.isEmpty { error = "لم تتوفر الأقسام بعد." }
         } catch {
             self.error = "تعذر تحميل التخصصات. تحقق من اتصالك وحاول مجددًا."
         }
@@ -62,7 +77,14 @@ final class MinjazCatalog: ObservableObject {
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
+        // URLSession follows redirects by default. Never accept catalog JSON
+        // from an off-domain redirect, even if its schema looks legitimate.
         guard let response = response as? HTTPURLResponse,
+              let finalURL = response.url,
+              finalURL.scheme == "https",
+              finalURL.host?.lowercased() == origin.host?.lowercased(),
+              (finalURL.port == nil || finalURL.port == 443),
+              finalURL.user == nil, finalURL.password == nil,
               response.statusCode == 200, data.count < 1_500_000 else {
             throw URLError(.badServerResponse)
         }
