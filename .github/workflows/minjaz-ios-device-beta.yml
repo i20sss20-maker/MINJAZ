@@ -50,7 +50,11 @@ jobs:
             exit 1
           }
           xcodebuild -version
-          test "$(xcodebuild -version | awk 'NR==1 {gsub(/[^0-9]/,"",$2); print $2}')" -ge 26
+          XCODE_MAJOR="$(xcodebuild -version | sed -n 's/^Xcode \\([0-9][0-9]*\\).*/\\1/p' | head -1)"
+          [[ "$XCODE_MAJOR" =~ ^[0-9]+$ ]] && [ "$XCODE_MAJOR" -ge 26 ] || {
+            echo "::error::App Store Connect requires Xcode 26 or newer."
+            exit 1
+          }
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview' ios-minjaz/project.yml
           grep -q 'MINJAZ_BASE_URL: .https://beta.minjazapp.com.' ios-minjaz/project.yml
           grep -q 'MINJAZ_PREVIEW_BUILD' ios-minjaz/Sources/MinjazBrowser.swift
