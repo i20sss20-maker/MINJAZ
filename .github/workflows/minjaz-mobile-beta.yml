@@ -3,9 +3,21 @@ on:
   push:
     branches:
       - feature/digital-services-geidea-sandbox
+      - 'feat/minjaz-mobile-*'
     paths:
       - 'ios-minjaz/**'
       - 'android-preview/**'
+      - 'public/workspace-v1.js'
+      - 'tests/minjaz_mobile_service_deeplink.test.cjs'
+      - '.github/workflows/minjaz-mobile-beta.yml'
+  pull_request:
+    branches:
+      - feature/digital-services-geidea-sandbox
+    paths:
+      - 'ios-minjaz/**'
+      - 'android-preview/**'
+      - 'public/workspace-v1.js'
+      - 'tests/minjaz_mobile_service_deeplink.test.cjs'
       - '.github/workflows/minjaz-mobile-beta.yml'
   workflow_dispatch:
 
@@ -17,6 +29,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile-navigation-contract:
+    name: Verify real-data mobile handoff and role isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate native-to-marketplace links
+        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs
+
   android-preview:
     name: Installable MINJAZ Android test APK
     runs-on: ubuntu-latest

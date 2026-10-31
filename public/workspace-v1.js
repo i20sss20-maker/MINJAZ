@@ -286,6 +286,44 @@ function updateFreelancerTaskFilters(){
  setMarketOptions(child,parent?categoryChildren(parent):[],"جميع التخصصات");
  child.disabled=!parent;
 }
+// A read-only hand-off from native service discovery to the real marketplace.
+// Only active server-returned category/service pairs can affect UI selections.
+// The backend still validates ownership, role, prices and any submitted task.
+let mobileServiceLinkApplied=false;
+function applyMobileServiceLink(){
+ if(mobileServiceLinkApplied)return;
+ const params=new URLSearchParams(window.location.search);
+ if(!params.has("category_id")&&!params.has("service_id"))return;
+ mobileServiceLinkApplied=true;
+ if(params.getAll("category_id").length!==1||params.getAll("service_id").length!==1)return;
+ const rawCategory=params.get("category_id"),rawService=params.get("service_id");
+ const validId=s=>typeof s==="string"&&/^[1-9][0-9]{0,15}$/.test(s)&&Number.isSafeInteger(Number(s));
+ if(!validId(rawCategory)||!validId(rawService))return;
+ const category=marketplaceCategories.find(x=>Number(x.id)===Number(rawCategory));
+ const service=marketplaceSubcategories.find(x=>Number(x.id)===Number(rawService)
+   &&Number(x.category_id)===Number(rawCategory));
+ if(!category||!service)return;
+ let anchor="";
+ if(currentUser?.role==="client"){
+  $("categories").value=String(category.id);
+  updateClientSubcategories();
+  $("taskSubcategories").value=String(service.id);
+  updateClientGuidance();
+  anchor="create-section";
+  notice("اخترنا تخصص "+service.name_ar+" لمشروعك. أكمل تفاصيل الطلب ثم انشره.","success");
+ }else if(currentUser?.role==="freelancer"){
+  $("taskCategoryFilter").value=String(category.id);
+  updateFreelancerTaskFilters();
+  $("taskServiceFilter").value=String(service.id);
+  taskVisibleCount=TASK_PAGE_SIZE;
+  anchor="tasks-section";
+  notice("تم عرض المشاريع المناسبة لتخصص "+service.name_ar+".","success");
+ }
+ if(anchor){
+  history.replaceState(null,"",location.pathname+location.search+"#"+anchor);
+  requestAnimationFrame(()=>$(anchor).scrollIntoView({block:"start"}));
+ }
+}
 async function loadCategories(){
  const [parents,children]=await Promise.all([
   request("/api/v1/categories"),request("/api/v1/services")
@@ -296,6 +334,7 @@ async function loadCategories(){
   setMarketOptions($(select),marketplaceCategories,select==="taskCategoryFilter"?"جميع الأقسام":"اختر القسم");
  }
  updateClientSubcategories();updateFreelancerSpecialties();updateFreelancerTaskFilters();
+ applyMobileServiceLink();
  if(currentUser?.role==="freelancer"){
   try{await loadSavedSpecialties()}
   catch(error){specialtiesLoaded=false;renderSavedSpecialties();notice("تعذر جلب تخصصات المستقل: "+error.message,"error")}
