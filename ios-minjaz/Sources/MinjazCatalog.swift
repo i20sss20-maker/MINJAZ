@@ -98,6 +98,8 @@ struct CatalogView: View {
 
     @State private var keyword = ""
     @State private var selectedCategory: Int?
+    @State private var chosenService: MinjazService?
+    @State private var pendingOpen: MinjazService?
 
     private var filtered: [MinjazService] {
         let term = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -183,6 +185,23 @@ struct CatalogView: View {
         }
         .background(MinjazUI.canvas)
         .scrollDismissesKeyboard(.interactively)
+        .sheet(item: $chosenService, onDismiss: {
+            if let service = pendingOpen {
+                pendingOpen = nil
+                onOpen(service)
+            }
+        }) { service in
+            MinjazSpecialtyDetails(
+                service: service,
+                categoryName: catalog.categories.first(where: { $0.id == service.category_id })?.name_ar ?? "",
+                onContinue: {
+                    pendingOpen = service
+                    chosenService = nil
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var introduction: some View {
@@ -252,7 +271,7 @@ struct CatalogView: View {
     }
 
     private func serviceRow(_ service: MinjazService) -> some View {
-        Button { onOpen(service) } label: {
+        Button { chosenService = service } label: {
             MinjazSurface {
                 HStack(spacing: 13) {
                     Image(systemName: "briefcase")
