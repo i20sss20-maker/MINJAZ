@@ -43,12 +43,13 @@ test('real native tabs navigate to the matching first-party routes, never fake d
   assert.match(android, /pageHasRendered = false/);
   assert.match(android, /pageHasRendered = true/);
   assert.match(android, /pageHasRendered \? View\.GONE : View\.VISIBLE/);
-  assert.match(gradle, /versionCode 19\s*versionName "0\.19-native-workspace-beta"/);
+  assert.match(gradle, /versionCode 20\s*versionName "0\.20-visual-ux-beta"/);
 });
 
 test('iPhone uses real brand accents, accessibility labels and nonblocking loading', () => {
   assert.match(ios, /Color\(red: 101\/255, green: 88\/255, blue: 245\/255\)/);
-  assert.match(ios, /Image\(systemName: "square\.stack\.3d\.up\.fill"\)/);
+  assert.match(ios, /MinjazBrandMark\(dimension: 38\)/);
+  assert.match(ios, /MinjazUI\.primary/);
   assert.doesNotMatch(ios, /Image\(systemName: "checkmark\.seal\.fill"\)/);
   assert.match(ios, /ZStack\(alignment: \.top\)/);
   assert.match(ios, /ProgressView\(\)\s*\.progressViewStyle\(\.linear\)/);
