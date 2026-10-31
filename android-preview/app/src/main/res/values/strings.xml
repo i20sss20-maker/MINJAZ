@@ -27,4 +27,18 @@
     <string name="nav_orders">طلباتي</string>
     <string name="nav_services">الخدمات</string>
     <string name="nav_account">حسابي</string>
+    <string name="native_refresh">تحديث</string>
+    <string name="native_live_data">البيانات الفعلية من حسابك في منجاز</string>
+    <string name="native_signin_required">يجب تسجيل الدخول ببريد مفعّل لعرض بياناتك</string>
+    <string name="native_signin_title">سجّل الدخول للمتابعة</string>
+    <string name="native_load_failed">تعذر تحميل البيانات</string>
+    <string name="native_retry_hint">تأكد من الاتصال ثم أعد المحاولة</string>
+    <string name="native_projects">المشاريع والفرص</string>
+    <string name="native_conversations">المحادثات</string>
+    <string name="native_notifications">الإشعارات</string>
+    <string name="native_publish">نشر مشروع جديد</string>
+    <string name="native_empty_title">لا توجد بيانات حاليًا</string>
+    <string name="native_empty_desc">ستظهر هنا بياناتك الفعلية بعد توفرها</string>
+    <string name="native_results">نتيجة</string>
+    <string name="native_unread">جديد</string>
 </resources>
