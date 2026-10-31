@@ -22,4 +22,9 @@
     <string name="account_profile">My profile</string>
     <string name="account_privacy">Privacy policy</string>
     <string name="account_deletion">Request account deletion</string>
+    <string name="nav_discover">Explore</string>
+    <string name="nav_projects">Projects</string>
+    <string name="nav_orders">Orders</string>
+    <string name="nav_services">Services</string>
+    <string name="nav_account">Account</string>
 </resources>
