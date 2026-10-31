@@ -1,6 +1,7 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -75,8 +76,10 @@ public final class DiscoverActivity extends Activity {
         final long id;
         final long categoryId;
         final String title;
-        Service(long id, long categoryId, String title) {
+        final String guidance;
+        Service(long id, long categoryId, String title, String guidance) {
             this.id = id; this.categoryId = categoryId; this.title = title;
+            this.guidance = guidance;
         }
     }
 
@@ -290,7 +293,9 @@ public final class DiscoverActivity extends Activity {
                     String title = row.optString("name_ar", "").trim();
                     if (validId(id) && nextNames.containsKey(categoryId)
                         && !title.isEmpty() && title.length() <= 160) {
-                        nextServices.add(new Service(id, categoryId, title));
+                        String guidance = row.optString("client_guidance", "").trim();
+                        if (guidance.length() > 1200) guidance = guidance.substring(0, 1200);
+                        nextServices.add(new Service(id, categoryId, title, guidance));
                     }
                 }
                 runOnUiThread(() -> {
@@ -454,6 +459,21 @@ public final class DiscoverActivity extends Activity {
     }
 
     private void openService(Service service) {
+        if (!validId(service.id) || !validId(service.categoryId)
+            || !categoryNames.containsKey(service.categoryId)) return;
+        String category = categoryNames.get(service.categoryId);
+        String explanation = service.guidance.isEmpty()
+            ? getString(R.string.discovery_detail_hint) : service.guidance;
+        new AlertDialog.Builder(this)
+            .setTitle(service.title)
+            .setMessage(category + "\n\n" + explanation)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.discovery_detail_continue, (dialog, which) ->
+                continueToService(service))
+            .show();
+    }
+
+    private void continueToService(Service service) {
         if (!validId(service.id) || !validId(service.categoryId)
             || !categoryNames.containsKey(service.categoryId)) return;
         Uri base = Uri.parse(BuildConfig.APP_URL);
