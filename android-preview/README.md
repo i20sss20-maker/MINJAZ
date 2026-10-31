@@ -49,3 +49,15 @@ backend permissions. Nothing here enables production payments.
   than painting over the tab bar. Browser renderer recovery keeps the same
   layout and secure first-party origin checks.
 - No marketplace payouts, IAP, or production payment changes are involved.
+
+## Android 0.19 real native marketplace screens
+The launcher opens `NativeWorkspaceActivity`, a completely Android-native
+read-only dashboard for customer/freelancer projects and opportunities,
+orders, conversations, notifications and profile. Services and categories
+use the existing `DiscoverActivity` with a native directory.
+Native HTTPS GETs require the same WebView cookie set by the verified email
+login, disable HTTP redirects and bound API response sizes.
+Complex write and account workflows still launch the existing secure
+`MainActivity` WebView without copying cookies to unknown origins.
+Do not characterize these native read-only screens as completed native
+payments, offer submission, file uploads, chat composer or account editor.
