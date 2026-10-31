@@ -43,7 +43,7 @@ test('real native tabs navigate to the matching first-party routes, never fake d
   assert.match(android, /pageHasRendered = false/);
   assert.match(android, /pageHasRendered = true/);
   assert.match(android, /pageHasRendered \? View\.GONE : View\.VISIBLE/);
-  assert.match(gradle, /versionCode 20\s*versionName "0\.20-visual-ux-beta"/);
+  assert.match(gradle, /versionCode 21\s*versionName "0\.21-native-discovery-beta"/);
 });
 
 test('iPhone uses real brand accents, accessibility labels and nonblocking loading', () => {
