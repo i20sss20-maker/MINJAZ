@@ -15,7 +15,8 @@ test('both apps have native marketplace workspaces, not a default embedded brows
   assert.match(appIos, /if selected == \.discover \|\| selected == \.services/);
   assert.match(appIos, /\.sheet\(isPresented: \$showingWorkflow/);
   assert.match(appIos, /MinjazWebView\(browser: browser\)/);
-  assert.match(manifest, /android:name="\.NativeWorkspaceActivity"\s+android:exported="true"[\s\S]*?android\.intent\.action\.MAIN/);
+  assert.match(manifest, /android:name="\.DiscoverActivity"\s+android:exported="true"[\s\S]*?android\.intent\.action\.MAIN/);
+  assert.match(manifest, /android:name="\.NativeWorkspaceActivity"\s+android:exported="false"/);
   assert.match(manifest, /android:name="\.MainActivity"\s+android:exported="true"/);
   assert.match(baseAndroid, /new Intent\(this, NativeWorkspaceActivity\.class\)/);
   assert.match(nativeAndroid, /private void selectTab\(int tab\)/);
