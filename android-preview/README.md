@@ -37,3 +37,15 @@ It never sends, stores or logs credentials. Account deletion is **requested**
 from the protected backend and is not silently executed by tapping the menu.
 All pages retain the original WebView session, verified email checks and
 backend permissions. Nothing here enables production payments.
+
+## 0.18 mobile navigation beta
+- Replaced two floating buttons (which overlapped marketplace controls) with a
+  branded top bar and an always-visible native five-tab bottom navigation.
+- Tabs are Explore (native real category directory), Projects, Orders,
+  Services, and Account. First-party workspace anchors share the **same**
+  WebView cookie store and backend permissions. Account & privacy are available
+  in the top bar without blocking project browsing.
+- Content and connection errors are inset between the header and tabs, rather
+  than painting over the tab bar. Browser renderer recovery keeps the same
+  layout and secure first-party origin checks.
+- No marketplace payouts, IAP, or production payment changes are involved.
