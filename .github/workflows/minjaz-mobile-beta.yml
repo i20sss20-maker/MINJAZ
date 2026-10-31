@@ -108,7 +108,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet cairosvg pillow
+          command -v rsvg-convert >/dev/null || brew install librsvg
+          python3 -m pip install --quiet pillow
           python3 scripts/prepare_minjaz_ios_icon.py
       - name: Validate origins and generate Xcode project
         shell: bash
