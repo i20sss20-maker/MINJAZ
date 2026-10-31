@@ -80,9 +80,25 @@ final class MinjazNativeWorkspace: ObservableObject {
     private let cookieStore: WKHTTPCookieStore
     private var generation = 0
 
-    init(browser: MinjazBrowser) {
-        origin = browser.origin
-        cookieStore = browser.webView.configuration.websiteDataStore.httpCookieStore
+    init() {
+        let raw = (Bundle.main.object(forInfoDictionaryKey: "MinjazBaseURL") as? String) ?? ""
+        guard let url = URL(string: raw), url.scheme == "https",
+              url.user == nil, url.password == nil,
+              url.query == nil, url.fragment == nil,
+              (url.path.isEmpty || url.path == "/"),
+              let host = url.host,
+              url.port == nil || url.port == 443 else {
+            preconditionFailure("MINJAZ first-party native API origin is missing")
+        }
+        #if MINJAZ_PREVIEW_BUILD
+        precondition(host == "beta.minjazapp.com")
+        #else
+        precondition(host == "minjaz-app-prod-production.up.railway.app")
+        #endif
+        origin = url
+        // This is the SAME cookie store as the embedded authenticated
+        // workflow. No hidden second login or bearer-token transport.
+        cookieStore = WKWebsiteDataStore.default().httpCookieStore
     }
 
     func load(_ section: NativeSection) async {
