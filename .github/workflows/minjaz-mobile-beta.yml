@@ -12,6 +12,7 @@ on:
       - 'tests/minjaz_android_native_discovery.test.cjs'
       - 'tests/minjaz_ios_device_beta.test.cjs'
       - 'tests/minjaz_mobile_account_privacy.test.cjs'
+      - 'tests/minjaz_mobile_native_shell.test.cjs'
       - 'scripts/prepare_minjaz_ios_icon.py'
       - '.github/workflows/minjaz-ios-device-beta.yml'
       - '.github/workflows/minjaz-mobile-beta.yml'
@@ -26,6 +27,7 @@ on:
       - 'tests/minjaz_android_native_discovery.test.cjs'
       - 'tests/minjaz_ios_device_beta.test.cjs'
       - 'tests/minjaz_mobile_account_privacy.test.cjs'
+      - 'tests/minjaz_mobile_native_shell.test.cjs'
       - 'scripts/prepare_minjaz_ios_icon.py'
       - '.github/workflows/minjaz-ios-device-beta.yml'
       - '.github/workflows/minjaz-mobile-beta.yml'
@@ -46,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate native-to-marketplace links
-        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/minjaz_ios_device_beta.test.cjs tests/minjaz_mobile_account_privacy.test.cjs tests/android_webview_safety.test.cjs
+        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/minjaz_ios_device_beta.test.cjs tests/minjaz_mobile_account_privacy.test.cjs tests/minjaz_mobile_native_shell.test.cjs tests/android_webview_safety.test.cjs
 
   android-preview:
     name: Installable MINJAZ Android test APK
