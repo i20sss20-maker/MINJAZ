@@ -154,6 +154,41 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "sa.minjaz.preview"
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = "https://beta.minjazapp.com"
           echo 'MINJAZ_IOS_DEVICE_BETA_UNSIGNED_COMPILE_OK_NOT_INSTALLABLE'
+      - name: Package real-device BetaRelease as unsigned IPA for owner-side signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="/tmp/minjaz-ios-device-unsigned/Build/Products/BetaRelease-iphoneos/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = 'sa.minjaz.preview'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = 'https://beta.minjazapp.com'
+          mkdir -p /tmp/minjaz-unsigned-ipa-stage/Payload
+          ditto "$APP" /tmp/minjaz-unsigned-ipa-stage/Payload/Minjaz.app
+          cd /tmp/minjaz-unsigned-ipa-stage
+          zip -qry /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa Payload
+          test -s /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa
+          unzip -Z -1 /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa | grep -q '^Payload/Minjaz.app/Info.plist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-iPhone-Simulator-beta
+          path: |
+            /tmp/MINJAZ-iPhone-simulator.app.zip
+            /tmp/MINJAZ-iPhone-simulator.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+          shasum -a 256 /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa > /tmp/MINJAZ-iPhone-0.17-UNSIGNED.sha256
+          printf '%s\n' 'UNSIGNED: Apple code signing and a matching provisioning profile are required before installation on a physical iPhone.' > /tmp/README-UNSIGNED-IPA.txt
+          echo 'MINJAZ_IOS_UNSIGNED_IPA_PACKAGED_NOT_INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-iPhone-0.17-UNSIGNED-IPA
+          path: |
+            /tmp/MINJAZ-iPhone-0.17-UNSIGNED.ipa
+            /tmp/MINJAZ-iPhone-0.17-UNSIGNED.sha256
+            /tmp/README-UNSIGNED-IPA.txt
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: MINJAZ-iPhone-Simulator-beta
