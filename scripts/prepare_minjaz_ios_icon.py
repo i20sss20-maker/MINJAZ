@@ -9,20 +9,23 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "public" / "icon.svg"
 OUTPUT = ROOT / "ios-minjaz" / "Sources" / "Assets.xcassets" / "AppIcon.appiconset" / "Minjaz-1024.png"
 
 def main() -> None:
-    import cairosvg
     from PIL import Image
     if not SOURCE.is_file():
         raise SystemExit("Missing official MINJAZ public/icon.svg")
     svg = SOURCE.read_text(encoding="utf-8")
     if "<svg " not in svg or 'viewBox="0 0 512 512"' not in svg:
         raise SystemExit("Unexpected MINJAZ icon source")
-    rendered = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=1024, output_height=1024)
+    rendered = subprocess.run(
+        ["rsvg-convert", "--width", "1024", "--height", "1024", str(SOURCE)],
+        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    ).stdout
     with Image.open(BytesIO(rendered)) as raster:
         if raster.size != (1024, 1024):
             raise SystemExit("Unexpected app icon dimensions")
