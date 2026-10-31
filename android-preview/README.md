@@ -5,9 +5,13 @@ This module is the installable Android shell for the MINJAZ beta web application
 - applicationId: `sa.minjaz.preview`
 - minSdk: 24
 - targetSdk / compileSdk: 36
-- version: `0.10-android-stability` (`versionCode 10`)
+- preview version: `0.15-minjaz-mobile-beta` (`versionCode 15`)
+- production version remains `1.0.0-rc4` (`versionCode 14`) until intentionally approved
 - form factors: phones, tablets, foldables, ChromeOS / resizable windows
-- production URL: `https://minjaz-app-prod-production.up.railway.app`
+- preview origin: `https://beta.minjazapp.com/workspace` (isolated sandbox)
+- production origin (unchanged): `https://minjaz-app-prod-production.up.railway.app`
+- each Android flavor has its own HTTPS deep-link host; preview must not access production.
+- source and CI for iPhone/iPad are in `ios-minjaz/` and `.github/workflows/minjaz-mobile-beta.yml`.
 
 The shell keeps first-party MINJAZ pages inside the app, opens external links with the system browser/app, supports file upload, restores WebView state after rotation/resize, handles system-bar insets, and shows a native retry screen for main-frame load failures.
 
