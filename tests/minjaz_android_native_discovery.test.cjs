@@ -17,7 +17,7 @@ test('native catalog is reachable internally, never as an external deep link', (
   assert.match(main, /tab == 0[\s\S]*startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
   assert.match(manifest, /android:name="\.DiscoverActivity"\s+android:exported="false"/);
   assert.match(manifest, /android:name="\.MainActivity"\s+android:exported="true"/);
-  assert.match(preview, /versionCode 19\s+versionName "0\.19-native-workspace-beta"/);
+  assert.match(preview, /versionCode 20\s+versionName "0\.20-visual-ux-beta"/);
   assert.match(preview, /preview\s*\{[\s\S]*?APP_URL", '"https:\/\/beta\.minjazapp\.com\/workspace"'/);
 });
 
