@@ -33,10 +33,8 @@ test('Android five-tab navigation is native and keeps WebView within safe conten
 test('real native tabs navigate to the matching first-party routes, never fake data', () => {
   assert.match(android, /private void navigateNativeTab\(int tab\)/);
   assert.match(android, /startActivity\(new Intent\(MainActivity\.this, DiscoverActivity\.class\)\)/);
-  assert.match(android, /openInternalAccountPage\("\/workspace", null, null, "tasks-section"\)/);
-  assert.match(android, /openInternalAccountPage\("\/workspace", null, null, "orders-section"\)/);
-  assert.match(android, /openInternalAccountPage\("\/digital-services", null, null\)/);
-  assert.match(android, /openInternalAccountPage\("\/workspace", null, null, "profile"\)/);
+  assert.match(android, /new Intent\(this, NativeWorkspaceActivity\.class\)/);
+  assert.match(android, /intent\.putExtra\("minjaz_tab", tab\)/);
   assert.match(android, /Uri\.parse\(APP_URL\)\.buildUpon\(\)/);
   assert.match(android, /if \(!isInternalUri\(target\)\) return/);
   assert.match(android, /webView\.loadUrl\(localizedInternalUrl\(target\)\)/);
@@ -45,7 +43,7 @@ test('real native tabs navigate to the matching first-party routes, never fake d
   assert.match(android, /pageHasRendered = false/);
   assert.match(android, /pageHasRendered = true/);
   assert.match(android, /pageHasRendered \? View\.GONE : View\.VISIBLE/);
-  assert.match(gradle, /versionCode 18\s*versionName "0\.18-native-navigation-beta"/);
+  assert.match(gradle, /versionCode 19\s*versionName "0\.19-native-workspace-beta"/);
 });
 
 test('iPhone uses real brand accents, accessibility labels and nonblocking loading', () => {
@@ -57,7 +55,9 @@ test('iPhone uses real brand accents, accessibility labels and nonblocking loadi
   assert.doesNotMatch(ios, /Text\("جاري فتح مِنجاز…"\)/);
   assert.match(ios, /\.accessibilityLabel\(tab\.title\)/);
   assert.match(ios, /ForEach\(MobileTab\.allCases\)/);
-  assert.match(ios, /browser\.open\(path: tab\.path\)/);
+  assert.match(ios, /MinjazNativeScreen\(model: native, section: currentNativeSection/);
+  assert.match(ios, /openWorkflow\(path\)/);
+  assert.match(ios, /showingWorkflow = true/);
 });
 
 test('native iPhone pull-to-refresh terminates for all supported outcomes', () => {

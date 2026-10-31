@@ -116,3 +116,16 @@ or present an unsigned IPA as a working installable iPhone build.
   finishes on navigation success, failure, 5xx and process termination.
 - This is UX iteration, **not** evidence that all iPhone/Android functional
   and accessibility tests on real devices have been performed.
+
+## Native iOS workspaces (first conversion phase)
+The five-tab application no longer embeds WebKit as its main interface.
+Native SwiftUI renders catalog, role-scoped projects/opportunities, orders,
+account, and account-accessible conversations and notifications. Data comes
+from the existing real `/api/v1/me`, `/api/v1/tasks`, `/api/v1/orders`,
+`/api/v1/conversations`, `/api/v1/notifications` endpoints. Native API
+reads use the established WebKit HttpOnly cookie after email verification,
+ephemeral no-redirect GET-only requests and exact HTTPS origin checks.
+Complex writes, inbox conversations, account deletion, profile editing and
+payment remain in the existing first-party workflow within an on-demand
+sheet. Native presentation never fabricates a project or bypasses server
+role checks. This is *not* a complete migration of every workflow.

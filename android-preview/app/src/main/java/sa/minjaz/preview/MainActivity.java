@@ -244,20 +244,15 @@ public class MainActivity extends Activity {
     }
 
     private void navigateNativeTab(int tab) {
-        if (tab == 0) {
+        if (tab == 0 || tab == 3) {
             startActivity(new Intent(MainActivity.this, DiscoverActivity.class));
             return;
         }
-        if (tab == 4) {
-            openInternalAccountPage("/workspace", null, null, "profile");
-        } else if (tab == 3) {
-            openInternalAccountPage("/digital-services", null, null);
-        } else if (tab == 2) {
-            openInternalAccountPage("/workspace", null, null, "orders-section");
-        } else if (tab == 1) {
-            openInternalAccountPage("/workspace", null, null, "tasks-section");
-        }
-        highlightTab(tab);
+        Intent intent = new Intent(this, NativeWorkspaceActivity.class);
+        intent.putExtra("minjaz_tab", tab);
+        startActivity(intent);
+        // The native destination owns its own authenticated read-only views.
+        // This WebView remains available for complex role-gated writes.
     }
 
     private void syncSelectedTab(String url) {
