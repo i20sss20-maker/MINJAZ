@@ -16,8 +16,8 @@ android {
         preview {
             dimension "distribution"
             applicationId "sa.minjaz.preview"
-            versionCode 15
-            versionName "0.15-minjaz-mobile-beta"
+            versionCode 16
+            versionName "0.16-native-specialties-beta"
             buildConfigField "String", "APP_URL", '"https://beta.minjazapp.com/workspace"'
         }
         production {
