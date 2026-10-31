@@ -1,0 +1,180 @@
+name: MINJAZ iPhone device beta - signed IPA (manual only)
+
+# Never run signing on push/PR, never promote the production app automatically,
+# and never upload anything to App Store Connect without a separate explicit step.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type PREPARE_MINJAZ_IPA to build sandbox-only signed IPA (no upload)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minjaz-ios-device-beta
+  cancel-in-progress: false
+
+jobs:
+  signed-sandbox-beta:
+    if: github.ref == 'refs/heads/feature/digital-services-geidea-sandbox' && inputs.confirm == 'PREPARE_MINJAZ_IPA'
+    runs-on: macos-26
+    timeout-minutes: 50
+    environment: minjaz-ios-beta
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEAM_ID: ${{ secrets.MINJAZ_IOS_TEAM_ID }}
+      CERT_B64: ${{ secrets.MINJAZ_IOS_CERT_P12_BASE64 }}
+      CERT_PASS: ${{ secrets.MINJAZ_IOS_CERT_PASSWORD }}
+      PROFILE_B64: ${{ secrets.MINJAZ_IOS_PROFILE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate manual distribution scope before decoding any signing material
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/feature/digital-services-geidea-sandbox"
+          test "${{ inputs.confirm }}" = "PREPARE_MINJAZ_IPA"
+          test -n "$TEAM_ID" && test -n "$CERT_B64" && test -n "$CERT_PASS" && test -n "$PROFILE_B64" || {
+            echo "::error::Provide the user's Apple signing certificate, App Store profile and team ID via GitHub encrypted secrets."
+            exit 1
+          }
+          [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || {
+            echo "::error::Invalid Apple team ID format."
+            exit 1
+          }
+          xcodebuild -version
+          test "$(xcodebuild -version | awk 'NR==1 {gsub(/[^0-9]/,"",$2); print $2}')" -ge 26
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview' ios-minjaz/project.yml
+          grep -q 'MINJAZ_BASE_URL: .https://beta.minjazapp.com.' ios-minjaz/project.yml
+          grep -q 'MINJAZ_PREVIEW_BUILD' ios-minjaz/Sources/MinjazBrowser.swift
+
+      - name: Generate official opaque app icon and native project
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet cairosvg pillow
+          python3 scripts/prepare_minjaz_ios_icon.py
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
+          test -f ios-minjaz/Minjaz.xcodeproj/project.pbxproj
+          plutil -lint ios-minjaz/Sources/Info.plist
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration BetaRelease -showBuildSettings > "$RUNNER_TEMP/minjaz-settings.txt"
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = sa.minjaz.preview' "$RUNNER_TEMP/minjaz-settings.txt"
+          grep -q 'MINJAZ_BASE_URL = https://beta.minjazapp.com' "$RUNNER_TEMP/minjaz-settings.txt"
+
+      - name: Verify user's App Store provisioning profile and import distribution identity
+        run: |
+          set -euo pipefail
+          umask 077
+          SIGN_DIR="$RUNNER_TEMP/minjaz-ios-signing"
+          mkdir -p "$SIGN_DIR"
+          echo "MINJAZ_SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
+          printf '%s' "$CERT_B64" | base64 -D > "$SIGN_DIR/cert.p12"
+          printf '%s' "$PROFILE_B64" | base64 -D > "$SIGN_DIR/profile.mobileprovision"
+          test -s "$SIGN_DIR/cert.p12" && test -s "$SIGN_DIR/profile.mobileprovision"
+          security cms -D -i "$SIGN_DIR/profile.mobileprovision" > "$SIGN_DIR/profile.plist"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$SIGN_DIR/profile.plist")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$SIGN_DIR/profile.plist")"
+          APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$SIGN_DIR/profile.plist")"
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$SIGN_DIR/profile.plist")"
+          ALLOW_DEBUG="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$SIGN_DIR/profile.plist")"
+          test "$APP_IDENTIFIER" = "$TEAM_ID.sa.minjaz.preview" || {
+            echo "::error::Provisioning profile MUST match sa.minjaz.preview; refuse any production/wildcard identity."
+            exit 1
+          }
+          test "$PROFILE_TEAM" = "$TEAM_ID" && test "$ALLOW_DEBUG" = "false" || {
+            echo "::error::Expected non-debug distribution provisioning for the selected Apple team."
+            exit 1
+          }
+          python3 - "$SIGN_DIR/profile.plist" <<'PY'
+          import datetime, plistlib, sys
+          with open(sys.argv[1], 'rb') as f: p = plistlib.load(f)
+          expiry = p['ExpirationDate'].replace(tzinfo=datetime.timezone.utc)
+          assert expiry > datetime.datetime.now(datetime.timezone.utc), 'Expired provisioning profile'
+          assert not p.get('ProvisionedDevices') and not p.get('ProvisionsAllDevices'), 'App Store profile required'
+          print('MINJAZ_IOS_APP_STORE_PROFILE_OK')
+          PY
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$SIGN_DIR/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          printf 'PROFILE_NAME=%s\n' "$PROFILE_NAME" >> "$GITHUB_ENV"
+          KEYCHAIN="$SIGN_DIR/minjaz-build.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -hex 32)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          security import "$SIGN_DIR/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASS" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN" >/dev/null
+          security find-identity -p codesigning -v "$KEYCHAIN" | grep -q 'Apple Distribution' || {
+            echo "::error::No Apple Distribution signing identity in provided .p12."
+            exit 1
+          }
+          echo "MINJAZ_IOS_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "MINJAZ_IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "MINJAZ_IOS_ARCHIVE=$RUNNER_TEMP/MINJAZ-iPhone-beta.xcarchive" >> "$GITHUB_ENV"
+          echo "MINJAZ_IOS_EXPORT=$RUNNER_TEMP/MINJAZ-iPhone-beta-export" >> "$GITHUB_ENV"
+
+      - name: Archive and export sandbox-only signed IPA (no upload)
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration BetaRelease -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$MINJAZ_IOS_ARCHIVE" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" archive
+          APP="$MINJAZ_IOS_ARCHIVE/Products/Applications/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = 'sa.minjaz.preview'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = 'https://beta.minjazapp.com'
+          codesign --verify --deep --strict "$APP"
+          python3 - "$RUNNER_TEMP/MinjazExportOptions.plist" "$TEAM_ID" "$PROFILE_NAME" <<'PY'
+          import plistlib,sys
+          payload={'method':'app-store-connect','destination':'export','signingStyle':'manual',
+                   'teamID':sys.argv[2],
+                   'provisioningProfiles':{'sa.minjaz.preview':sys.argv[3]},
+                   'manageAppVersionAndBuildNumber':False}
+          with open(sys.argv[1],'wb') as f: plistlib.dump(payload,f)
+          PY
+          xcodebuild -exportArchive -archivePath "$MINJAZ_IOS_ARCHIVE" \
+            -exportPath "$MINJAZ_IOS_EXPORT" \
+            -exportOptionsPlist "$RUNNER_TEMP/MinjazExportOptions.plist"
+          IPA="$MINJAZ_IOS_EXPORT/Minjaz.ipa"
+          test -s "$IPA"
+          mkdir -p "$RUNNER_TEMP/minjaz-ipa-verify"
+          cd "$RUNNER_TEMP/minjaz-ipa-verify"
+          unzip -q "$IPA" 'Payload/Minjaz.app/Info.plist'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Minjaz.app/Info.plist)" = 'sa.minjaz.preview'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' Payload/Minjaz.app/Info.plist)" = 'https://beta.minjazapp.com'
+          shasum -a 256 "$IPA" > "$MINJAZ_IOS_EXPORT/MINJAZ-iPhone-beta.sha256"
+          echo 'MINJAZ_IOS_BETA_IPA_SIGNED_NO_UPLOAD'
+
+      - name: Upload signed IPA artifact for owner (7 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-iPhone-physical-beta-SIGNED-IPA
+          path: |
+            ${{ runner.temp }}/MINJAZ-iPhone-beta-export/Minjaz.ipa
+            ${{ runner.temp }}/MINJAZ-iPhone-beta-export/MINJAZ-iPhone-beta.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Destroy temporary signing identity and mobile provisioning assets
+        if: always()
+        run: |
+          if [ -n "${MINJAZ_IOS_KEYCHAIN:-}" ]; then
+            security delete-keychain "$MINJAZ_IOS_KEYCHAIN" || true
+          fi
+          if [ -n "${MINJAZ_IOS_PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$MINJAZ_IOS_PROFILE_UUID.mobileprovision"
+          fi
+          if [ -n "${MINJAZ_SIGN_DIR:-}" ]; then
+            rm -rf "$MINJAZ_SIGN_DIR"
+          fi
