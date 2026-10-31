@@ -55,13 +55,18 @@ public final class MinjazStyle {
     public static final class Glyph extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int kind;
-        private final int tint;
+        private int tint;
 
         Glyph(Context context, int kind, int color) {
             super(context);
             this.kind = kind;
             tint = color;
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        public void setTint(int color) {
+            tint = color;
+            invalidate();
         }
 
         @Override protected void onDraw(Canvas canvas) {
