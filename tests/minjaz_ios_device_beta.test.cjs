@@ -59,6 +59,7 @@ test('official vector icon is generated as a real opaque 1024px marketing asset'
   assert.match(generator, /public" \/ "icon.svg"/);
   assert.match(generator, /1024, 1024/);
   assert.match(generator, /Image\.new\("RGB"/);
+  assert.match(generator, /"rsvg-convert"/);
   assert.match(generator, /check\.mode != "RGB"/);
   assert.match(read('.gitignore'), /ios-minjaz\/Sources\/Assets\.xcassets\/AppIcon\.appiconset\/Minjaz-1024\.png/);
   assert.match(mainCI, /python3 scripts\/prepare_minjaz_ios_icon\.py/);
