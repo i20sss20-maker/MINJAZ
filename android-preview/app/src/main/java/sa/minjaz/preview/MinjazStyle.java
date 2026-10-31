@@ -124,17 +124,29 @@ public final class MinjazStyle {
                     canvas.drawPath(arrow,paint);
                     break;
                 case MARK:
+                    // Match public/icon.svg and the real launcher symbol.
                     paint.setStyle(Paint.Style.FILL);
-                    for (int i=0; i<3; i++) {
-                        Path layer = new Path();
-                        float y = 3 + i * 6;
-                        layer.moveTo(14,y);
-                        layer.lineTo(24,y+5);
-                        layer.lineTo(14,y+10);
-                        layer.lineTo(4,y+5);
-                        layer.close();
-                        canvas.drawPath(layer,paint);
-                    }
+                    paint.setColor(Color.rgb(44, 201, 183));
+                    Path low = new Path();
+                    low.moveTo(5,19); low.lineTo(15,19); low.lineTo(17,15);
+                    low.lineTo(7,15); low.close();
+                    canvas.drawPath(low, paint);
+                    paint.setColor(Color.rgb(138, 125, 255));
+                    Path mid = new Path();
+                    mid.moveTo(7,14); mid.lineTo(18,14); mid.lineTo(20,10);
+                    mid.lineTo(9,10); mid.close();
+                    canvas.drawPath(mid, paint);
+                    paint.setColor(PURPLE);
+                    Path high = new Path();
+                    high.moveTo(9,9); high.lineTo(21,9); high.lineTo(19,13);
+                    high.lineTo(7,13); high.close();
+                    canvas.drawPath(high, paint);
+                    paint.setColor(DEEP);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(1.8f);
+                    Path tick = new Path();
+                    tick.moveTo(19,18); tick.lineTo(21,20); tick.lineTo(25,16);
+                    canvas.drawPath(tick, paint);
                     break;
                 default: break;
             }
