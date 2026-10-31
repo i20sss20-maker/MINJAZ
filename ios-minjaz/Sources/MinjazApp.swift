@@ -48,6 +48,7 @@ struct ContentView: View {
     @StateObject private var catalog = MinjazCatalog()
     @State private var selected: MobileTab = .discover
     @State private var sharing = false
+    @State private var showingAccountActions = false
 
     private let blue = Color(red: 0.29, green: 0.32, blue: 0.84)
     var body: some View {
@@ -68,6 +69,11 @@ struct ContentView: View {
                     }
                     .accessibilityLabel("تحديث الصفحة")
                 }
+                Button { showingAccountActions = true } label: {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .frame(width: 37, height: 37)
+                }
+                .accessibilityLabel("الحساب والخصوصية")
                 Button { sharing = true } label: {
                     Image(systemName: "square.and.arrow.up").frame(width: 37, height: 37)
                 }
@@ -116,7 +122,9 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 ForEach(MobileTab.allCases) { tab in
                     Button {
-                        if selected != tab {
+                        // Always restore the profile if the user visited privacy or
+                        // account-deletion while already on the "حسابي" tab.
+                        if selected != tab || tab == .account {
                             selected = tab
                             if tab != .discover { browser.open(path: tab.path) }
                         }
@@ -138,6 +146,27 @@ struct ContentView: View {
             .background(.white)
         }
         .background(Color(red: 0.97, green: 0.97, blue: 0.98))
+        .confirmationDialog(
+            "حسابي والخصوصية",
+            isPresented: $showingAccountActions,
+            titleVisibility: .visible
+        ) {
+            Button("تسجيل الدخول أو إنشاء حساب") {
+                openAccountPage("/signup?auth=login")
+            }
+            Button("حسابي وملفي الشخصي") {
+                openAccountPage("/workspace#profile")
+            }
+            Button("سياسة الخصوصية") {
+                openAccountPage("/privacy")
+            }
+            Button("طلب حذف الحساب", role: .destructive) {
+                // The backend verifies the active session and asks the user
+                // to confirm their deletion request; this action only opens
+                // that established flow and does not silently delete data.
+                openAccountPage("/account-deletion")
+            }
+        }
         .sheet(isPresented: $sharing) {
             MinjazShareSheet(items: [browser.webView.url ?? browser.origin])
         }
@@ -145,6 +174,11 @@ struct ContentView: View {
             MinjazShareSheet(items: [item.url])
         }
         .task { await catalog.load(origin: browser.origin) }
+    }
+
+    private func openAccountPage(_ path: String) {
+        browser.open(path: path)
+        selected = .account
     }
 }
 
