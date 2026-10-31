@@ -1,6 +1,7 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
@@ -114,6 +115,24 @@ public class MainActivity extends Activity {
         discoverParams.setMargins(dp(12), dp(12), dp(12), dp(18));
         root.addView(discover, discoverParams);
 
+        // Keep verified sign-in, privacy and account-deletion accessible
+        // without exposing user credentials to a native JS bridge.
+        Button account = new Button(this);
+        account.setText(R.string.account_floating);
+        account.setAllCaps(false);
+        account.setTextSize(12);
+        account.setTextColor(Color.WHITE);
+        account.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(52, 48, 90)));
+        account.setElevation(dp(5));
+        account.setOnClickListener(v -> showAccountMenu());
+        FrameLayout.LayoutParams accountParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(49),
+            Gravity.BOTTOM | Gravity.START
+        );
+        accountParams.setMargins(dp(12), dp(12), dp(12), dp(18));
+        root.addView(account, accountParams);
+
         loadingView = buildLoadingView();
         root.addView(loadingView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -140,6 +159,40 @@ public class MainActivity extends Activity {
         }
 
         setContentView(root);
+    }
+
+    private void showAccountMenu() {
+        String[] actions = {
+            getString(R.string.account_login),
+            getString(R.string.account_profile),
+            getString(R.string.account_privacy),
+            getString(R.string.account_deletion)
+        };
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.account_menu_title)
+            .setItems(actions, (dialog, selection) -> {
+                switch (selection) {
+                    case 0: openInternalAccountPage("/signup", "auth", "login"); break;
+                    case 1: openInternalAccountPage("/workspace", null, null); break;
+                    case 2: openInternalAccountPage("/privacy", null, null); break;
+                    case 3: openInternalAccountPage("/account-deletion", null, null); break;
+                    default: break;
+                }
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private void openInternalAccountPage(String path, String queryKey, String queryValue) {
+        if (webView == null) return;
+        Uri.Builder builder = Uri.parse(APP_URL).buildUpon()
+            .path(path).clearQuery().fragment(null);
+        if (queryKey != null && queryValue != null) {
+            builder.appendQueryParameter(queryKey, queryValue);
+        }
+        Uri target = builder.build();
+        if (!isInternalUri(target)) return;
+        webView.loadUrl(localizedInternalUrl(target));
     }
 
     private View buildLoadingView() {

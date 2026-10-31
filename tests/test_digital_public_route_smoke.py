@@ -33,6 +33,8 @@ class PublicUiSmokeTests(unittest.TestCase):
             self.assertTrue(launch.check_public_ui(ROOT))
         self.assertEqual(set(visited),set(launch.PUBLIC_UI_CONTRACT))
         self.assertIn("/digital-services",visited)
+        self.assertIn("/privacy",visited)
+        self.assertIn("/account-deletion",visited)
         self.assertIn("/minjaz-account-registration-v1.js",visited)
 
     def test_missing_script_contract_blocks_readiness(self):
@@ -63,6 +65,17 @@ class PublicUiSmokeTests(unittest.TestCase):
             return valid_response(path)
         with patch.object(launch.urllib.request,"urlopen",side_effect=fake_open):
             with self.assertRaisesRegex(RuntimeError,"HTTP 404"):
+                launch.check_public_ui(ROOT)
+
+
+    def test_missing_account_deletion_page_blocks_mobile_readiness(self):
+        def fake_open(request,timeout=15):
+            path=request.full_url.removeprefix(ROOT)
+            if path=="/account-deletion":
+                raise HTTPError(request.full_url,404,"not found",{},None)
+            return valid_response(path)
+        with patch.object(launch.urllib.request,"urlopen",side_effect=fake_open):
+            with self.assertRaisesRegex(RuntimeError,"/account-deletion: HTTP 404"):
                 launch.check_public_ui(ROOT)
 
 if __name__=="__main__":unittest.main()
