@@ -44,10 +44,10 @@ import javax.net.ssl.HttpsURLConnection;
  * checked by the authenticated web workspace and again by the backend.
  */
 public final class DiscoverActivity extends Activity {
-    private static final int BACKGROUND = Color.rgb(247, 248, 252);
-    private static final int INK = Color.rgb(21, 26, 49);
-    private static final int MUTED = Color.rgb(105, 112, 134);
-    private static final int VIOLET = Color.rgb(74, 53, 167);
+    private static final int BACKGROUND = MinjazStyle.CANVAS;
+    private static final int INK = MinjazStyle.INK;
+    private static final int MUTED = MinjazStyle.MUTED;
+    private static final int VIOLET = MinjazStyle.PURPLE;
     private static final long MAX_ID = 999999999999999L;
     private static final int MAX_RESPONSE_BYTES = 1500000;
 
@@ -105,41 +105,68 @@ public final class DiscoverActivity extends Activity {
         }
         setContentView(root);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(18), dp(14), dp(18), dp(16));
-        header.setBackgroundColor(Color.rgb(20, 20, 49));
-
+        // Light first-party header mirrors the SwiftUI native brand.
+        LinearLayout brandBar = new LinearLayout(this);
+        brandBar.setGravity(Gravity.CENTER_VERTICAL);
+        brandBar.setPadding(dp(18), dp(10), dp(18), dp(10));
+        brandBar.setBackgroundColor(Color.WHITE);
+        View mark = MinjazStyle.icon(this, MinjazStyle.MARK, VIOLET);
+        brandBar.addView(mark, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        TextView brand = label(getString(R.string.app_name), 22, INK, true);
+        LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1);
+        brandParams.setMargins(dp(8), 0, dp(8), 0);
+        brandBar.addView(brand, brandParams);
         Button back = new Button(this);
         back.setText(R.string.discovery_back);
         back.setAllCaps(false);
-        back.setTextColor(Color.WHITE);
-        back.setTextSize(13);
-        back.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(52, 48, 90)));
+        back.setTextSize(12);
+        back.setTextColor(VIOLET);
+        back.setBackgroundTintList(ColorStateList.valueOf(MinjazStyle.PALE));
+        back.setMinWidth(0);
+        back.setMinHeight(0);
         back.setOnClickListener(v -> finish());
-        header.addView(back, new LinearLayout.LayoutParams(dp(115), dp(45)));
+        brandBar.addView(back, new LinearLayout.LayoutParams(dp(70), dp(43)));
+        root.addView(brandBar, new LinearLayout.LayoutParams(-1, dp(67)));
 
-        TextView title = label(getString(R.string.discovery_title), 25, Color.WHITE, true);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
-        titleParams.topMargin = dp(8);
-        header.addView(title, titleParams);
-        TextView sub = label(getString(R.string.discovery_subtitle), 13,
-            Color.rgb(211, 210, 235), false);
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(17), dp(18), dp(17), dp(19));
+        hero.setBackground(MinjazStyle.surface(this, MinjazStyle.PALE, 20, false));
+        TextView title = label(getString(R.string.discovery_title), 24, INK, true);
+        title.setMaxLines(2);
+        hero.addView(title);
+        TextView sub = label(getString(R.string.discovery_subtitle), 14, MUTED, false);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(-1, -2);
-        subParams.topMargin = dp(8);
-        header.addView(sub, subParams);
-        root.addView(header);
+        subParams.topMargin = dp(9);
+        hero.addView(sub, subParams);
+        LinearLayout.LayoutParams heroParams = new LinearLayout.LayoutParams(-1, -2);
+        heroParams.setMargins(dp(16), dp(16), dp(16), dp(4));
+        root.addView(hero, heroParams);
+
+        LinearLayout searchPanel = new LinearLayout(this);
+        searchPanel.setGravity(Gravity.CENTER_VERTICAL);
+        searchPanel.setPadding(dp(12), 0, dp(12), 0);
+        searchPanel.setBackground(MinjazStyle.surface(this, Color.WHITE, 17, true));
+        View glass = MinjazStyle.icon(this, MinjazStyle.SEARCH, VIOLET);
+        glass.setBackground(MinjazStyle.surface(this, MinjazStyle.PALE, 10, false));
+        searchPanel.addView(glass, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         search = new EditText(this);
         search.setSingleLine(true);
         search.setTextSize(15);
         search.setTextColor(INK);
         search.setHint(R.string.discovery_search);
-        search.setPadding(dp(14), dp(10), dp(14), dp(10));
-        search.setBackground(rounded(Color.WHITE, 16));
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(52));
-        searchParams.setMargins(dp(16), dp(16), dp(16), dp(12));
-        root.addView(search, searchParams);
+        search.setBackgroundColor(Color.TRANSPARENT);
+        search.setPadding(dp(12), 0, dp(6), 0);
+        MinjazStyle.text(search, false);
+        searchPanel.addView(search, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(55));
+        searchParams.setMargins(dp(16), dp(15), dp(16), dp(19));
+        root.addView(searchPanel, searchParams);
+
+        TextView filterHeading = label(getString(R.string.discovery_categories), 18, INK, true);
+        filterHeading.setPadding(dp(18), 0, dp(18), dp(11));
+        root.addView(filterHeading);
 
         HorizontalScrollView filterScroll = new HorizontalScrollView(this);
         filterScroll.setHorizontalScrollBarEnabled(false);
@@ -148,17 +175,17 @@ public final class DiscoverActivity extends Activity {
         filters.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         filters.setPadding(dp(12), 0, dp(12), 0);
         filterScroll.addView(filters);
-        root.addView(filterScroll, new LinearLayout.LayoutParams(-1, dp(54)));
+        root.addView(filterScroll, new LinearLayout.LayoutParams(-1, dp(53)));
 
-        status = label(getString(R.string.discovery_loading), 12, MUTED, false);
-        status.setPadding(dp(18), dp(10), dp(18), dp(8));
+        status = label(getString(R.string.discovery_loading), 13, MUTED, false);
+        status.setPadding(dp(18), dp(16), dp(18), dp(12));
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         root.addView(status);
 
         ScrollView scroll = new ScrollView(this);
         results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
-        results.setPadding(dp(16), dp(2), dp(16), dp(20));
+        results.setPadding(dp(16), dp(2), dp(16), dp(22));
         scroll.setFillViewport(true);
         scroll.addView(results);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -281,8 +308,11 @@ public final class DiscoverActivity extends Activity {
         Button chip = new Button(this);
         chip.setText(title);
         chip.setAllCaps(false);
-        chip.setTextSize(12);
-        chip.setMinHeight(dp(40));
+        chip.setTextSize(13);
+        chip.setSingleLine(true);
+        chip.setMinWidth(0);
+        chip.setMinHeight(0);
+        chip.setPadding(dp(17), 0, dp(17), 0);
         chip.setBackgroundTintList(ColorStateList.valueOf(
             selectedCategory == id ? VIOLET : Color.WHITE));
         chip.setTextColor(selectedCategory == id ? Color.WHITE : INK);
@@ -326,21 +356,36 @@ public final class DiscoverActivity extends Activity {
         for (int i = 0; i < displayed; i++) {
             Service service = matched.get(i);
             LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(16), dp(14), dp(16), dp(14));
-            card.setBackground(rounded(Color.WHITE, 15));
-            TextView name = label(service.title, 16, INK, true);
-            card.addView(name);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setPadding(dp(14), dp(13), dp(14), dp(13));
+            card.setBackground(MinjazStyle.surface(this, Color.WHITE, 17, true));
+            card.setElevation(dp(1));
+            View icon = MinjazStyle.icon(this, MinjazStyle.BRIEFCASE, VIOLET);
+            icon.setBackground(MinjazStyle.surface(this, MinjazStyle.PALE, 13, false));
+            card.addView(icon, new LinearLayout.LayoutParams(dp(47), dp(47)));
+
+            LinearLayout copy = new LinearLayout(this);
+            copy.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1);
+            copyParams.setMargins(dp(13), 0, dp(10), 0);
+            card.addView(copy, copyParams);
+
+            TextView name = label(service.title, 15, INK, true);
+            name.setMaxLines(3);
+            copy.addView(name);
             TextView category = label(categoryNames.get(service.categoryId), 12, MUTED, false);
             LinearLayout.LayoutParams catParams = new LinearLayout.LayoutParams(-1, -2);
-            catParams.topMargin = dp(6);
-            card.addView(category, catParams);
+            catParams.topMargin = dp(5);
+            copy.addView(category, catParams);
+            View chevron = MinjazStyle.icon(this, MinjazStyle.CHEVRON, MUTED);
+            card.addView(chevron, new LinearLayout.LayoutParams(dp(22), dp(24)));
             card.setContentDescription(service.title + "، " + categoryNames.get(service.categoryId));
             card.setFocusable(true);
             card.setClickable(true);
             card.setOnClickListener(v -> openService(service));
             LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
-            cardParams.bottomMargin = dp(10);
+            cardParams.bottomMargin = dp(11);
             results.addView(card, cardParams);
         }
         if (matched.size() > displayed) {
@@ -393,7 +438,7 @@ public final class DiscoverActivity extends Activity {
         view.setTextSize(size);
         view.setTextColor(color);
         view.setGravity(Gravity.START);
-        if (bold) view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        MinjazStyle.text(view, bold);
         return view;
     }
 
