@@ -28,3 +28,12 @@ Release engineering v0.6 adds a non-debuggable release build and generates unsig
 Android v0.9 aligns the wrapper with MINJAZ Work Center v31, keeps external navigation isolated, downloads HTTPS attachments (including signed storage URLs) through Android DownloadManager, and shows the native retry screen for main-frame HTTP errors.
 
 Android v0.10 adds a main-frame load watchdog, safer network recovery after resume, WebView renderer recovery, smarter back navigation (close overlays → home → native history), resize/orientation stability, and stricter artifact version checks.
+
+### Account, privacy and deletion (Android 0.17 beta)
+
+The native **حسابي والخصوصية** button opens first-party login, profile,
+privacy policy and the existing authenticated account-deletion request page.
+It never sends, stores or logs credentials. Account deletion is **requested**
+from the protected backend and is not silently executed by tapping the menu.
+All pages retain the original WebView session, verified email checks and
+backend permissions. Nothing here enables production payments.
