@@ -245,14 +245,16 @@ struct MinjazNativeScreen: View {
     let openWorkflow: (String) -> Void
     let chooseSection: (NativeSection) -> Void
 
-    private let accent = Color(red: 101/255, green: 88/255, blue: 245/255)
+    private let accent = MinjazUI.primary
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(section.title).font(.system(size: 24, weight: .heavy))
+                        Text(section.title)
+                            .font(MinjazUI.heading(23))
+                            .foregroundStyle(MinjazUI.ink)
                         if let account = model.account {
                             Text(account.name + " · " + (account.role == "freelancer" ? "مستقل" : "عميل"))
                                 .foregroundStyle(.secondary).font(.subheadline)
@@ -311,8 +313,8 @@ struct MinjazNativeScreen: View {
                                             .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
                                         VStack(alignment: .leading, spacing: 6) {
                                             HStack {
-                                                Text(record.title).font(.subheadline.bold())
-                                                    .lineLimit(2).foregroundStyle(.primary)
+                                                Text(record.title).font(MinjazUI.body(15, weight: .semibold))
+                                                    .lineLimit(2) .foregroundStyle(MinjazUI.ink)
                                                 if record.pending {
                                                     Circle().fill(accent).frame(width: 8, height: 8)
                                                 }
@@ -338,7 +340,7 @@ struct MinjazNativeScreen: View {
                                             .font(.caption).foregroundStyle(.tertiary)
                                     }
                                     .padding(15)
-                                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                                     .background(.white, in: RoundedRectangle(cornerRadius: 18))
                                 }.buttonStyle(.plain)
                             }
                         }
@@ -347,7 +349,7 @@ struct MinjazNativeScreen: View {
             }
             .padding(16)
         }
-        .background(Color(red: 0.97, green: 0.97, blue: 0.98))
+        .background(MinjazUI.canvas)
         .refreshable { await model.load(section) }
         .task(id: section.rawValue) { await model.load(section) }
     }
