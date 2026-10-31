@@ -121,6 +121,7 @@ jobs:
           xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
           test -f ios-minjaz/Minjaz.xcodeproj/project.pbxproj
           plutil -lint ios-minjaz/Sources/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' ios-minjaz/Sources/Info.plist)" = '$(MINJAZ_BASE_URL)'
       - name: Build for iPhone Simulator without publishing or signing
         shell: bash
         run: |
@@ -133,6 +134,7 @@ jobs:
           test -d /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
             /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist | grep -q sa.minjaz.preview
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist)" = "https://beta.minjazapp.com"
           cd /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator
           zip -qr /tmp/MINJAZ-iPhone-simulator.app.zip Minjaz.app
           shasum -a 256 /tmp/MINJAZ-iPhone-simulator.app.zip > /tmp/MINJAZ-iPhone-simulator.sha256
