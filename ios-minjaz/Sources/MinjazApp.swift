@@ -46,9 +46,12 @@ enum MobileTab: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @StateObject private var browser = MinjazBrowser()
     @StateObject private var catalog = MinjazCatalog()
+    @StateObject private var native = MinjazNativeWorkspace()
     @State private var selected: MobileTab = .discover
     @State private var sharing = false
     @State private var showingAccountActions = false
+    @State private var showingWorkflow = false
+    @State private var accountSection: NativeSection = .account
 
     private let blue = Color(red: 101/255, green: 88/255, blue: 245/255)
     var body: some View {
@@ -64,7 +67,13 @@ struct ContentView: View {
                 }
                 Spacer()
                 if selected != .discover {
-                    Button { browser.reload() } label: {
+                    Button {
+                        if selected == .services {
+                            Task { await catalog.retry() }
+                        } else {
+                            Task { await native.load(currentNativeSection) }
+                        }
+                    } label: {
                         Image(systemName: "arrow.clockwise").frame(width: 37, height: 37)
                     }
                     .accessibilityLabel("تحديث الصفحة")
@@ -83,40 +92,19 @@ struct ContentView: View {
             .background(.white)
 
             Group {
-                if selected == .discover {
+                if selected == .discover || selected == .services {
                     CatalogView(catalog: catalog) { service in
-                        // Preserve the category and specialty selected natively.
-                        // The web workspace checks these IDs against its live API,
-                        // and the server still validates every actual submission.
                         guard service.id > 0, service.category_id > 0 else { return }
-                        browser.open(path: "/workspace?category_id=\(service.category_id)&service_id=\(service.id)#tasks-section")
                         selected = .workspace
+                        openWorkflow("/workspace?category_id=\(service.category_id)&service_id=\(service.id)#tasks-section")
                     }
                 } else {
-                    ZStack(alignment: .top) {
-                        MinjazWebView(browser: browser)
-                        if browser.isLoading && browser.error == nil {
-                            // Small top progress bar, rather than a blocking modal.
-                            // Login forms and task drafts remain visible while a
-                            // first-party page finishes loading.
-                            ProgressView()
-                                .progressViewStyle(.linear)
-                                .tint(blue)
-                                .padding(.horizontal, 8)
-                                .accessibilityLabel("جاري تحميل الصفحة")
-                        }
-                        if let error = browser.error {
-                            VStack(spacing: 16) {
-                                Image(systemName: "wifi.exclamationmark").font(.largeTitle)
-                                Text(error).multilineTextAlignment(.center)
-                                Button("إعادة المحاولة") { browser.reload() }
-                                    .buttonStyle(.borderedProminent)
-                            }
-                            .padding(30)
-                            .background(.white, in: RoundedRectangle(cornerRadius: 18))
-                            .padding(20)
-                        }
-                    }
+                    MinjazNativeScreen(model: native, section: currentNativeSection,
+                                      openWorkflow: openWorkflow,
+                                      chooseSection: { section in
+                        accountSection = section
+                        selected = .account
+                    })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -124,12 +112,8 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 ForEach(MobileTab.allCases) { tab in
                     Button {
-                        // Always restore the profile if the user visited privacy or
-                        // account-deletion while already on the "حسابي" tab.
-                        if selected != tab || tab == .account {
-                            selected = tab
-                            if tab != .discover { browser.open(path: tab.path) }
-                        }
+                        selected = tab
+                        if tab == .account { accountSection = .account }
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: tab.symbol)
@@ -178,6 +162,37 @@ struct ContentView: View {
                 openAccountPage("/account-deletion")
             }
         }
+        .sheet(isPresented: $showingWorkflow, onDismiss: {
+            Task { await native.load(currentNativeSection) }
+        }) {
+            NavigationStack {
+                ZStack(alignment: .top) {
+                    MinjazWebView(browser: browser)
+                    if browser.isLoading {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                            .tint(blue)
+                    }
+                    if let error = browser.error {
+                        VStack(spacing: 16) {
+                            Image(systemName: "wifi.exclamationmark").font(.largeTitle)
+                            Text(error).multilineTextAlignment(.center)
+                            Button("إعادة المحاولة") { browser.reload() }
+                                .buttonStyle(.borderedProminent)
+                        }
+                        .padding(22)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 18))
+                    }
+                }
+                .navigationTitle("إجراء في مِنجاز")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("إغلاق") { showingWorkflow = false }
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $sharing) {
             MinjazShareSheet(items: [browser.webView.url ?? browser.origin])
         }
@@ -187,9 +202,23 @@ struct ContentView: View {
         .task { await catalog.load(origin: browser.origin) }
     }
 
-    private func openAccountPage(_ path: String) {
+    private var currentNativeSection: NativeSection {
+        switch selected {
+        case .workspace: return .projects
+        case .orders: return .orders
+        case .account: return accountSection
+        case .discover, .services: return .projects
+        }
+    }
+
+    private func openWorkflow(_ path: String) {
         browser.open(path: path)
+        showingWorkflow = true
+    }
+
+    private func openAccountPage(_ path: String) {
         selected = .account
+        openWorkflow(path)
     }
 }
 
