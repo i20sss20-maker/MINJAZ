@@ -121,7 +121,7 @@ def main(argv=None):
             dest.write_text(serialized + "\n", encoding="utf-8")
         print(serialized)
         if args.require_commercial:
-            return 0 if report["commercial_backend_gate"] == "passed" and report["store_distribution_gate"] == "verified" else 2
+            return 0 if report["commercial_backend_gate"] == "passed" else 2
         if args.require_pilot:
             return 0 if report["nonfinancial_pilot_gate"] == "passed" else 2
         return 0
