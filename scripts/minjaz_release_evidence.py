@@ -97,7 +97,12 @@ def summarize(base, readiness, utc_now=None):
         "note": "This probe does not verify Apple/Google store approval, real-device QA, contracts, bank settlement or compliance.",
     }
 
-def make_report(base, check=probe.run):
+def make_report(base, check=None):
+    # Resolve the dependency on each call so CI can inject a read-only stub
+    # without invoking external HTTP while exercising negative test cases.
+    # Production behavior still uses the real GET-only probe.
+    if check is None:
+        check = probe.run
     # Includes HTTPS origin validation, DB health, public page routes, email
     # contract, role isolation and live category+service catalog; no writes.
     readiness = check(base, commercial=False)
