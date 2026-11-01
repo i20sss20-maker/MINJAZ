@@ -45,3 +45,15 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_digital*.py' -v
       - name: Inspect the already deployed sandbox in read-only mode
         run: python scripts/check_minjaz_launch_readiness.py
+      - name: Verify strict release-decision evidence without publishing or activating payments
+        run: |
+          python -m unittest tests.test_digital_release_evidence -v
+          python -m scripts.minjaz_release_evidence --output minjaz-release-evidence.json
+      - name: Preserve non-sensitive beta and launch blockers in CI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-launch-gates-read-only
+          path: minjaz-release-evidence.json
+          retention-days: 14
+          if-no-files-found: ignore
