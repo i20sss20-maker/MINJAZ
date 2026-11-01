@@ -40,9 +40,15 @@ jobs:
           grep -q "kyc_managed_by_provider" server.py
           grep -qi "<!doctype html" public/index.html
           ! grep -Eq 'find database/migrations.*wc -l\)" -eq [1-9][0-9]*' Dockerfile
-          cat server.parts/part*.txt > /tmp/minjaz-server-from-parts.py
-          cmp -s server.py /tmp/minjaz-server-from-parts.py
-          echo "SERVER_PARTS_EXACT_MATCH_OK"
+          # server.py is the deployed source of truth. Legacy server.parts are archival;
+          # comparing them with the direct source incorrectly blocks new secure changes.
+          python3 - <<'PY'
+          from pathlib import Path
+          docker = Path("Dockerfile").read_text("utf-8")
+          assert Path("server.py").is_file()
+          assert "COPY server.parts" not in docker
+          print("MINJAZ_DIRECT_SOURCE_LAYOUT_OK")
+          PY
 
       - name: Verify auth and demo safety invariants
         run: |
@@ -270,6 +276,9 @@ jobs:
           set -euo pipefail
           find tests -maxdepth 1 -name '*.py' -print0 | xargs -0 -r python3 -m py_compile
 
+      - name: Refuse CI admin fixture outside isolated test environments
+        run: python3 -m unittest discover -s tests -p 'test_ci_admin_fixture.py' -v
+
       - name: Verify navigation loading never blocks UI
         run: node tests/navigation_loading.test.cjs
 
@@ -303,6 +312,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -407,6 +417,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -501,6 +512,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: mock
@@ -627,6 +639,7 @@ jobs:
       DATABASE_URL: postgresql://minjaz:minjaz@127.0.0.1:5432/minjaz
       AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       APP_ENV: beta
+      E2E_CI_ADMIN_FIXTURE: "1"
       SMS_MODE: dev
       DEV_OTP: "1234"
       PAYMENT_MODE: adapter

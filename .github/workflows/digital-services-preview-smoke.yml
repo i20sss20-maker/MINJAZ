@@ -1,0 +1,141 @@
+name: MINJAZ Digital Services Preview Smoke
+
+on:
+  push:
+    branches:
+      - feature/digital-services-geidea-sandbox
+    paths:
+      - 'server.py'
+      - 'minjaz_account_auth.py'
+      - 'minjaz_email_auth.py'
+      - 'public/minjaz-account-registration-v1.js'
+      - 'public/index.html'
+      - 'scripts/test_minjaz_accounts_postgres.py'
+      - 'Dockerfile'
+      - 'minjaz_digital_services.py'
+      - 'minjaz_email_auth.py'
+      - 'public/index.html'
+      - 'minjaz_digital_workflow.py'
+      - 'public/digital-services*.html'
+      - 'public/index.html'
+      - 'public/minjaz-unified-ui-v1.css'
+      - 'scripts/smoke_digital_services.py'
+      - 'scripts/seed_digital_services_preview.py'
+      - 'scripts/test_digital_postgres_integration.py'
+      - 'scripts/test_privacy_storage_postgres.py'
+      - 'minjaz_privacy_storage.py'
+      - 'tests/test_digital*.py'
+      - 'database/migrations/0*.sql'
+      - '.github/workflows/digital-services-preview-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minjaz-digital-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/feature/digital-services-geidea-sandbox'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate new account UI JavaScript syntax
+        run: node --check public/minjaz-account-registration-v1.js
+      - name: Validate frontend JavaScript syntax
+        run: |
+          python - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          for name in ("public/digital-services.html", "public/digital-services-admin.html"):
+              html=Path(name).read_text(encoding="utf-8")
+              match=re.search(r"<script>(.*?)</script>",html,re.S)
+              if not match: raise RuntimeError(f"script tag missing in {name}")
+              subprocess.run(["node","--check"],input=match.group(1),text=True,check=True)
+              print("PASS JavaScript syntax:",name)
+          PY
+      - name: Validate all main-app JavaScript blocks
+        run: |
+          python - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          html=Path("public/index.html").read_text(encoding="utf-8")
+          parts=re.findall(r'<script[^>]*>(.*?)</script>',html,re.S|re.I)
+          checked=0
+          for index,code in enumerate(parts,1):
+              if not code.strip(): continue
+              subprocess.run(["node","--check"],input=code,text=True,check=True)
+              checked+=1
+          if checked < 35: raise RuntimeError("Main app scripts unexpectedly missing")
+          print(f"PASS {checked} main-app inline JavaScript blocks")
+          PY
+      - name: Validate preview backend unit tests
+        run: |
+          python -m pip install --disable-pip-version-check psycopg2-binary
+          python -m unittest discover -s tests -p 'test_digital*.py' -v
+      - name: Validate deployed preview read-only routes
+        env:
+          MINJAZ_SMOKE_URL: https://minjaz-digital-services-api-sandbox.up.railway.app
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            echo "Read-only preview smoke attempt ${attempt}/6"
+            if python scripts/smoke_digital_services.py; then
+              echo "All deployed preview checks passed"
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 20; fi
+          done
+          echo "Deployed preview did not pass smoke checks"
+          exit 1
+
+  database-contract:
+    if: github.ref == 'refs/heads/feature/digital-services-geidea-sandbox'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: digital_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d digital_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PostgreSQL driver
+        run: python -m pip install --disable-pip-version-check psycopg2-binary
+      - name: Test real PostgreSQL migrations and digital-services lifecycle
+        env:
+          DIGITAL_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/digital_test
+        run: |
+          python scripts/test_digital_postgres_integration.py
+      - name: Verify private object erasure outbox against isolated PostgreSQL
+        env:
+          DIGITAL_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/digital_test
+        run: python scripts/test_privacy_storage_postgres.py
+      - name: Verify full registration and password reset against isolated PostgreSQL
+        env:
+          MINJAZ_ACCOUNT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/account_test
+        run: python scripts/test_minjaz_accounts_postgres.py
+      - name: Confirm successful contract test via read-only preview healthcheck
+        run: |
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-delay 2 --max-time 15 \
+            --user-agent "MINJAZ-postgres-contract/${GITHUB_SHA}" \
+            https://minjaz-digital-services-api-sandbox.up.railway.app/health >/dev/null

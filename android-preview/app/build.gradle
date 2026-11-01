@@ -16,14 +16,16 @@ android {
         preview {
             dimension "distribution"
             applicationId "sa.minjaz.preview"
-            versionCode 13
-            versionName "0.13-back-reliability"
+            versionCode 21
+            versionName "0.21-native-discovery-beta"
+            buildConfigField "String", "APP_URL", '"https://beta.minjazapp.com/workspace"'
         }
         production {
             dimension "distribution"
             applicationId "sa.minjaz.app"
             versionCode 14
             versionName "1.0.0-rc4"
+            buildConfigField "String", "APP_URL", '"https://minjaz-app-prod-production.up.railway.app"'
         }
     }
 

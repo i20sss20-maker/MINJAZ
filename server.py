@@ -29,6 +29,8 @@ RELEASE_COMMIT_SHORT=RELEASE_COMMIT[:12] if RELEASE_COMMIT else ''
 DEPLOYMENT_SERVICE=os.getenv('RAILWAY_SERVICE_NAME','').strip()
 DEPLOYMENT_ENVIRONMENT=os.getenv('RAILWAY_ENVIRONMENT_NAME','').strip()
 APP_ENV=os.getenv('APP_ENV','beta').strip().lower()
+# Disabled by default outside preview; enable only after verifying live email delivery.
+EMAIL_AUTH_REQUIRED=(APP_ENV=='preview' or os.getenv('EMAIL_AUTH_REQUIRED','0').strip()=='1')
 SESSION_TTL_DAYS=max(1,min(int(os.getenv('SESSION_TTL_DAYS','30')),365))
 LEGAL_TERMS_VERSION=os.getenv('LEGAL_TERMS_VERSION','2026-09-beta1')
 LEGAL_PRIVACY_VERSION=os.getenv('LEGAL_PRIVACY_VERSION','2026-09-beta1')
@@ -67,8 +69,23 @@ def _https_url(v):
 def production_blockers():
     blockers=[]
     if SECRET=='dev-secret-change-me' or len(SECRET)<32: blockers.append('AUTH_SECRET')
-    if SMS_MODE!='adapter' or not _https_url(SMS_WEBHOOK_URL) or len(SMS_WEBHOOK_BEARER)<16: blockers.append('SMS_ADAPTER')
+    from minjaz_email_auth import email_delivery_config
+    sms_ready=SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16
+    email_ready=email_delivery_config()['enabled']
+    if not EMAIL_AUTH_REQUIRED:
+        blockers.append('VERIFIED_EMAIL_POLICY')
+    if not os.getenv('ADMIN_EMAIL','').strip():
+        blockers.append('ADMIN_EMAIL')
+    if EMAIL_AUTH_REQUIRED and not email_ready:
+        blockers.append('EMAIL_PROVIDER')
+    elif not sms_ready and not email_ready:
+        blockers.append('AUTH_PROVIDER')
     if PAYMENT_MODE!='adapter' or not _https_url(PAYMENT_CREATE_URL) or len(PAYMENT_ADAPTER_BEARER)<16 or len(PAYMENT_WEBHOOK_SECRET)<32: blockers.append('PAYMENT_ADAPTER')
+    # A generic payment gateway is not a marketplace payout adapter. This code
+    # currently supports only manually updating payout-request statuses; no
+    # verified transfer receipt or split-settlement webhook has been implemented.
+    # Never approve a live financial launch using a manual "paid" status.
+    blockers.append('MARKETPLACE_PAYOUT_SETTLEMENT_NOT_IMPLEMENTED')
     if STORAGE_MODE!='railway_bucket' or not BUCKET_READY: blockers.append('STORAGE_MODE')
     if KYC_MODE!='adapter' or not _https_url(KYC_START_URL) or len(KYC_ADAPTER_BEARER)<16 or len(KYC_WEBHOOK_SECRET)<32: blockers.append('KYC_ADAPTER')
     if DB_PERSISTENCE!='persistent': blockers.append('DB_PERSISTENCE')
@@ -270,9 +287,13 @@ def opportunity_relevance(task, skills):
             category_hit=True
         if service and (sk in service or service in sk):
             service_hit=True
-    score=25
+    # A zero match must stay zero: no invented "recommended" label for an
+    # unrelated task. This is lexical similarity, not eligibility verification.
+    if not matched and not category_hit and not service_hit:
+        return 0, []
+    score=20
     if category_hit: score+=25
-    if service_hit: score+=10
+    if service_hit: score+=15
     score+=min(40,len(matched)*20)
     return min(score,95), matched[:3]
 
@@ -1800,7 +1821,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
     try:
         c.autocommit=False
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""select pr.*,u.role,u.deleted_at,u.phone original_phone
+            cur.execute("""select pr.*,u.role,u.deleted_at,u.phone original_phone,u.email original_email
                            from privacy_requests pr join users u on u.id=pr.user_id
                            where pr.id=%s for update""",(int(pid),))
             pr=cur.fetchone()
@@ -1811,10 +1832,13 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             if pr.get('role')=='admin':
                 c.rollback();return None,dict(pr),False,{},'admin_deletion_requires_security_review'
             if pr.get('deletion_executed_at') or pr.get('deleted_at'):
-                row=dict(pr);row['status']='completed';row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
+                # The database identity may be erased while S3 deletion is
+                # still pending. Never fabricate a completed privacy request.
+                row=dict(pr);row['deletion_executed_at']=pr.get('deletion_executed_at') or pr.get('deleted_at')
                 c.rollback();return {k:as_json(v) for k,v in row.items()},dict(pr),False,{},None
 
             uid=int(pr['user_id']); original_phone=str(pr.get('original_phone') or '')
+            original_email=str(pr.get('original_email') or '').strip().lower()
             blockers={}
             checks=[
                 ('active_orders',"""select count(*)::int n from orders where (client_id=%s or freelancer_id=%s)
@@ -1832,8 +1856,20 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             if blockers:
                 c.rollback();return None,dict(pr),False,blockers,'account_deletion_blocked'
 
-            cur.execute("select storage_key from attachments where uploaded_by=%s and storage_key is not null",(uid,))
-            storage_keys=[str(x['storage_key']) for x in cur.fetchall() if x.get('storage_key')]
+            from minjaz_privacy_storage import normalize_object_keys,enqueue_deletions
+            # Include unconsumed upload intents: bytes can exist in the private
+            # bucket even before being linked to an attachment.
+            cur.execute("""select storage_key object_key from attachments
+                           where uploaded_by=%s and storage_key is not null
+                           union select object_key from upload_intents where user_id=%s""",(uid,uid))
+            try:
+                storage_keys=normalize_object_keys([x['object_key'] for x in cur.fetchall()],
+                                                   uid,BUCKET_STORAGE)
+            except ValueError:
+                c.rollback();return None,dict(pr),False,{'unsafe_storage_keys':True},'account_deletion_blocked'
+            if storage_keys and (STORAGE_MODE!='railway_bucket' or not BUCKET_READY):
+                c.rollback();return None,dict(pr),False,{'storage_unavailable':True},'account_deletion_blocked'
+            enqueue_deletions(cur,int(pid),uid,storage_keys)
 
             cur.execute("delete from attachments where uploaded_by=%s",(uid,))
             cur.execute("delete from upload_intents where user_id=%s",(uid,))
@@ -1849,6 +1885,9 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             cur.execute("delete from account_activity where user_id=%s",(uid,))
             cur.execute("delete from legal_acceptances where user_id=%s",(uid,))
             cur.execute("delete from kyc_adapter_events where user_id=%s",(uid,))
+            cur.execute("delete from account_email_actions where user_id=%s",(uid,))
+            if original_email:
+                cur.execute("delete from email_login_challenges where email=%s",(original_email,))
             cur.execute("delete from task_idempotency_keys where client_id=%s",(uid,))
             cur.execute("delete from message_idempotency_keys where sender_id=%s",(uid,))
             cur.execute("delete from order_action_idempotency_keys where actor_id=%s",(uid,))
@@ -1872,6 +1911,7 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
                            admin_reply=null,status='closed',updated_at=now() where user_id=%s""",(uid,))
             cur.execute("update privacy_requests set details=null where user_id=%s and id<>%s",(uid,int(pid)))
             cur.execute("update operational_events set user_id=null,meta='{}'::jsonb where user_id=%s",(uid,))
+            cur.execute("delete from freelancer_marketplace_specialties where user_id=%s",(uid,))
             cur.execute("""update freelancer_profiles set bio=null,skills='{}'::text[],rating=0,completed_tasks=0,
                            on_time_rate=100,avg_response_minutes=null,is_available=false,kyc_status='rejected',
                            kyc_provider_reference=null,kyc_verification_url=null,kyc_started_at=null where user_id=%s""",(uid,))
@@ -1881,12 +1921,17 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
             cur.execute("delete from sessions where user_id=%s",(uid,))
             cur.execute("delete from user_roles where user_id=%s",(uid,))
             deleted_phone='deleted-user-'+str(uid)+'@minjaz.invalid'
-            cur.execute("""update users set phone=%s,name='مستخدم محذوف',is_verified=false,deleted_at=now()
+            cur.execute("""update users set phone=%s,email=null,password_hash=null,email_verified_at=null,
+                           name='مستخدم محذوف',is_verified=false,deleted_at=now()
                            where id=%s""",(deleted_phone,uid))
             note=str(admin_note or '').strip()[:1200] or 'تم تنفيذ حذف الحساب وإخفاء الهوية وفق سياسة الخصوصية.'
-            cur.execute("""update privacy_requests set status='completed',details=null,admin_note=%s,
-                           resolved_at=coalesce(resolved_at,now()),deletion_executed_at=coalesce(deletion_executed_at,now())
-                           where id=%s returning *""",(note,int(pid)))
+            # The user is de-identified, but a request with private files must
+            # remain in_progress until S3 has CONFIRMED their removal.
+            final_status='in_progress' if storage_keys else 'completed'
+            cur.execute("""update privacy_requests set status=%s,details=null,admin_note=%s,
+                           resolved_at=case when %s='completed' then coalesce(resolved_at,now()) else null end,
+                           deletion_executed_at=coalesce(deletion_executed_at,now())
+                           where id=%s returning *""",(final_status,note,final_status,int(pid)))
             result=dict(cur.fetchone())
         c.commit()
     except Exception:
@@ -1894,11 +1939,8 @@ def execute_account_deletion(pid,admin_id,admin_note=None):
     finally:
         c.close()
 
-    if BUCKET_READY:
-        for key in storage_keys:
-            try:BUCKET_STORAGE.delete(key)
-            except Exception as exc:
-                operational_event('warning','privacy','storage_delete_failed',repr(exc),None,None,'privacy_request',pid,{'storage_key_hash':sha(key)[:16]})
+    # Durable, retryable queue is drained by a guarded preview worker. A
+    # failed S3 DELETE never silently turns a privacy request into completed.
     return {k:as_json(v) for k,v in result.items()},dict(pr),True,{},None
 
 def update_privacy_request(pid,status,admin_note=None):
@@ -2006,18 +2048,26 @@ def session_token_from_headers(headers):
         raw=h[7:].strip()
         if raw:return raw,'bearer'
     cookie=str(headers.get('Cookie') or '')
-    m=re.search(r'(?:^|;\\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
+    m=re.search(r'(?:^|;\s*)'+re.escape(SESSION_COOKIE_NAME)+r'=([A-Fa-f0-9]{64})(?:;|$)',cookie)
     return (m.group(1),'cookie') if m else ('','')
 
 def auth(headers):
     raw,transport=session_token_from_headers(headers)
     if not raw:return None
-    row=q("""select u.id,u.phone,u.name,u.role,u.is_verified,
+    row=q("""select u.id,u.phone,u.email,u.email_verified_at,u.password_hash,u.name,u.role,u.is_verified,
                     s.id session_id,s.created_at session_created_at,s.expires_at session_expires_at,
                     s.last_seen_at session_last_seen_at,s.device_label session_device_label
              from sessions s join users u on u.id=s.user_id
              where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() and u.deleted_at is null limit 1""",
           (sha(raw+SECRET),), 'one')
+    if row and EMAIL_AUTH_REQUIRED:
+        from minjaz_email_auth import normalize_email
+        if (not row.get('email_verified_at') or not row.get('phone')
+            or not row.get('password_hash') or len(str(row.get('name') or '').strip())<2):
+            return None
+        configured_admin=normalize_email(os.getenv('ADMIN_EMAIL',''))
+        if row.get('role')=='admin' and (not configured_admin or row.get('email')!=configured_admin):
+            return None
     if row:
         row['_auth_transport']=transport
         try:
@@ -2305,14 +2355,83 @@ class H(BaseHTTPRequestHandler):
     def route(self,method):
         try:
             parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
+            if p.startswith('/api/digital-services/') and (p.endswith('/deliverables') or '/deliverables/' in p):
+                from minjaz_digital_deliverables import dispatch as digital_deliverables_dispatch
+                actor = auth(self.headers)
+                if method in ('POST','DELETE'):
+                    if method == 'POST' and not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415, {'error':'json_required'})
+                    if actor and actor.get('_auth_transport') == 'cookie':
+                        origin = self.headers.get('Origin','').rstrip('/')
+                        allowed = set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403, {'error':'origin_not_allowed'})
+                payload = self.body() if method == 'POST' else None
+                status, response = digital_deliverables_dispatch(method, p, query, payload, actor, db_connect)
+                return self.sendj(status, response)
+            if p.startswith('/api/digital-services/admin/') or (p.startswith('/api/digital-services/orders/') and p.rsplit('/',1)[-1] in ('revisions','complete','cancel')):
+                from minjaz_digital_workflow import dispatch as digital_workflow_dispatch
+                actor = auth(self.headers)
+                if method in ('POST','PATCH'):
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415, {'error':'json_required'})
+                    if actor and actor.get('_auth_transport') == 'cookie':
+                        origin = self.headers.get('Origin','').rstrip('/')
+                        allowed = set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403, {'error':'origin_not_allowed'})
+                payload = self.body() if method in ('POST','PATCH') else None
+                status, response = digital_workflow_dispatch(method,p,query,payload,actor,db_connect)
+                return self.sendj(status,response)
+            if p in ('/api/digital-services/catalog', '/api/digital-services/activity', '/api/digital-services/notifications', '/api/digital-services/notifications/read', '/api/digital-services/orders') or p.startswith('/api/digital-services/orders/'):
+                from minjaz_digital_services import dispatch as digital_services_dispatch
+                actor = auth(self.headers) if p != '/api/digital-services/catalog' else None
+                if method in ('POST','PATCH'):
+                    # Browser cookie sessions require an allowed same-origin request.
+                    # Reject form submissions and cross-origin writes.
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415, {'error':'json_required'})
+                    if actor and actor.get('_auth_transport') == 'cookie':
+                        origin = self.headers.get('Origin','').rstrip('/')
+                        allowed = set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL: allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403, {'error':'origin_not_allowed'})
+                payload = self.body() if method in ('POST','PATCH') else None
+                status, response = digital_services_dispatch(method, p, query, payload, actor, db_connect)
+                return self.sendj(status, response)
+            if p=='/api/v1/freelancer/specialties':
+                from minjaz_marketplace_specialties import dispatch as specialty_dispatch
+                actor=auth(self.headers)
+                if method=='PATCH':
+                    if not self.headers.get('Content-Type','').lower().startswith('application/json'):
+                        return self.sendj(415,{'error':'json_required'})
+                    if actor and actor.get('_auth_transport')=='cookie':
+                        origin=self.headers.get('Origin','').rstrip('/')
+                        allowed=set(CORS_ORIGINS)
+                        if PUBLIC_BASE_URL:allowed.add(PUBLIC_BASE_URL)
+                        if not origin or origin not in allowed:
+                            return self.sendj(403,{'error':'origin_not_allowed'})
+                payload=self.body() if method=='PATCH' else None
+                status,response=specialty_dispatch(method,p,payload,actor,db_connect)
+                return self.sendj(status,response)
             if p=='/health':
                 started=datetime.now(); now=q('select now() now',(), 'one')['now']; latency=max(0,int((datetime.now()-started).total_seconds()*1000)); return self.sendj(200,{'ok':True,'service':'minjaz-python-unified','database':True,'database_latency_ms':latency,'payment_mode':PAYMENT_MODE,'push_mode':PUSH_MODE,'environment':APP_ENV,'now':now,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='GET' and p=='/readiness':
                 checks=[
                     {'key':'app_environment','ok':APP_ENV=='production','value':APP_ENV,'required':True},
                     {'key':'database_persistence','ok':DB_PERSISTENCE=='persistent','value':DB_PERSISTENCE,'required':True},
-                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':True},
+                    {'key':'sms_provider','ok':SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16,'value':SMS_MODE,'required':False},
+                    {'key':'email_provider','ok':__import__('minjaz_email_auth').email_delivery_config()['enabled'],'value':os.getenv('EMAIL_MODE','off'),'required':True},
+                    {'key':'non_test_email_sender','ok':bool(os.getenv('EMAIL_FROM','').strip()) and not os.getenv('EMAIL_FROM','').strip().lower().endswith('@resend.dev'),'value':'test_sender' if os.getenv('EMAIL_FROM','').strip().lower().endswith('@resend.dev') else ('configured' if os.getenv('EMAIL_FROM','').strip() else 'missing'),'required':True},
+                    {'key':'verified_email_policy','ok':EMAIL_AUTH_REQUIRED,'value':'enforced' if EMAIL_AUTH_REQUIRED else 'not_enforced','required':True},
+                    {'key':'admin_email_configured','ok':bool(os.getenv('ADMIN_EMAIL','').strip()),'value':'configured' if os.getenv('ADMIN_EMAIL','').strip() else 'missing','required':True},
+                    {'key':'authentication_provider','ok':(__import__('minjaz_email_auth').email_delivery_config()['enabled'] if EMAIL_AUTH_REQUIRED else ((SMS_MODE=='adapter' and _https_url(SMS_WEBHOOK_URL) and len(SMS_WEBHOOK_BEARER)>=16) or __import__('minjaz_email_auth').email_delivery_config()['enabled'])),'value':'email_required' if EMAIL_AUTH_REQUIRED else 'email_or_sms','required':True},
                     {'key':'payment_provider','ok':PAYMENT_MODE=='adapter' and _https_url(PAYMENT_CREATE_URL) and len(PAYMENT_ADAPTER_BEARER)>=16 and len(PAYMENT_WEBHOOK_SECRET)>=32,'value':PAYMENT_MODE,'required':True},
+                    {'key':'marketplace_payout_settlement','ok':False,'value':'no_verified_payout_adapter','required':True},
+                    {'key':'privacy_account_deletion','ok':False,'value':'storage_object_deletion_and_restore_drill_unverified','required':True},
                     {'key':'file_storage','ok':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'value':STORAGE_MODE+(' (configured)' if BUCKET_READY else ' (not configured)'),'required':True},
                     {'key':'kyc_provider','ok':KYC_MODE=='adapter' and _https_url(KYC_START_URL) and len(KYC_ADAPTER_BEARER)>=16 and len(KYC_WEBHOOK_SECRET)>=32,'value':KYC_MODE,'required':True},
                     {'key':'source_control','ok':SOURCE_CONTROL not in ('railway_env','none',''),'value':SOURCE_CONTROL,'required':True},
@@ -2326,8 +2445,15 @@ class H(BaseHTTPRequestHandler):
                     {'key':'launch_guard','ok':(not IS_PROD) or not production_blockers(),'value':'hard-enforced in production','required':False}
                 ]
                 commercial=all(x['ok'] for x in checks if x['required']); beta_keys=('database_persistence','source_control','legal_versions'); beta=all(x['ok'] for x in checks if x['key'] in beta_keys)
+                # Real, non-financial pilot is separate from a commercial launch.
+                # It requires actual identity, storage and approved legal readiness,
+                # and strictly forbids payment mode in this phase.
+                nonpayment_exclusions={'payment_provider','marketplace_payout_settlement'}
+                nonpayment_pilot=(PAYMENT_MODE=='off'
+                                 and all(x['ok'] for x in checks
+                                         if x['required'] and x['key'] not in nonpayment_exclusions))
                 status=503 if IS_PROD and not commercial else 200
-                return self.sendj(status,{'ready_for_beta':beta,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
+                return self.sendj(status,{'ready_for_beta':beta,'ready_for_nonfinancial_pilot':nonpayment_pilot,'ready_for_commercial_launch':commercial,'checks':checks,'version':VERSION,'release_commit':RELEASE_COMMIT_SHORT or None,'deployment_service':DEPLOYMENT_SERVICE or None,'deployment_environment':DEPLOYMENT_ENVIRONMENT or None})
             if method=='POST' and p=='/api/v1/integrations/kyc/webhook':
                 if KYC_MODE!='adapter' or len(KYC_WEBHOOK_SECRET)<32:return self.sendj(503,{'error':'kyc_webhook_not_configured'})
                 raw=self.raw_body(); supplied=str(self.headers.get('X-Minjaz-Signature') or '').strip().lower()
@@ -2382,12 +2508,69 @@ class H(BaseHTTPRequestHandler):
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read()
                 self._headers(200,'text/html; charset=utf-8')
                 return self.wfile.write(data)
-            if method=='GET' and p in ('/','/index.html'):
+            if method=='GET' and p=='/digital-services/admin':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                # Serve an unprivileged login shell even when signed out. All
+                # admin data/actions remain protected by role-checked APIs.
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services-admin.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/digital-services':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'digital-services.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            # /login is an alias of the real verified-email sign-in page;
+            # never send visitors to the obsolete OTP homepage.
+            if method=='GET' and p in ('/signup','/signup/','/login','/login/'):
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'signup.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p in ('/workspace','/workspace/'):
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'workspace.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/workspace-v1.js':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'workspace-v1.js'),'rb').read()
+                self._headers(200,'application/javascript; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p in ('/discover','/discover/'):
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'discover.html'),'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p in ('/classic','/classic/'):
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
                 data=open(HTML_PATH,'rb').read(); self._headers(200,'text/html; charset=utf-8'); return self.wfile.write(data)
+            if method=='GET' and p in ('/','/index.html'):
+                # Preview users should see the real-marketplace entrypoint, not the
+                # legacy demo-OTP shell. Preserve old UI at /classic for recovery.
+                front='discover.html' if APP_ENV=='preview' and p=='/' else None
+                data=open(os.path.join(os.path.dirname(HTML_PATH),front),'rb').read() if front else open(HTML_PATH,'rb').read()
+                self._headers(200,'text/html; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/manifest-workspace.webmanifest':
+                if APP_ENV!='preview': return self.sendj(404,{'error':'not_found'})
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'manifest-workspace.webmanifest'),'rb').read()
+                self._headers(200,'application/manifest+json; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/minjaz-signature.css':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-signature.css'),'rb').read()
+                self._headers(200,'text/css; charset=utf-8')
+                return self.wfile.write(data)
             if method=='GET' and p in ('/manifest.webmanifest','/sw.js','/icon.svg','/minjaz-files-demo-v302.js','/minjaz-work-center-v31.js','/minjaz-work-center-v31.css','/minjaz-push-v312.js','/minjaz-admin-provider-v315.js','/minjaz-release-v316.js'):
                 static_name={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/icon.svg':'icon.svg','/minjaz-files-demo-v302.js':'minjaz-files-demo-v302.js','/minjaz-work-center-v31.js':'minjaz-work-center-v31.js','/minjaz-work-center-v31.css':'minjaz-work-center-v31.css','/minjaz-push-v312.js':'minjaz-push-v312.js','/minjaz-admin-provider-v315.js':'minjaz-admin-provider-v315.js','/minjaz-release-v316.js':'minjaz-release-v316.js'}[p]
                 ctype={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/sw.js':'application/javascript; charset=utf-8','/icon.svg':'image/svg+xml; charset=utf-8','/minjaz-files-demo-v302.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.js':'application/javascript; charset=utf-8','/minjaz-work-center-v31.css':'text/css; charset=utf-8','/minjaz-push-v312.js':'application/javascript; charset=utf-8','/minjaz-admin-provider-v315.js':'application/javascript; charset=utf-8','/minjaz-release-v316.js':'application/javascript; charset=utf-8'}[p]
                 data=open(os.path.join(os.path.dirname(HTML_PATH),static_name),'rb').read(); self._headers(200,ctype); return self.wfile.write(data)
+            if method=='GET' and p=='/minjaz-account-registration-v1.js':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-account-registration-v1.js'),'rb').read()
+                self._headers(200,'application/javascript; charset=utf-8')
+                return self.wfile.write(data)
+            if method=='GET' and p=='/minjaz-unified-ui-v1.css':
+                data=open(os.path.join(os.path.dirname(HTML_PATH),'minjaz-unified-ui-v1.css'),'rb').read()
+                self._headers(200,'text/css; charset=utf-8')
+                return self.wfile.write(data)
             if p=='/favicon.ico': self._headers(204); return
             if method=='GET' and p=='/api/v1/storage/config':
                 return self.sendj(200,{'mode':STORAGE_MODE,'direct_uploads':STORAGE_MODE=='railway_bucket' and BUCKET_READY,'max_upload_bytes':BUCKET_STORAGE.max_bytes,'allowed_extensions':sorted(ALLOWED_TYPES)})
@@ -2422,9 +2605,95 @@ class H(BaseHTTPRequestHandler):
                     return self.sendj(409,{'error':'upload_verification_failed'})
                 q("update upload_intents set completed_at=now(),etag=%s where id=%s",(actual.get('etag') or None,intent['id']),None)
                 return self.sendj(200,{'attachment':{'name':intent['file_name'],'storage_key':key,'mime_type':intent['mime_type'],'size_bytes':intent['size_bytes']}})
-            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon from services s join categories c on c.id=s.category_id where s.active=true order by s.category_id,s.id')})
-            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories order by id')})
+            if method=='GET' and p=='/api/v1/services': return self.sendj(200,{'items':q('select s.id,s.slug,s.name_ar,s.description_ar,s.min_price,s.max_price,s.category_id,c.name_ar category_name,c.icon category_icon,s.client_guidance,s.freelancer_guidance from services s join categories c on c.id=s.category_id where s.active=true and c.is_active=true order by s.category_id,s.id limit 500')})
+            if method=='GET' and p=='/api/v1/categories': return self.sendj(200,{'items':q('select id,slug,name_ar,icon from categories where is_active=true order by id')})
+            if method=='GET' and p=='/api/v1/auth/account-status':
+                from minjaz_account_auth import secure_config,_shared_test_sender
+                return self.sendj(200,{'registration':'email_link','configured':secure_config(),
+                                      'enabled':EMAIL_AUTH_REQUIRED,
+                                      'test_sender_limited':_shared_test_sender(os.environ),
+                                      'admin_configured':bool(os.getenv('ADMIN_EMAIL','').strip()),
+                                      'fields':['name','email','phone','password']})
+            if method=='POST' and p in (
+                '/api/v1/auth/register','/api/v1/auth/confirm-email',
+                '/api/v1/auth/resend-verification','/api/v1/auth/login-email',
+                '/api/v1/auth/forgot-password','/api/v1/auth/reset-password'):
+                from minjaz_account_auth import (
+                    register,consume_email_link,resend_verification,login,
+                    request_password_reset,reset_password,secure_config)
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                if not EMAIL_AUTH_REQUIRED:
+                    return self.sendj(403,{'error':'email_registration_disabled'})
+                body=self.body();ready=secure_config()
+                if p=='/api/v1/auth/register':
+                    if not rate_limit_event('registration_ip',self.client_key(),6,3600):
+                        return self.sendj(429,{'error':'registration_rate_limited'})
+                    status,payload=register(body,db_connect,SECRET,ready=ready)
+                elif p=='/api/v1/auth/confirm-email':
+                    status,payload=consume_email_link(body,db_connect,SECRET,os.getenv('ADMIN_EMAIL',''))
+                elif p=='/api/v1/auth/resend-verification':
+                    if not rate_limit_event('resend_verification_ip',self.client_key(),15,3600):
+                        return self.sendj(429,{'error':'otp_rate_limited'})
+                    status,payload=resend_verification(body,db_connect,SECRET,ready=ready)
+                elif p=='/api/v1/auth/login-email':
+                    if not rate_limit_event('email_login_ip',self.client_key(),20,600):
+                        return self.sendj(429,{'error':'login_rate_limited'})
+                    status,payload=login(body,db_connect,SECRET,os.getenv('ADMIN_EMAIL',''),
+                                         SESSION_TTL_DAYS,str(self.headers.get('User-Agent') or ''),
+                                         self.client_ip() or '')
+                    if status==200:
+                        self.set_session_cookie(payload.pop('session_raw'))
+                        sid=payload.pop('session_id')
+                        log_account_activity(payload['user']['id'],'login',
+                                             'تسجيل دخول بكلمة مرور مع بريد مفعّل',sid,{'method':'email_password'})
+                elif p=='/api/v1/auth/forgot-password':
+                    if not rate_limit_event('password_recovery_ip',self.client_key(),15,3600):
+                        return self.sendj(429,{'error':'otp_rate_limited'})
+                    status,payload=request_password_reset(body,db_connect,SECRET,ready=ready)
+                else:
+                    if not rate_limit_event('password_reset_ip',self.client_key(),20,600):
+                        return self.sendj(429,{'error':'login_rate_limited'})
+                    status,payload=reset_password(body,db_connect,SECRET)
+                return self.sendj(status,payload)
+            if method=='GET' and p=='/api/v1/auth/email-status':
+                from minjaz_email_auth import email_delivery_config
+                cfg=email_delivery_config()
+                return self.sendj(200,{'method':'email','configured':cfg['enabled'],
+                     'mode':cfg['mode'],'admin_email_configured':bool(os.getenv('ADMIN_EMAIL','').strip())})
+            if method=='POST' and p=='/api/v1/auth/request-email-otp':
+                if EMAIL_AUTH_REQUIRED:
+                    return self.sendj(410,{'error':'email_registration_required'})
+                from minjaz_email_auth import request_email_otp,send_email_code,email_delivery_config
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                cfg=email_delivery_config()
+                status,payload=request_email_otp(self.body(),db_connect,SECRET,send_email_code,
+                    ip_allowed=rate_limit_event('email_otp_ip',self.client_key(),15,600),
+                    config_ready=cfg['enabled'])
+                return self.sendj(status,payload)
+            if method=='POST' and p=='/api/v1/auth/verify-email-otp':
+                if EMAIL_AUTH_REQUIRED:
+                    return self.sendj(410,{'error':'email_registration_required'})
+                from minjaz_email_auth import verify_email_otp,email_delivery_config
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                cfg=email_delivery_config()
+                status,payload=verify_email_otp(self.body(),db_connect,SECRET,
+                    os.getenv('ADMIN_EMAIL',''),cfg['enabled'],
+                    SESSION_TTL_DAYS,str(self.headers.get('User-Agent') or '')[:500],
+                    self.client_ip() or '')
+                if status==200:
+                    self.set_session_cookie(payload.pop('session_raw'))
+                    log_account_activity(payload['user']['id'],'login',
+                        'تسجيل دخول بالبريد الإلكتروني',payload.pop('session_id'),{'method':'email'})
+                return self.sendj(status,payload)
             if method=='POST' and p=='/api/v1/auth/request-otp':
+                if EMAIL_AUTH_REQUIRED:
+                    return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); phone=normalize_phone(b.get('phone',''))
                 if not phone:return self.sendj(400,{'error':'invalid_phone'})
                 if not rate_limit_event('otp_ip',self.client_key(),20,600):return self.sendj(429,{'error':'otp_source_rate_limited','retry_after_seconds':600})
@@ -2445,6 +2714,8 @@ class H(BaseHTTPRequestHandler):
                 q("insert into otp_challenges(challenge_id,phone,code_hash,purpose,expires_at) values(%s,%s,%s,'login',now()+interval '10 minutes')",(cid,phone,sha(cid+':'+code+':'+SECRET)),None)
                 return self.sendj(201,{'challenge_id':cid,'expires_in_seconds':600,'delivery':delivery,'code_length':len(code),**({'dev_code':code} if delivery=='development' else {})})
             if method=='POST' and p=='/api/v1/auth/verify-otp':
+                if EMAIL_AUTH_REQUIRED:
+                    return self.sendj(410,{'error':'email_registration_required'})
                 b=self.body(); cid=str(b.get('challenge_id','')); code=str(b.get('code','')); role=b.get('role') if b.get('role') in ('client','freelancer') else 'client'; name=str(b.get('name') or 'مستخدم').strip()[:120]
                 ch=q("select *,expires_at<=now() expired from otp_challenges where challenge_id=%s",(cid,), 'one')
                 if not ch:return self.sendj(404,{'error':'challenge_not_found'})
@@ -2453,6 +2724,10 @@ class H(BaseHTTPRequestHandler):
                 if ch['attempts']>=5:return self.sendj(429,{'error':'too_many_attempts'})
                 if sha(cid+':'+code+':'+SECRET)!=ch['code_hash']:
                     q('update otp_challenges set attempts=attempts+1 where id=%s',(ch['id'],),None); return self.sendj(401,{'error':'invalid_code'})
+                # Development OTP codes are returned by the API for demo clients.
+                # They must never unlock an administrative account on a public URL.
+                if ADMIN_PHONE and ch['phone']==ADMIN_PHONE and SMS_MODE!='adapter':
+                    return self.sendj(503,{'error':'admin_secure_sms_required'})
                 q('update otp_challenges set verified_at=now() where id=%s',(ch['id'],),None)
                 if ADMIN_PHONE and ch['phone']==ADMIN_PHONE: role='admin'
                 u=q('select * from users where phone=%s',(ch['phone'],), 'one')
@@ -2490,8 +2765,38 @@ class H(BaseHTTPRequestHandler):
                 if not roles:
                     q("insert into user_roles(user_id,role,enabled) values(%s,%s,true) on conflict(user_id,role) do update set enabled=true",(u['id'],u['role']),None); roles=enabled_roles(u['id'])
                 prof=q('select * from freelancer_profiles where user_id=%s',(u['id'],),'one') if 'freelancer' in roles else None
-                user={k:as_json(u.get(k)) for k in ('id','phone','name','role','is_verified')}; user['roles']=roles
+                user={k:as_json(u.get(k)) for k in ('id','phone','email','name','role','is_verified')}; user['email_verified']=bool(u.get('email_verified_at')); user['roles']=roles
+                from minjaz_email_auth import normalize_email as _normalized_mail
+                user['admin_eligible']=(APP_ENV=='preview' and u['role']!='admin'
+                    and bool(os.getenv('ADMIN_EMAIL','').strip()) and bool(u.get('email_verified_at'))
+                    and _normalized_mail(u.get('email'))==_normalized_mail(os.getenv('ADMIN_EMAIL','')))
                 return self.sendj(200,{'user':user,'roles':roles,'freelancer_profile':prof})
+            if p in ('/api/v1/auth/admin-claim/request','/api/v1/auth/admin-claim/confirm') and method=='POST':
+                # An existing email-verified owner must explicitly authorize admin
+                # elevation with password + single-use email token. Config alone
+                # never changes roles, and this path is disabled outside preview.
+                if APP_ENV!='preview' or not EMAIL_AUTH_REQUIRED:
+                    return self.sendj(404,{'error':'not_found'})
+                origin=(self.headers.get('Origin') or '').rstrip('/')
+                if origin and origin not in CORS_ORIGINS and origin!=PUBLIC_BASE_URL:
+                    return self.sendj(403,{'error':'origin_not_allowed'})
+                u=self.require()
+                if not u:return
+                if not rate_limit_event('admin_claim_ip',self.client_key(),6,3600):
+                    return self.sendj(429,{'error':'admin_claim_rate_limited'})
+                b=self.body()
+                from minjaz_admin_claim import request_owner_claim,confirm_owner_claim
+                if p.endswith('/request'):
+                    status,payload=request_owner_claim(u['id'],b.get('password'),db_connect,SECRET,
+                                                       os.getenv('ADMIN_EMAIL',''))
+                else:
+                    status,payload=confirm_owner_claim(u['id'],u['session_id'],b.get('password'),
+                                                      b.get('token'),db_connect,SECRET,
+                                                      os.getenv('ADMIN_EMAIL',''))
+                    if status==200 and payload.get('admin_activated'):
+                        admin_audit(u['id'],'owner_admin_claim','user',u['id'],
+                                    {'method':'existing_account_password_and_email'})
+                return self.sendj(status,payload)
             if p=='/api/v1/me/profile' and method=='PATCH':
                 u=self.require();
                 if not u:return
@@ -2513,6 +2818,7 @@ class H(BaseHTTPRequestHandler):
                     'roles':enabled_roles(uid),
                     'client_profile':q('select * from client_profiles where user_id=%s',(uid,),'one'),
                     'freelancer_profile':q('select * from freelancer_profiles where user_id=%s',(uid,),'one'),
+                    'freelancer_specialties':q('select service_id,created_at from freelancer_marketplace_specialties where user_id=%s order by service_id',(uid,)),
                     'tasks':q('select * from tasks where client_id=%s order by created_at desc limit 1000',(uid,)),
                     'proposals':q('select * from proposals where freelancer_id=%s order by created_at desc limit 1000',(uid,)),
                     'orders':q('select * from orders where client_id=%s or freelancer_id=%s order by created_at desc limit 1000',(uid,uid)),
@@ -2657,14 +2963,45 @@ class H(BaseHTTPRequestHandler):
                           returning user_id,company_name,bio,city,sector,updated_at""",(u['id'],company,bio,city,sector),'one')
                     return self.sendj(200,r)
             if method=='GET' and p=='/api/v1/freelancers':
-                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
+                a=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from users us join freelancer_profiles fp on fp.user_id=us.id where us.deleted_at is null order by fp.rating desc,fp.completed_tasks desc limit 300")
                 viewer=auth(self.headers)
                 if viewer and viewer.get('role')=='client':a=[x for x in a if not interaction_restricted(viewer['id'],x['user_id'])]
+                # Fetch every selected specialization in one query, never N+1.
+                directory_ids=[int(x['user_id']) for x in a]
+                selected_rows=q("""select fs.user_id,s.id service_id,s.name_ar specialization,
+                        c.id category_id,c.name_ar category_name
+                        from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        join categories c on c.id=s.category_id
+                        where fs.user_id=any(%s) and s.active=true and c.is_active=true
+                        order by fs.user_id,fs.created_at,fs.service_id""",(directory_ids,)) if directory_ids else []
+                listed={uid:[] for uid in directory_ids}
+                for row in selected_rows:
+                    if len(listed[row['user_id']])<12:listed[row['user_id']].append({
+                        'service_id':row['service_id'],'specialization':row['specialization'],
+                        'category_id':row['category_id'],'category_name':row['category_name']})
+                for x in a:
+                    x['marketplace_specialties']=listed.get(x['user_id'],[])
+                    # A manual admin flag is NOT third-party identity
+                    # verification. Only a provider-confirmed reference counts.
+                    x['provider_verified']=bool(KYC_MODE=='adapter' and
+                        x.get('kyc_status')=='approved' and x.get('kyc_provider_reference'))
+                    x.pop('kyc_provider_reference',None)
+                    if x.get('kyc_status')=='approved' and not x['provider_verified']:
+                        x['kyc_status']='pending'
+                category_raw=(query.get('category_id') or [''])[0]
+                service_raw=(query.get('service_id') or [''])[0]
+                if category_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',category_raw):
+                    return self.sendj(400,{'error':'invalid_category'})
+                if service_raw and not re.fullmatch(r'[1-9][0-9]{0,17}',service_raw):
+                    return self.sendj(400,{'error':'invalid_service'})
+                if category_raw:a=[x for x in a if any(int(v['category_id'])==int(category_raw) for v in x['marketplace_specialties'])]
+                if service_raw:a=[x for x in a if any(int(v['service_id'])==int(service_raw) for v in x['marketplace_specialties'])]
                 qtext=_match_text((query.get('q') or [''])[0]);skill=_match_text((query.get('skill') or [''])[0]);avail=(query.get('available') or [''])[0];verified=(query.get('verified') or [''])[0]
-                if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or [])]))]
-                if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or []))]
+                if qtext:a=[x for x in a if qtext in _match_text(' '.join([str(x.get('name') or ''),str(x.get('bio') or ''),' '.join(x.get('skills') or []),' '.join(sp['specialization']+' '+sp['category_name'] for sp in x.get('marketplace_specialties',[]))]))]
+                if skill:a=[x for x in a if any(skill in _match_text(v) for v in (x.get('skills') or [])) or any(skill in _match_text(sp['specialization']+' '+sp['category_name']) for sp in x.get('marketplace_specialties',[]))]
                 if avail=='1':a=[x for x in a if bool(x.get('is_available'))]
-                if verified=='1':a=[x for x in a if x.get('kyc_status')=='approved']
+                if verified=='1':a=[x for x in a if x.get('provider_verified') is True]
                 sort=(query.get('sort') or ['rating'])[0]
                 if sort=='completed':a.sort(key=lambda x:(int(x.get('completed_tasks') or 0),float(x.get('rating') or 0)),reverse=True)
                 elif sort=='response':a.sort(key=lambda x:(int(x.get('avg_response_minutes') or 999999),-float(x.get('rating') or 0)))
@@ -2675,8 +3012,20 @@ class H(BaseHTTPRequestHandler):
             m=re.fullmatch(r'/api/v1/freelancers/(\d+)/public',p)
             if m and method=='GET':
                 fid=int(m.group(1))
-                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
+                fp=q("select us.id user_id,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from users us join freelancer_profiles fp on fp.user_id=us.id where us.id=%s and us.deleted_at is null",(fid,),'one')
                 if not fp:return self.sendj(404,{'error':'freelancer_not_found'})
+                fp['provider_verified']=bool(KYC_MODE=='adapter' and
+                    fp.get('kyc_status')=='approved' and fp.get('kyc_provider_reference'))
+                fp.pop('kyc_provider_reference',None)
+                if fp.get('kyc_status')=='approved' and not fp['provider_verified']:
+                    fp['kyc_status']='pending'
+                fp['marketplace_specialties']=q("""select s.id service_id,s.name_ar specialization,
+                        c.id category_id,c.name_ar category_name
+                        from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        join categories c on c.id=s.category_id
+                        where fs.user_id=%s and s.active=true and c.is_active=true
+                        order by fs.created_at,fs.service_id limit 12""",(fid,))
                 fp['portfolio']=q('select id,title,description,external_url,created_at from freelancer_portfolio_items where freelancer_id=%s order by created_at desc limit 12',(fid,))
                 fp['reviews']=q("select rv.quality,rv.timeliness,rv.communication,rv.comment,rv.created_at,coalesce(nullif(split_part(us.name,' ',1),''),'عميل') reviewer_name from reviews rv join users us on us.id=rv.reviewer_id where rv.reviewee_id=%s order by rv.created_at desc limit 12",(fid,))
                 viewer=auth(self.headers)
@@ -2878,7 +3227,7 @@ class H(BaseHTTPRequestHandler):
                 u=self.require();
                 if not u:return
                 if u['role']=='client':
-                    a=q("select t.*,c.name_ar category_name,(select count(*)::int from proposals p where p.task_id=t.id) proposal_count from tasks t left join categories c on c.id=t.category_id where t.client_id=%s order by t.created_at desc limit 200",(u['id'],))
+                    a=q("select t.*,c.name_ar category_name,s.name_ar service_name,(select count(*)::int from proposals p where p.task_id=t.id) proposal_count from tasks t left join categories c on c.id=t.category_id left join services s on s.id=t.service_id where t.client_id=%s order by t.created_at desc limit 200",(u['id'],))
                 elif u['role']=='freelancer':
                     a=q("""select t.*,c.name_ar category_name,c.slug category_slug,s.name_ar service_name,
                                  exists(select 1 from proposals p where p.task_id=t.id and p.freelancer_id=%s) has_proposal,
@@ -2894,9 +3243,19 @@ class H(BaseHTTPRequestHandler):
                           order by t.created_at desc limit 300""",(u['id'],u['id'],u['id'],u['id'],u['id'],u['id'],u['id']))
                     prof=q('select skills from freelancer_profiles where user_id=%s',(u['id'],),'one') or {}
                     skills=prof.get('skills') or []
+                    saved=q("""select fs.service_id,s.category_id from freelancer_marketplace_specialties fs
+                        join services s on s.id=fs.service_id
+                        where fs.user_id=%s and s.active=true""",(u['id'],))
+                    specialties={int(row['service_id']) for row in saved}
+                    specialty_categories={int(row['category_id']) for row in saved}
                     for item in a:
                         score,matched=opportunity_relevance(item,skills)
-                        item['match_score']=score; item['matched_skills']=matched
+                        exact=bool(item.get('service_id') and int(item['service_id']) in specialties)
+                        same_category=bool(item.get('category_id') and int(item['category_id']) in specialty_categories)
+                        if exact:score=max(score,95)
+                        elif same_category:score=max(score,60)
+                        item['match_score']=score;item['matched_skills']=matched
+                        item['specialty_match']='exact' if exact else ('category' if same_category else ('text' if score else 'none'))
                     qtext=_match_text((query.get('q') or [''])[0])
                     cat_raw=(query.get('category_id') or [''])[0]
                     urgency=(query.get('urgency') or [''])[0]
@@ -2934,8 +3293,15 @@ class H(BaseHTTPRequestHandler):
                 if len(desc)>6000:return self.sendj(400,{'error':'description_too_long','maximum':6000})
                 sid=b.get('service_id') or None; category_id=b.get('category_id') or None
                 if sid:
-                    svc=q('select id,category_id from services where id=%s and active=true',(sid,),'one')
+                    if type(sid) not in (str,int) or not re.fullmatch(r'[1-9][0-9]{0,17}',str(sid)):
+                        return self.sendj(400,{'error':'invalid_service'})
+                    svc=q('select id,category_id from services where id=%s and active=true and category_id in (select id from categories where is_active=true)',(int(sid),),'one')
                     if not svc:return self.sendj(400,{'error':'invalid_service'})
+                    if category_id is not None:
+                        if type(category_id) not in (str,int) or not re.fullmatch(r'[1-9][0-9]{0,17}',str(category_id)):
+                            return self.sendj(400,{'error':'invalid_category'})
+                        if int(category_id)!=int(svc['category_id']):
+                            return self.sendj(400,{'error':'category_service_mismatch'})
                     category_id=svc['category_id']; sid=svc['id']
                 else:
                     try: category_id=int(category_id)
@@ -3077,9 +3443,16 @@ class H(BaseHTTPRequestHandler):
                 if not t:return self.sendj(404,{'error':'task_not_found'})
                 if u['role']=='client' and int(t['client_id'])!=int(u['id']):return self.sendj(403,{'error':'forbidden'})
                 if u['role']=='freelancer':
-                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s and p.freelancer_id=%s order by p.created_at",(int(m.group(1)),u['id']))
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s and p.freelancer_id=%s order by p.created_at",(int(m.group(1)),u['id']))
                 else:
-                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s order by p.created_at",(int(m.group(1)),))
+                    a=q("select p.*,us.name,fp.bio,fp.skills,fp.rating,fp.completed_tasks,fp.on_time_rate,fp.avg_response_minutes,fp.is_available,fp.kyc_status,fp.kyc_provider_reference from proposals p join users us on us.id=p.freelancer_id left join freelancer_profiles fp on fp.user_id=p.freelancer_id where p.task_id=%s order by p.created_at",(int(m.group(1)),))
+                for item in a:
+                    is_provider_verified=bool(KYC_MODE=='adapter' and
+                        item.get('kyc_status')=='approved' and item.get('kyc_provider_reference'))
+                    item['provider_verified']=is_provider_verified
+                    item.pop('kyc_provider_reference',None)
+                    if item.get('kyc_status')=='approved' and not is_provider_verified:
+                        item['kyc_status']='pending'
                 return self.sendj(200,{'items':a})
             if p=='/api/v1/orders' and method=='POST':
                 u=self.require('client');
@@ -3692,6 +4065,11 @@ class H(BaseHTTPRequestHandler):
                 if m and method=='PATCH':
                     b=self.body();pid=int(m.group(1));st=str(b.get('status') or '')
                     if st not in ('processing','paid','rejected','cancelled'):return self.sendj(400,{'error':'invalid_status'})
+                    # Only sandbox simulations may mark a payout as paid without
+                    # a confirmed provider transfer event. Production must use
+                    # a licensed marketplace-capable provider, not a manual flag.
+                    if st=='paid' and APP_ENV!='preview':
+                        return self.sendj(409,{'error':'verified_payout_provider_required'})
                     r,pr,changed,err=update_payout_status(pid,st,b.get('admin_note'))
                     if err=='payout_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
@@ -3708,9 +4086,21 @@ class H(BaseHTTPRequestHandler):
                     tid=int(m.group(1));r,prev,changed,err=update_support_ticket(tid,st,b.get('admin_reply'))
                     if err=='support_ticket_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    if changed:admin_audit(u['id'],'support_updated','support_ticket',tid,{'status':st,'previous_status':prev.get('status')})
+                    if changed:
+                        admin_audit(u['id'],'support_updated','support_ticket',tid,{'status':st,'previous_status':prev.get('status')})
+                        notify(prev['user_id'],'تحديث من دعم مِنجاز',
+                               'يوجد رد جديد على التذكرة #'+str(tid)+'، افتح مركز العمل لقراءته'
+                               if str(b.get('admin_reply') or '').strip() else 'تغيّرت حالة تذكرة الدعم #'+str(tid),
+                               'support')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
                 if p=='/api/admin/privacy' and method=='GET':return self.sendj(200,{'items':q('select pr.*,us.name,us.phone from privacy_requests pr join users us on us.id=pr.user_id order by pr.created_at desc limit 300')})
+                if p=='/api/admin/privacy/storage-erasure' and method=='GET':
+                    tally=q("""select count(*)::int total,
+                              count(*) filter(where deleted_at is not null)::int confirmed,
+                              count(*) filter(where deleted_at is null)::int pending,
+                              count(*) filter(where deleted_at is null and attempts>0)::int retrying
+                              from privacy_storage_deletions""",(), 'one')
+                    return self.sendj(200,{'counts':tally})
                 m=re.fullmatch(r'/api/admin/privacy/(\d+)',p)
                 if m and method=='PATCH':
                     b=self.body();st=str(b.get('status') or 'in_progress')
@@ -3725,11 +4115,18 @@ class H(BaseHTTPRequestHandler):
                         if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                         if err:return self.sendj(409,{'error':err})
                         if changed:admin_audit(u['id'],'account_deletion_executed','privacy_request',pid,{'user_id':pr.get('user_id')})
-                        return self.sendj(200,{**r,'idempotent_replay':not changed,'account_deleted':True})
+                        return self.sendj(200,{**r,'idempotent_replay':not changed,
+                                               'account_deleted':True,
+                                               'storage_deletion_pending':r.get('status')!='completed'})
                     r,pr,changed,err=update_privacy_request(pid,st,b.get('admin_note'))
                     if err=='privacy_request_not_found':return self.sendj(404,{'error':err})
                     if err:return self.sendj(409,{'error':err})
-                    if changed:admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})
+                    if changed:
+                        admin_audit(u['id'],'privacy_request_updated','privacy_request',pid,{'status':st,'previous_status':pr.get('status')})
+                        notify(pr['user_id'],'تحديث طلب الخصوصية #'+str(pid),
+                               'حالة الطلب: '+{'in_progress':'قيد المراجعة','completed':'مكتمل','rejected':'لم يُقبل'}.get(st,st)+
+                               (' · '+str(b.get('admin_note') or '')[:150] if b.get('admin_note') else ''),
+                               'privacy')
                     return self.sendj(200,{**r,'idempotent_replay':not changed})
             return self.sendj(404,{'error':'not_found'})
         except ValueError as e:
@@ -3754,4 +4151,20 @@ if __name__=='__main__':
         ensure_notifications_schema()
         ensure_engagement_schema()
         ensure_payout_schema()
+    if STORAGE_MODE=='railway_bucket' and BUCKET_READY and APP_ENV=='preview':
+        try:
+            from storage import setup_preview_bucket_cors
+            origins=set(CORS_ORIGINS)
+            if PUBLIC_BASE_URL:origins.add(PUBLIC_BASE_URL)
+            result=setup_preview_bucket_cors(BUCKET_STORAGE,origins,APP_ENV)
+            print('STORAGE_CORS',result,flush=True)
+        except Exception as exc:
+            # Storage CORS setup should not take down the marketplace. Uploaded
+            # files remain private until this is fixed and verified.
+            print('STORAGE_CORS_WARNING',type(exc).__name__,flush=True)
+    from minjaz_privacy_storage import start_preview_worker
+    running=start_preview_worker(db_connect,BUCKET_STORAGE,APP_ENV,
+                                os.getenv('RAILWAY_PROJECT_ID',''),
+                                os.getenv('MINJAZ_PRIVACY_STORAGE_WORKER','off'))
+    print('PRIVACY_STORAGE_WORKER', 'enabled' if running else 'disabled',flush=True)
     ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()

@@ -1,11 +1,13 @@
 package sa.minjaz.preview;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -40,14 +42,21 @@ import android.widget.Toast;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://minjaz-app-prod-production.up.railway.app";
-    private static final String APP_HOST = "minjaz-app-prod-production.up.railway.app";
+    // Distribution-specific HTTPS origin. Preview can NEVER silently use production.
+    private static final String APP_URL = BuildConfig.APP_URL;
+    private static final String APP_HOST = Uri.parse(APP_URL).getHost();
     private static final int FILE_CHOOSER_REQUEST = 7001;
     private static final long PAGE_LOAD_TIMEOUT_MS = 20000L;
     private static final long BACK_HANDLER_TIMEOUT_MS = 1500L;
 
     private FrameLayout root;
     private WebView webView;
+    private LinearLayout bottomNav;
+    private MinjazStyle.Glyph[] navIcons;
+    private TextView[] navLabels;
+    private LinearLayout[] navItems;
+    private int activeTab = 1;
+    private boolean pageHasRendered = false;
     private View loadingView;
     private View errorView;
     private ValueCallback<Uri[]> fileCallback;
@@ -89,24 +98,15 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(surfaceColor());
 
         webView = new WebView(this);
-        webView.setLayoutParams(new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        webView.setLayoutParams(browserContentParams());
         root.addView(webView);
 
         loadingView = buildLoadingView();
-        root.addView(loadingView, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        root.addView(loadingView, browserContentParams());
 
         errorView = buildErrorView();
         errorView.setVisibility(View.GONE);
-        root.addView(errorView, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        root.addView(errorView, browserContentParams());
 
         if (Build.VERSION.SDK_INT >= 30) {
             root.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -120,7 +120,198 @@ public class MainActivity extends Activity {
             });
         }
 
+        // Native controls sit above the WebView and its network overlays,
+        // while the content has its own reserved bounds. No floating CTA
+        // can cover a marketplace form field or the Android keyboard.
+        buildNativeHeaderAndNavigation();
         setContentView(root);
+    }
+
+    private FrameLayout.LayoutParams browserContentParams() {
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        p.topMargin = dp(58);
+        p.bottomMargin = dp(70);
+        return p;
+    }
+
+    private GradientDrawable panelBackground(int color, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radius));
+        return drawable;
+    }
+
+    private void buildNativeHeaderAndNavigation() {
+        final int dark = MinjazStyle.INK;
+        final int accent = MinjazStyle.PURPLE;
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setPadding(dp(16), 0, dp(16), 0);
+        header.setBackgroundColor(Color.WHITE);
+        header.setElevation(dp(3));
+
+        View brandMark = MinjazStyle.icon(this, MinjazStyle.MARK, accent);
+        header.addView(brandMark, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        TextView brand = new TextView(this);
+        brand.setText(getString(R.string.app_name));
+        brand.setTextSize(21);
+        brand.setTextColor(dark);
+        MinjazStyle.text(brand, true);
+        LinearLayout.LayoutParams brandLayout = new LinearLayout.LayoutParams(0, dp(58), 1);
+        brandLayout.setMargins(dp(8), 0, 0, 0);
+        header.addView(brand, brandLayout);
+
+        Button account = new Button(this);
+        account.setText(R.string.account_menu_title);
+        account.setTextSize(12);
+        account.setAllCaps(false);
+        account.setTextColor(accent);
+        account.setMinHeight(0);
+        account.setMinWidth(0);
+        account.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+            Color.rgb(243, 240, 255)));
+        account.setOnClickListener(v -> showAccountMenu());
+        header.addView(account, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        FrameLayout.LayoutParams headerParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(58), Gravity.TOP);
+        root.addView(header, headerParams);
+
+        bottomNav = new LinearLayout(this);
+        bottomNav.setOrientation(LinearLayout.HORIZONTAL);
+        bottomNav.setGravity(Gravity.CENTER);
+        bottomNav.setPadding(dp(3), dp(5), dp(3), dp(4));
+        bottomNav.setBackgroundColor(Color.WHITE);
+        bottomNav.setElevation(dp(8));
+        int[] labels = {R.string.nav_discover, R.string.nav_projects, R.string.nav_orders,
+            R.string.nav_services, R.string.nav_account};
+        int[] glyphs = {MinjazStyle.GRID, MinjazStyle.BRIEFCASE, MinjazStyle.INBOX,
+            MinjazStyle.SERVICES, MinjazStyle.USER};
+        navItems = new LinearLayout[labels.length];
+        navIcons = new MinjazStyle.Glyph[labels.length];
+        navLabels = new TextView[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            final int tab = i;
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            item.setClickable(true);
+            item.setFocusable(true);
+            item.setContentDescription(getString(labels[i]));
+            item.setOnClickListener(v -> navigateNativeTab(tab));
+
+            MinjazStyle.Glyph icon = (MinjazStyle.Glyph)
+                MinjazStyle.icon(this, glyphs[i], MinjazStyle.MUTED);
+            item.addView(icon, new LinearLayout.LayoutParams(
+                dp(28), dp(32)));
+
+            TextView label = new TextView(this);
+            label.setText(labels[i]);
+            label.setTextSize(11);
+            label.setSingleLine(true);
+            label.setGravity(Gravity.CENTER);
+            MinjazStyle.text(label, false);
+            item.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(21)));
+            navItems[i] = item;
+            navIcons[i] = icon;
+            navLabels[i] = label;
+            bottomNav.addView(item, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        }
+        FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(70), Gravity.BOTTOM);
+        root.addView(bottomNav, bottomParams);
+        highlightTab(activeTab);
+    }
+
+    private void highlightTab(int tab) {
+        if (navItems == null || tab < 0 || tab >= navItems.length) return;
+        activeTab = tab;
+        int accent = MinjazStyle.PURPLE;
+        int muted = MinjazStyle.MUTED;
+        for (int i = 0; i < navItems.length; i++) {
+            boolean selected = i == tab;
+            navItems[i].setSelected(selected);
+            navIcons[i].setTint(selected ? accent : muted);
+            navLabels[i].setTextColor(selected ? accent : muted);
+            MinjazStyle.text(navLabels[i], selected);
+            navItems[i].setBackground(selected
+                ? panelBackground(MinjazStyle.PALE, 13)
+                : panelBackground(Color.WHITE, 13));
+        }
+    }
+
+    private void navigateNativeTab(int tab) {
+        if (tab == 0 || tab == 3) {
+            startActivity(new Intent(MainActivity.this, DiscoverActivity.class));
+            return;
+        }
+        Intent intent = new Intent(this, NativeWorkspaceActivity.class);
+        intent.putExtra("minjaz_tab", tab);
+        startActivity(intent);
+        // The native destination owns its own authenticated read-only views.
+        // This WebView remains available for complex role-gated writes.
+    }
+
+    private void syncSelectedTab(String url) {
+        if (!safeInternalUrl(url)) return;
+        Uri uri = Uri.parse(url);
+        String path = uri.getPath();
+        if ("/digital-services".equals(path)) highlightTab(3);
+        else if ("/account-deletion".equals(path) || "/privacy".equals(path)
+                || "/signup".equals(path)) highlightTab(4);
+        else if ("/workspace".equals(path)) {
+            String fragment = uri.getFragment();
+            if ("profile".equals(fragment)) highlightTab(4);
+            else if ("orders-section".equals(fragment)) highlightTab(2);
+            else highlightTab(1);
+        }
+    }
+
+    private void showAccountMenu() {
+        String[] actions = {
+            getString(R.string.account_login),
+            getString(R.string.account_profile),
+            getString(R.string.account_privacy),
+            getString(R.string.account_deletion)
+        };
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.account_menu_title)
+            .setItems(actions, (dialog, selection) -> {
+                switch (selection) {
+                    case 0: openInternalAccountPage("/signup", "auth", "login"); break;
+                    case 1: openInternalAccountPage("/workspace", null, null); break;
+                    case 2: openInternalAccountPage("/privacy", null, null); break;
+                    case 3: openInternalAccountPage("/account-deletion", null, null); break;
+                    default: break;
+                }
+            })
+            .setNegativeButton(android.R.string.cancel, null)
+            .show();
+    }
+
+    private void openInternalAccountPage(String path, String queryKey, String queryValue) {
+        if (webView == null) return;
+        openInternalAccountPage(path, queryKey, queryValue, null);
+    }
+
+    private void openInternalAccountPage(
+        String path, String queryKey, String queryValue, String fragment
+    ) {
+        Uri.Builder builder = Uri.parse(APP_URL).buildUpon()
+            .path(path).clearQuery().fragment(fragment);
+        if (queryKey != null && queryValue != null) {
+            builder.appendQueryParameter(queryKey, queryValue);
+        }
+        Uri target = builder.build();
+        if (!isInternalUri(target)) return;
+        webView.loadUrl(localizedInternalUrl(target));
+        syncSelectedTab(target.toString());
     }
 
     private View buildLoadingView() {
@@ -448,10 +639,14 @@ public class MainActivity extends Activity {
             if (url != null) {
                 try {
                     Uri uri = Uri.parse(url);
-                    if (isInternalUri(uri)) lastGoodUrl = localizedInternalUrl(uri);
+                    if (isInternalUri(uri)) {
+                        lastGoodUrl = localizedInternalUrl(uri);
+                        syncSelectedTab(url);
+                    }
                 } catch (Exception ignored) {
                 }
             }
+            pageHasRendered = true;
             hideError();
             hideLoading();
             super.onPageCommitVisible(view, url);
@@ -567,19 +762,22 @@ public class MainActivity extends Activity {
         }
 
         webView = new WebView(this);
-        webView.setLayoutParams(new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        webView.setLayoutParams(browserContentParams());
         root.addView(webView, 0);
         configureWebView();
+        pageHasRendered = false;
         hideError();
         showLoading();
         webView.loadUrl(lastUrl);
     }
 
     private void showLoading() {
-        if (loadingView != null) loadingView.setVisibility(View.VISIBLE);
+        // Avoid repeatedly masking interactive forms and the browser as the
+        // customer moves between authenticated sections. Keep the first-load
+        // full-screen state and error fallback for actual connection failures.
+        if (loadingView != null) {
+            loadingView.setVisibility(pageHasRendered ? View.GONE : View.VISIBLE);
+        }
     }
 
     private void hideLoading() {

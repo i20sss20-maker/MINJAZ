@@ -1,0 +1,59 @@
+name: MINJAZ Commercial Safety Checks
+on:
+  push:
+    branches: [feature/minjaz-commercial-safety-20261027, feature/digital-services-geidea-sandbox]
+  pull_request:
+    branches: [feature/digital-services-geidea-sandbox]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minjaz-commercial-safe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launch-safety:
+    name: Verified-email and non-fake payout gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install PostgreSQL Python driver for existing tests
+        run: python -m pip install --disable-pip-version-check psycopg2-binary
+      - name: Compile backend and launch probe
+        run: python -m py_compile server.py minjaz_account_auth.py scripts/check_minjaz_launch_readiness.py
+      - name: Validate registration and marketplace JavaScript
+        run: |
+          node --check public/minjaz-account-registration-v1.js
+          python - <<'PY'
+          import re,subprocess
+          from pathlib import Path
+          src=Path("public/index.html").read_text("utf-8")
+          for script in re.findall(r"<script[^>]*>(.*?)</script>",src,re.S|re.I):
+              if script.strip():
+                  subprocess.run(["node","--check"],input=script,text=True,check=True)
+          PY
+      - name: Run app regression and launch security tests
+        run: python -m unittest discover -s tests -p 'test_digital*.py' -v
+      - name: Inspect the already deployed sandbox in read-only mode
+        run: python scripts/check_minjaz_launch_readiness.py
+      - name: Verify strict release-decision evidence without publishing or activating payments
+        run: |
+          python -m unittest tests.test_digital_release_evidence -v
+          python -m scripts.minjaz_release_evidence --output minjaz-release-evidence.json
+      - name: Preserve non-sensitive beta and launch blockers in CI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-launch-gates-read-only
+          path: minjaz-release-evidence.json
+          retention-days: 14
+          if-no-files-found: ignore

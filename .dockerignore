@@ -10,3 +10,13 @@ runtime_chunks/
 *.pyc
 __pycache__/
 .git/
+
+# Mobile source and CI files are built by GitHub Actions, never the
+# Python/Railway API Docker image. Keep public/, tests/, database/ and scripts/.
+ios-minjaz/
+android-preview/
+.github/
+*.ipa
+*.apk
+*.aab
+*.xcarchive/

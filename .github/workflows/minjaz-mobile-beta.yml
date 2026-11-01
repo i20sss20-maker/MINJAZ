@@ -1,0 +1,198 @@
+name: MINJAZ iPhone and Android beta
+on:
+  push:
+    branches:
+      - feature/digital-services-geidea-sandbox
+      - 'feat/minjaz-mobile-*'
+    paths:
+      - 'ios-minjaz/**'
+      - 'android-preview/**'
+      - 'public/workspace-v1.js'
+      - 'tests/minjaz_mobile_service_deeplink.test.cjs'
+      - 'tests/minjaz_android_native_discovery.test.cjs'
+      - 'tests/minjaz_ios_device_beta.test.cjs'
+      - 'tests/minjaz_mobile_account_privacy.test.cjs'
+      - 'tests/minjaz_mobile_native_shell.test.cjs'
+      - 'tests/minjaz_native_workspace.test.cjs'
+      - 'tests/minjaz_mobile_visual_polish.test.cjs'
+      - 'tests/minjaz_mobile_discover_ux_021.test.cjs'
+      - 'scripts/prepare_minjaz_ios_icon.py'
+      - '.github/workflows/minjaz-ios-device-beta.yml'
+      - '.github/workflows/minjaz-mobile-beta.yml'
+  pull_request:
+    branches:
+      - feature/digital-services-geidea-sandbox
+    paths:
+      - 'ios-minjaz/**'
+      - 'android-preview/**'
+      - 'public/workspace-v1.js'
+      - 'tests/minjaz_mobile_service_deeplink.test.cjs'
+      - 'tests/minjaz_android_native_discovery.test.cjs'
+      - 'tests/minjaz_ios_device_beta.test.cjs'
+      - 'tests/minjaz_mobile_account_privacy.test.cjs'
+      - 'tests/minjaz_mobile_native_shell.test.cjs'
+      - 'tests/minjaz_native_workspace.test.cjs'
+      - 'tests/minjaz_mobile_visual_polish.test.cjs'
+      - 'tests/minjaz_mobile_discover_ux_021.test.cjs'
+      - 'scripts/prepare_minjaz_ios_icon.py'
+      - '.github/workflows/minjaz-ios-device-beta.yml'
+      - '.github/workflows/minjaz-mobile-beta.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minjaz-mobile-beta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile-navigation-contract:
+    name: Verify real-data mobile handoff and role isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate native-to-marketplace links
+        run: node --test tests/minjaz_mobile_service_deeplink.test.cjs tests/minjaz_android_native_discovery.test.cjs tests/minjaz_ios_device_beta.test.cjs tests/minjaz_mobile_account_privacy.test.cjs tests/minjaz_mobile_native_shell.test.cjs tests/minjaz_native_workspace.test.cjs tests/minjaz_mobile_visual_polish.test.cjs tests/minjaz_mobile_discover_ux_021.test.cjs tests/android_webview_safety.test.cjs
+
+  android-preview:
+    name: Installable MINJAZ Android test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: Setup Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+      - name: Check strict beta origin and build test APK
+        working-directory: android-preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'beta.minjazapp.com/workspace' app/build.gradle
+          grep -q 'BuildConfig.APP_URL' app/src/main/java/sa/minjaz/preview/MainActivity.java
+          gradle --no-daemon --stacktrace :app:assemblePreviewDebug
+          test -s app/build/outputs/apk/preview/debug/app-preview-debug.apk
+          aapt dump badging app/build/outputs/apk/preview/debug/app-preview-debug.apk | tee /tmp/minjaz-android-beta.txt
+          grep -q "package: name='sa.minjaz.preview'" /tmp/minjaz-android-beta.txt
+          grep -q "targetSdkVersion:'36'" /tmp/minjaz-android-beta.txt
+          sha256sum app/build/outputs/apk/preview/debug/app-preview-debug.apk > /tmp/MINJAZ-Android-beta.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-Android-beta-APK
+          path: |
+            android-preview/app/build/outputs/apk/preview/debug/app-preview-debug.apk
+            /tmp/MINJAZ-Android-beta.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+  ios-simulator:
+    name: Compile real MINJAZ iOS SwiftUI app
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xcodegen || brew install xcodegen
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare App Store sized opaque MINJAZ app icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rsvg-convert >/dev/null || brew install librsvg
+          python3 -m pip install --quiet pillow
+          python3 scripts/prepare_minjaz_ios_icon.py
+      - name: Validate origins and generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'sa.minjaz.preview' ios-minjaz/project.yml
+          grep -q 'beta.minjazapp.com' ios-minjaz/project.yml
+          grep -q 'sa.minjaz.app' ios-minjaz/project.yml
+          xcodegen generate --spec ios-minjaz/project.yml --project ios-minjaz
+          test -f ios-minjaz/Minjaz.xcodeproj/project.pbxproj
+          plutil -lint ios-minjaz/Sources/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' ios-minjaz/Sources/Info.plist)" = '$(MINJAZ_BASE_URL)'
+      - name: Build for iPhone Simulator without publishing or signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/minjaz-ios-derived \
+            CODE_SIGNING_ALLOWED=NO build
+          test -d /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+            /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist | grep -q sa.minjaz.preview
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator/Minjaz.app/Info.plist)" = "https://beta.minjazapp.com"
+          cd /tmp/minjaz-ios-derived/Build/Products/Debug-iphonesimulator
+          zip -qr /tmp/MINJAZ-iPhone-simulator.app.zip Minjaz.app
+          shasum -a 256 /tmp/MINJAZ-iPhone-simulator.app.zip > /tmp/MINJAZ-iPhone-simulator.sha256
+      - name: Compile unsigned physical iPhone sandbox configuration and verify app origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios-minjaz/Minjaz.xcodeproj -scheme Minjaz \
+            -configuration BetaRelease -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath /tmp/minjaz-ios-device-unsigned \
+            CODE_SIGNING_ALLOWED=NO build
+          APP="/tmp/minjaz-ios-device-unsigned/Build/Products/BetaRelease-iphoneos/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "sa.minjaz.preview"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = "https://beta.minjazapp.com"
+          echo 'MINJAZ_IOS_DEVICE_BETA_UNSIGNED_COMPILE_OK_NOT_INSTALLABLE'
+      - name: Package real-device BetaRelease as unsigned IPA for owner-side signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="/tmp/minjaz-ios-device-unsigned/Build/Products/BetaRelease-iphoneos/Minjaz.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "sa.minjaz.preview"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinjazBaseURL' "$APP/Info.plist")" = "https://beta.minjazapp.com"
+          mkdir -p /tmp/minjaz-unsigned-ipa-stage/Payload
+          ditto "$APP" /tmp/minjaz-unsigned-ipa-stage/Payload/Minjaz.app
+          cd /tmp/minjaz-unsigned-ipa-stage
+          zip -qry /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa Payload
+          test -s /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa
+          unzip -Z -1 /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa | grep -Fq 'Payload/Minjaz.app/Info.plist'
+          shasum -a 256 /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa > /tmp/MINJAZ-iPhone-beta-UNSIGNED.sha256
+          echo "UNSIGNED: Apple code signing and a matching provisioning profile are required before installation on a physical iPhone." > /tmp/README-UNSIGNED-IPA.txt
+          echo 'MINJAZ_IOS_UNSIGNED_IPA_PACKAGED_NOT_INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-iPhone-beta-UNSIGNED-IPA
+          path: |
+            /tmp/MINJAZ-iPhone-beta-UNSIGNED.ipa
+            /tmp/MINJAZ-iPhone-beta-UNSIGNED.sha256
+            /tmp/README-UNSIGNED-IPA.txt
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MINJAZ-iPhone-Simulator-beta
+          path: |
+            /tmp/MINJAZ-iPhone-simulator.app.zip
+            /tmp/MINJAZ-iPhone-simulator.sha256
+          retention-days: 14
+          if-no-files-found: error

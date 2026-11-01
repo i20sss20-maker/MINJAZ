@@ -2289,7 +2289,7 @@ linear-gradient(135deg,#fbfcff,#fff);padding:15px}
       <button id="roleFreelancer" onclick="setRole('freelancer')">أنا مستقل</button>
     </div>
     <div class="field"><label>الاسم</label><input id="loginName" autocomplete="name" placeholder="مثال: صالح"></div>
-    <div class="field"><label>رقم الجوال</label><input id="loginPhone" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="+9665xxxxxxxx"></div>
+    <div class="field"><label for="loginPhone">البريد الإلكتروني</label><input id="loginPhone" type="email" inputmode="email" autocomplete="email" dir="ltr" maxlength="254" placeholder="name@example.com" required></div>
     <button id="sendOtpBtn" class="btn primary wide" onclick="requestOtp()">إرسال رمز التحقق</button>
     <div id="otpBox" class="hidden" style="margin-top:14px">
       <div class="field"><label>رمز التحقق</label><div class="otp" id="otpInputs"><input inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"><input inputmode="numeric" pattern="[0-9]*"><input inputmode="numeric" pattern="[0-9]*"><input inputmode="numeric" pattern="[0-9]*"></div></div>
@@ -2592,28 +2592,31 @@ function wireOtp(){
 wireOtp();
 async function requestOtp(){
  if(otpRequestBusy||Date.now()<otpCooldownUntil)return;
- const phone=$('loginPhone').value.trim(),name=$('loginName').value.trim();
- if(!phone||!name)return toast('اكتب الاسم ورقم الجوال');
+ const email=$('loginPhone').value.trim().toLowerCase(),name=$('loginName').value.trim();
+ if(!email||!$('loginPhone').checkValidity()||!name)return toast('اكتب الاسم والبريد الإلكتروني الصحيح');
  otpRequestBusy=true;otpButtonLabel();
- const {r,j}=await api('/api/v1/auth/request-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})});
+ const route=DEMO_MODE?'/api/v1/auth/request-otp':'/api/v1/auth/request-email-otp';
+ const form=DEMO_MODE?{phone:email}:{email,role};
+ const {r,j}=await api(route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(form)});
  otpRequestBusy=false;
  if(!r.ok){
   if(['otp_wait','otp_rate_limited','otp_source_rate_limited'].includes(j?.error))setOtpCooldown(Math.min(Number(j?.retry_after_seconds)||60,600));else otpButtonLabel();
-  return toast(j?.error==='otp_wait'?'انتظر قبل طلب رمز جديد':j?.error==='otp_rate_limited'||j?.error==='otp_source_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':'تعذر إرسال الرمز');
+  return toast(j?.error==='otp_wait'?'انتظر قبل طلب رمز جديد':j?.error==='otp_rate_limited'||j?.error==='otp_source_rate_limited'?'عدد محاولات كبير، جرب بعد قليل':j?.error==='email_not_configured'?'إرسال البريد غير مفعّل بعد. يلزم إعداد بريد الإرسال في لوحة الخدمة.':j?.error==='invalid_email'?'تأكد من كتابة بريد إلكتروني صحيح':'تعذر إرسال الرمز إلى بريدك الإلكتروني');
  }
  challenge=j.challenge_id;
  renderOtpInputs(j?.code_length||String(j?.dev_code||'').length||6);
  const hint=$('devOtpHint');
  if(hint){if(j?.dev_code){hint.innerHTML='رمز التحقق التجريبي <b>'+esc(j.dev_code)+'</b>.';hint.classList.remove('hidden')}else{hint.textContent='';hint.classList.add('hidden')}}
  const status=$('otpStatus');if(status)status.textContent='الرمز صالح لمدة '+Math.max(1,Math.round(Number(j?.expires_in_seconds||600)/60))+' دقائق';
- $('otpBox').classList.remove('hidden');setOtpCooldown(60);document.querySelector('.otp input')?.focus();toast(j?.delivery==='adapter'?'تم إرسال رمز التحقق':'تم إنشاء رمز التحقق');
+ $('otpBox').classList.remove('hidden');setOtpCooldown(60);document.querySelector('.otp input')?.focus();toast(j?.delivery==='email'?'تم إرسال رمز التحقق إلى بريدك الإلكتروني':j?.delivery==='adapter'?'تم إرسال رمز التحقق':'تم إنشاء رمز التحقق');
 }
 async function verifyOtp(){
  if(otpVerifyBusy)return;
  const code=[...document.querySelectorAll('.otp input')].map(x=>x.value).join('');
  if(code.length!==otpLength)return toast('اكتب الرمز كامل');
  const btn=$('verifyOtpBtn');otpVerifyBusy=true;if(btn){btn.disabled=true;btn.textContent='جاري الدخول…'}
- const {r,j}=await api('/api/v1/auth/verify-otp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
+ const endpoint=DEMO_MODE?'/api/v1/auth/verify-otp':'/api/v1/auth/verify-email-otp';
+ const {r,j}=await api(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:challenge,code,name:$('loginName').value.trim(),role})});
  otpVerifyBusy=false;if(btn){btn.disabled=false;btn.textContent='دخول'}
  if(!r.ok){
   if(j?.error==='otp_expired'){setOtpCooldown(0);const status=$('otpStatus');if(status)status.textContent='انتهت صلاحية الرمز — اطلب رمزًا جديدًا'}
@@ -2652,12 +2655,13 @@ async function boot(){
   else if(upgrade.r.status===401)return showAuth();
  }
  const {r,j}=await api('/api/v1/me');if(!r.ok)return showAuth();
- me=j;$('auth').classList.add('hidden');$('app').classList.remove('hidden');
+ me=j;document.documentElement.dataset.minjazRole=me.user.role;$('auth').classList.add('hidden');$('app').classList.remove('hidden');
  $('userName').textContent=me.user.name;$('avatar').textContent=(me.user.name||'م')[0];$('userRole').textContent=me.user.role==='client'?'عميل':me.user.role==='freelancer'?'مستقل':'إدارة';
  const c=await api('/api/v1/categories');categories=c.r.ok?c.j.items:[];
  currentPage=me.user.role==='admin'?'admin':'home';buildNav();await go(currentPage);
 }
 async function go(id){
+ document.documentElement.dataset.minjazPage=id;
  currentPage=id;document.querySelectorAll('.page').forEach(x=>x.classList.toggle('on',x.id===id));document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('on',x.dataset.nav===id));
  const titles={home:['الرئيسية','نظرة سريعة على مِنجاز'],tasks:['المهام','طلبات وعروض العمل'],orders:['الطلبات','التنفيذ والمحادثات'],team:['فريقي','المستقلون الموثوقون'],account:['حسابي','الإعدادات والدعم والخصوصية'],admin:['لوحة الإدارة','المستخدمون والتشغيل']};
  $('pageTitle').textContent=titles[id]?.[0]||'مِنجاز';$('pageSub').textContent=titles[id]?.[1]||'';
@@ -2677,6 +2681,7 @@ async function renderClientHome(){
  const attentionCount=withOffers.length+unpaid.length+delivered.length+needsReview.length;
  const attention=attentionCount?`<div class="sectionHead"><div><h2>يحتاج انتباهك</h2><p>خطوات لو خلصتها تتحرك مهامك أسرع</p></div><span class="pill amber">${attentionCount} إجراء</span></div><div class="attentionGrid">${withOffers.length?`<div class="attentionCard"><b>${withOffers.length} مهمة وصلها عروض</b><p>قارن المستقلين واختر الأنسب قبل ما تبدأ.</p><button class="btn soft" onclick="taskOffers(${withOffers[0].id})">مراجعة العروض</button></div>`:''}${unpaid.length?`<div class="attentionCard"><b>${unpaid.length} طلب بانتظار الدفع</b><p>الدفع يبدأ التنفيذ ويبلغ المستقل مباشرة.</p><button class="btn soft" onclick="orderModal(${unpaid[0].id})">فتح الطلب</button></div>`:''}${delivered.length?`<div class="attentionCard"><b>${delivered.length} تسليم بانتظارك</b><p>راجع العمل واعتمده أو اطلب تعديل ضمن الحد المتفق عليه.</p><button class="btn soft" onclick="orderModal(${delivered[0].id})">مراجعة التسليم</button></div>`:''}${needsReview.length?`<div class="attentionCard"><b>${needsReview.length} طلب مكتمل ينتظر تقييمك</b><p>قيّم جودة التنفيذ والالتزام والتواصل عشان يبقى سجل المستقل أدق للعملاء.</p><button class="btn soft" onclick="orderModal(${needsReview[0].id})">إضافة التقييم</button></div>`:''}</div>`:'';
  $('home').innerHTML=`<div class="hero"><div><span class="pill blue" style="background:#ffffff12;color:#dce5ff">مِنجاز</span><h2>وش تحتاج ينجز اليوم؟</h2><p>اكتب المهمة، حدد ميزانيتك، وخلك على اطلاع من أول عرض إلى آخر تسليم.</p><div class="heroActions"><button class="btn primary" onclick="newTaskModal()">＋ أنشئ مهمة</button><button class="btn ghost" onclick="go('tasks')">شوف مهامي</button></div></div><div class="heroStats"><div class="heroStat"><b>${tasks.filter(x=>x.status==='open').length}</b><small>مهام تستقبل عروض</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='in_progress').length}</b><small>قيد التنفيذ</small></div><div class="heroStat"><b>${orders.filter(x=>x.status==='completed').length}</b><small>مكتملة</small></div><div class="heroStat"><b>${fav.length}</b><small>في فريقي</small></div></div></div>
+ <div class="roleQuickLinks" aria-label="روابط سريعة للعميل"><button class="btn soft" onclick="newTaskModal()">＋ طلب مهمة جديدة</button><button class="btn ghost" onclick="go('orders')">◎ متابعة الطلبات</button><button class="btn ghost" onclick="go('team')">◈ المستقلون في فريقي</button><button class="btn ghost" onclick="go('account')">◉ إدارة حسابي</button></div>
  ${attention}<div class="sectionHead"><div><h2>الأقسام</h2><p>اختَر النوع الأقرب للمهمة</p></div></div><div class="categories">${categories.map(c=>`<div class="cat"><span>${c.icon||'•'}</span><b>${esc(c.name_ar)}</b></div>`).join('')}</div>
  <div class="sectionHead"><div><h2>آخر المهام</h2><p>متابعة سريعة</p></div><button class="btn ghost" onclick="go('tasks')">عرض الكل</button></div><div class="list">${tasks.slice(0,4).map(taskRowClient).join('')||'<div class="card empty"><b>ابدأ أول مهمة لك</b><span>اكتب المطلوب بوضوح وحدد ميزانيتك، وبعدها تبدأ تستقبل العروض.</span><button class="btn primary" onclick="newTaskModal()">＋ إنشاء أول مهمة</button></div>'}</div>`;
 }
@@ -2688,7 +2693,7 @@ async function renderFreelancerHome(){
  const nudge=skills.length<3?`<div class="profileNudge"><div><b>خل فرصك أدق</b><p>أضف 3 مهارات على الأقل، ومِنجاز يرتب الفرص الأقرب لك بشكل أفضل.</p></div><button class="btn ghost" onclick="go('account')">كمّل ملفك</button></div>`:'';
  const recentOrders=orders.filter(x=>!['cancelled'].includes(x.status)).slice(0,3);
  const recent=`<div class="sectionHead"><div><h2>آخر أعمالك</h2><p>وصول سريع للطلبات الأخيرة وحالتها</p></div><button class="btn ghost" onclick="go('orders')">عرض الكل</button></div><div class="list">${recentOrders.map(x=>`<div class="rowCard"><div><h3>${esc(x.title)}</h3><p>العميل: ${esc(x.client_name||'—')}</p><div class="rowMeta"><span class="pill ${statusClass(x.status)}">${statusMap[x.status]||x.status}</span><span class="pill ${statusClass(x.payment_status)}">${statusMap[x.payment_status]||x.payment_status}</span></div></div><div><div class="money">${money(x.amount)}</div><button class="btn ghost" style="margin-top:7px" onclick="orderModal(${x.id})">فتح الطلب</button></div></div>`).join('')||'<div class="card empty"><b>ما عندك أعمال نشطة حاليًا</b><span>تصفح الفرص المناسبة لمهاراتك وأرسل عرضك على اللي يناسبك.</span><button class="btn primary" onclick="go(&quot;tasks&quot;)">تصفح الفرص</button></div>'}</div>`;
- $('home').innerHTML=`<div class="hero"><div><span class="pill green" style="background:#ffffff12;color:#d7ffe3">${p.is_available?'متاح الآن':'غير متاح'}</span><h2>فرص مناسبة لك، بدون زحمة.</h2><p>تصفح المهام المفتوحة وأرسل عرضك. ترتيب الفرص يعتمد على مهارات ملفك، بشكل واضح وبدون وعود آلية مبالغ فيها.</p><div class="heroActions"><button class="btn ${p.is_available?'green':'primary'}" onclick="toggleAvailability(${!p.is_available})">${p.is_available?'✓ أنت متاح':'فعّل متاح الآن'}</button><button class="btn ghost" onclick="go('tasks')">تصفح الفرص</button></div></div><div class="heroStats"><div class="heroStat"><b>${p.rating||'0.0'}★</b><small>التقييم</small></div><div class="heroStat"><b>${p.completed_tasks||0}</b><small>مهمة مكتملة</small></div><div class="heroStat"><b>${p.on_time_rate||100}%</b><small>في الموعد</small></div><div class="heroStat"><b>${active.length+revisions.length}</b><small>تحتاج متابعة</small></div></div></div>${attention}${nudge}
+ $('home').innerHTML=`<div class="hero"><div><span class="pill green" style="background:#ffffff12;color:#d7ffe3">${p.is_available?'متاح الآن':'غير متاح'}</span><h2>فرص مناسبة لك، بدون زحمة.</h2><p>تصفح المهام المفتوحة وأرسل عرضك. ترتيب الفرص يعتمد على مهارات ملفك، بشكل واضح وبدون وعود آلية مبالغ فيها.</p><div class="heroActions"><button class="btn ${p.is_available?'green':'primary'}" onclick="toggleAvailability(${!p.is_available})">${p.is_available?'✓ أنت متاح':'فعّل متاح الآن'}</button><button class="btn ghost" onclick="go('tasks')">تصفح الفرص</button></div></div><div class="heroStats"><div class="heroStat"><b>${p.rating||'0.0'}★</b><small>التقييم</small></div><div class="heroStat"><b>${p.completed_tasks||0}</b><small>مهمة مكتملة</small></div><div class="heroStat"><b>${p.on_time_rate||100}%</b><small>في الموعد</small></div><div class="heroStat"><b>${active.length+revisions.length}</b><small>تحتاج متابعة</small></div></div></div><div class="roleQuickLinks" aria-label="روابط سريعة للمستقل"><button class="btn soft" onclick="go('tasks')">✦ اكتشف الفرص</button><button class="btn ghost" onclick="go('orders')">▣ أعمالي</button><button class="btn ghost" onclick="go('account')">◎ ملفي ومهاراتي</button></div>${attention}${nudge}
  <div class="sectionHead"><div><h2>الأقرب لمهاراتك</h2><p>مرتبة حسب الملاءمة ثم الأحدث</p></div><button class="btn ghost" onclick="go('tasks')">عرض الكل</button></div><div class="list">${tasks.map(taskRowFreelancer).join('')||'<div class="card empty"><b>ما فيه فرص مفتوحة الآن</b><span>كمّل ملفك ومهاراتك عشان تكون جاهز لما تنزل فرص جديدة.</span><button class="btn ghost" onclick="go(&quot;account&quot;)">تحسين الملف</button></div>'}</div>
  ${recent}`;
 }
@@ -2703,8 +2708,119 @@ async function renderTasks(){
  const {j}=await api('/api/v1/tasks?'+opportunityQuery());const a=j?.items||[];
  $('tasks').innerHTML=`<div class="sectionHead"><div><h2>الفرص المفتوحة</h2><p>ابحث ورتّب الفرص حسب اللي يناسبك</p></div><span class="pill blue">${a.length} فرصة</span></div><div class="oppToolbar"><div class="field searchWide"><label>بحث</label><input id="oppQ" value="${esc(opportunityFilters.q)}" placeholder="مثال: تصميم، Excel، ترجمة" onkeydown="if(event.key==='Enter')applyOpportunityFilters()"></div><div class="field"><label>القسم</label><select id="oppCat"><option value="">كل الأقسام</option>${categories.map(c=>`<option value="${c.id}" ${String(opportunityFilters.category_id)===String(c.id)?'selected':''}>${esc(c.name_ar)}</option>`).join('')}</select></div><div class="field"><label>الأولوية</label><select id="oppUrg"><option value="">الكل</option><option value="normal" ${opportunityFilters.urgency==='normal'?'selected':''}>عادية</option><option value="urgent" ${opportunityFilters.urgency==='urgent'?'selected':''}>عاجلة</option></select></div><div class="field"><label>العروض</label><select id="oppProposal"><option value="">الكل</option><option value="new" ${opportunityFilters.proposal==='new'?'selected':''}>ما أرسلت عليها</option><option value="sent" ${opportunityFilters.proposal==='sent'?'selected':''}>أرسلت عليها</option></select></div><div class="field"><label>ميزانية من</label><input id="oppMin" inputmode="decimal" value="${esc(opportunityFilters.min_budget)}" placeholder="49"></div><div class="field"><label>الترتيب</label><select id="oppSort"><option value="match" ${opportunityFilters.sort==='match'?'selected':''}>الأكثر ملاءمة</option><option value="latest" ${opportunityFilters.sort==='latest'?'selected':''}>الأحدث</option><option value="budget_desc" ${opportunityFilters.sort==='budget_desc'?'selected':''}>الأعلى ميزانية</option></select></div><div style="display:flex;gap:6px"><button class="btn primary" onclick="applyOpportunityFilters()">تطبيق</button><button class="btn ghost" onclick="resetOpportunityFilters()">مسح</button></div></div><div class="list">${a.map(taskRowFreelancer).join('')||'<div class="card empty"><b>ما لقينا فرص مطابقة</b><span>خفف الفلاتر أو امسحها وشوف كل الفرص المفتوحة.</span><button class="btn ghost" onclick="resetOpportunityFilters()">مسح الفلاتر</button></div>'}</div>`
 }
-function newTaskModal(){openModal(`<div class="modalHead"><h2>إنشاء مهمة جديدة</h2><button class="x" onclick="closeModal()">×</button></div><div class="form2"><div class="field full"><label>عنوان المهمة</label><input id="ntTitle" placeholder="مثال: تصميم 3 منشورات لإنستغرام"></div><div class="field full"><label>الوصف</label><textarea id="ntDesc" placeholder="اشرح المطلوب والملفات والمقاس أو أي تفاصيل مهمة"></textarea></div><div class="field"><label>القسم</label><select id="ntCat">${categories.map(c=>`<option value="${c.id}">${c.icon||''} ${esc(c.name_ar)}</option>`).join('')}</select></div><div class="field"><label>الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div><div class="field"><label>من ميزانية</label><input id="ntMin" inputmode="decimal" placeholder="49"></div><div class="field"><label>إلى ميزانية</label><input id="ntMax" inputmode="decimal" placeholder="149"></div></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="createTask()">نشر المهمة</button></div>`)}
-async function createTask(){const b={title:$('ntTitle').value,description:$('ntDesc').value,category_id:+$('ntCat').value,urgency:$('ntUrg').value,budget_min:+$('ntMin').value||null,budget_max:+$('ntMax').value||null};const {r}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(b)});if(!r.ok)return toast('راجع بيانات المهمة');closeModal();toast('تم نشر المهمة');await renderTasks()}
+let minjazDraftServices=[];
+let minjazPublishingBusy=false;
+let minjazTaskDraftKey='';
+function minjazNewTaskIdempotencyKey(){
+ const rand=typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function'
+   ?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2);
+ return 'minjaz-task-'+rand;
+}
+async function newTaskModal(){
+ if(minjazPublishingBusy)return;
+ minjazTaskDraftKey=minjazNewTaskIdempotencyKey();
+ let catalog=[];
+ try{
+  const response=await api('/api/v1/services');
+  if(response.r.ok&&Array.isArray(response.j?.items))catalog=response.j.items;
+ }catch(e){}
+ minjazDraftServices=catalog;
+ openModal('<div class="modalHead"><h2>انشر طلب خدمة</h2><button class="x" onclick="closeModal()" aria-label="إغلاق">×</button></div>'
+  +'<p class="muted" style="font-size:12px">حدد القسم والتخصص المطلوب، أو انشر طلبًا عامًا ضمن القسم؛ المستقلون هم من يقدمون العروض.</p>'
+  +'<div class="form2">'
+  +'<div class="field full"><label for="ntCat">القسم الرئيسي</label><select id="ntCat" onchange="minjazSyncRequestService()">'+categories.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name_ar)+'</option>').join('')+'</select></div>'
+  +'<div class="field full"><label for="ntSvc">التخصص الفرعي (اختياري)</label><select id="ntSvc" onchange="minjazSyncRequestCategory()"><option value="">اختر القسم الرئيسي أولًا</option></select></div>'
+  +'<div class="field full"><label for="ntTitle">عنوان الطلب</label><input id="ntTitle" maxlength="180" placeholder="مثال: تنسيق بحث وتدقيقه لغويًا"></div>'
+  +'<div class="field full"><label for="ntDesc">تفاصيل الطلب</label><textarea id="ntDesc" maxlength="6000" placeholder="اشرح المطلوب والنتيجة المتوقعة وأي تفاصيل مهمة (20 حرفًا على الأقل)"></textarea><small id="ntGuide" role="status" aria-live="polite" class="muted">اختر تخصصًا لعرض تفاصيل تساعدك في صياغة طلبك.</small><button class="btn ghost" style="margin-top:8px" type="button" onclick="minjazAddRequestGuide()">إضافة نموذج تفاصيل المشروع</button></div>'
+  +'<div class="field"><label for="ntUrg">الأولوية</label><select id="ntUrg"><option value="normal">عادية</option><option value="urgent">عاجلة</option></select></div>'
+  +'<div class="field"><label for="ntMin">ميزانية من (ريال)</label><input id="ntMin" inputmode="decimal" placeholder="49"></div>'
+  +'<div class="field"><label for="ntMax">ميزانية إلى (ريال)</label><input id="ntMax" inputmode="decimal" placeholder="149"></div>'
+  +'<div class="field full"><label for="ntDue">آخر موعد للتسليم (اختياري)</label><input id="ntDue" type="datetime-local" aria-describedby="ntDueHint"><small id="ntDueHint" class="muted">حدده إذا كان الطلب مرتبطًا بموعد محدد.</small></div>'
+  +'</div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button id="publishTaskBtn" class="btn primary" onclick="createTask()">نشر الطلب</button></div>');
+ minjazRefreshRequestServices();
+}
+function minjazRefreshRequestServices(){
+ const parent=$('ntCat'),child=$('ntSvc');if(!parent||!child)return;
+ const previouslySelected=child.value;
+ const items=minjazDraftServices.filter(s=>Number(s.category_id)===Number(parent.value));
+ child.replaceChildren();
+ const empty=document.createElement('option');empty.value='';empty.textContent='طلب عام ضمن هذا القسم';
+ child.append(empty);
+ for(const item of items){
+  const option=document.createElement('option');option.value=String(item.id);option.textContent=item.name_ar;
+  child.append(option);
+ }
+ if(items.some(item=>String(item.id)===previouslySelected))child.value=previouslySelected;
+ minjazUpdateRequestGuide();
+}
+function minjazUpdateRequestGuide(){
+ const node=$('ntGuide');if(!node)return;
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ node.textContent=selected?.client_guidance||'اذكر هدف المشروع، ونطاق العمل، والملفات المتاحة، والنتيجة المتوقعة والمدة المناسبة.';
+}
+function minjazAddRequestGuide(){
+ const textarea=$('ntDesc');if(!textarea)return;
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ const prompt=selected?.client_guidance||'وصف المتطلبات التي ترغب بتنفيذها';
+ const template='الهدف من المشروع:\nالمتطلبات: '+prompt+'\nالملفات والأمثلة المتوفرة:\nالمخرجات المطلوبة:\nموعد التسليم والتعديلات:';
+ if(textarea.value.length+template.length+2>6000)return toast('النص أطول من الحد المسموح؛ اختصر التفاصيل قبل إضافة النموذج.');
+ textarea.value=(textarea.value.trim()?textarea.value.trim()+'\n\n':'')+template;
+ minjazTaskDraftKey=minjazNewTaskIdempotencyKey();textarea.focus();
+}
+function minjazSyncRequestCategory(){
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ if(selected){
+  $('ntCat').value=String(selected.category_id);
+  if(!$('ntTitle').value.trim())$('ntTitle').value=selected.name_ar||'';
+  if(!$('ntMin').value.trim()&&selected.min_price)$('ntMin').value=String(selected.min_price);
+  if(!$('ntMax').value.trim()&&selected.max_price)$('ntMax').value=String(selected.max_price);
+ }
+ minjazUpdateRequestGuide();
+}
+function minjazSyncRequestService(){
+ const selected=minjazDraftServices.find(s=>Number(s.id)===Number($('ntSvc')?.value));
+ if(selected&&Number(selected.category_id)!==Number($('ntCat')?.value))$('ntSvc').value='';
+ minjazRefreshRequestServices();
+}
+async function createTask(){
+ if(minjazPublishingBusy)return;
+ const title=String($('ntTitle')?.value||'').trim(),description=String($('ntDesc')?.value||'').trim();
+ const service_id=Number($('ntSvc')?.value)||null,category_id=Number($('ntCat')?.value);
+ const bmin=String($('ntMin')?.value||'').trim(),bmax=String($('ntMax')?.value||'').trim();
+ const deadline=String($('ntDue')?.value||'').trim();
+ let due_at=null;
+ if(deadline){
+  const parsed=new Date(deadline);
+  if(!Number.isFinite(parsed.getTime())||parsed.getTime()<=Date.now())return toast('حدد موعد تسليم مستقبليًا.');
+  due_at=parsed.toISOString();
+ }
+ if(title.length<5||title.length>180)return toast('اكتب عنوانًا واضحًا من 5 أحرف على الأقل.');
+ if(description.length<20||description.length>6000)return toast('اكتب تفاصيل الطلب بوضوح (20 حرفًا على الأقل).');
+ if(!category_id)return toast('اختر قسم الطلب.');
+ if((bmin&&(!Number.isFinite(Number(bmin))||Number(bmin)<49))||(bmax&&(!Number.isFinite(Number(bmax))||Number(bmax)<49))
+  ||(bmin&&bmax&&Number(bmax)<Number(bmin)))return toast('أدخل ميزانية صحيحة، تبدأ من 49 ريالًا.');
+ const publish=$('publishTaskBtn');
+ minjazPublishingBusy=true;
+ if(publish){publish.disabled=true;publish.textContent='جارٍ نشر الطلب...'}
+ try{
+  const payload={title,description,category_id,service_id,urgency:$('ntUrg').value,
+    budget_min:bmin||null,budget_max:bmax||null,due_at,
+    idempotency_key:minjazTaskDraftKey||minjazNewTaskIdempotencyKey()};
+  const {r,j}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(payload)});
+  if(!r.ok){
+   const errors={legal_acceptance_required:'وافق على الشروط من حسابك قبل نشر الطلب.',
+     budget_below_minimum:'الحد الأدنى للميزانية 49 ريالًا.',
+     task_rate_limited:'وصلت إلى حد نشر الطلبات مؤقتًا، حاول لاحقًا.',
+     invalid_service:'الخدمة غير متاحة حاليًا؛ اختر قسمًا أو خدمة أخرى.'};
+   return toast(errors[j?.error]||'تعذر نشر الطلب؛ تحقق من البيانات وأعد المحاولة.');
+  }
+  closeModal();
+  minjazTaskDraftKey='';
+  toast(j?.idempotent_replay?'الطلب منشور بالفعل، تم فتح قائمة طلباتك.':'تم نشر الطلب بنجاح.');
+  try{await go('tasks')}catch(e){toast('تم نشر الطلب، لكن تعذر تحديث قائمة طلباتك. افتح قسم مهامي.')}
+ }catch(e){toast('تعذر الاتصال. يمكنك إعادة المحاولة بدون إنشاء طلب مكرر.')}
+ finally{minjazPublishingBusy=false;if(publish?.isConnected){publish.disabled=false;publish.textContent='نشر الطلب'}}
+}
 function proposalModal(id,title){openModal(`<div class="modalHead"><h2>عرضك على: ${title}</h2><button class="x" onclick="closeModal()">×</button></div><div class="form2"><div class="field"><label>السعر</label><input id="pp" inputmode="decimal" min="1" max="1000000" placeholder="99"></div><div class="field"><label>مدة التسليم بالساعات</label><input id="ph" inputmode="numeric" min="1" max="8760" value="24"></div><div class="field"><label>عدد التعديلات</label><input id="pr" inputmode="numeric" min="0" max="50" value="1"></div><div class="field full"><label>رسالة للعميل</label><textarea id="pm" maxlength="1200" placeholder="وضح وش راح تسوي وليش عرضك مناسب"></textarea></div></div><div class="actions"><button class="btn ghost" onclick="closeModal()">إلغاء</button><button class="btn primary" onclick="sendProposal(${id})">إرسال العرض</button></div>`)}
 async function sendProposal(id){const b={price:+$('pp').value,delivery_hours:+$('ph').value||24,revisions:+$('pr').value||1,message:$('pm').value};const {r}=await api(`/api/v1/tasks/${id}/proposals`,{method:'POST',body:JSON.stringify(b)});if(!r.ok)return toast('تعذر إرسال العرض');closeModal();toast('تم إرسال عرضك');renderTasks()}
 function offerRank(items,p){
@@ -2765,18 +2881,19 @@ function privacyModal(){openModal(`<div class="modalHead"><h2>طلب خصوصي�
 window.__privacyPendingPayload=null;
 async function sendPrivacy(){const request_type=$('pt').value,details=$('pd').value.trim(),btn=document.querySelector('.actions .btn.primary');if(btn?.disabled)return;if(btn){btn.disabled=true;btn.textContent='جاري الإرسال…'}const reset=()=>{if(btn){btn.disabled=false;btn.textContent='إرسال الطلب'}};let pending=window.__privacyPendingPayload;if(pending&&(pending.request_type!==request_type||pending.details!==details)){window.__privacyPendingPayload=null;pending=null}if(!pending){pending={request_type,details,idempotency_key:'privacy-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))};window.__privacyPendingPayload=pending}let response;try{response=await api('/api/v1/privacy/requests',{method:'POST',body:JSON.stringify(pending)})}catch(e){reset();return toast('تعذر تأكيد طلب الخصوصية — تقدر تعيد المحاولة بأمان')}const {r,j}=response;if(!r.ok){reset();if(j?.error==='idempotency_key_reused'){window.__privacyPendingPayload=null;return toast('تغيّرت بيانات الطلب؛ أعد المحاولة')}if(j?.error==='active_request_exists')return toast('عندك طلب مشابه قيد المعالجة');if(j?.error==='privacy_rate_limited')return toast('وصلت للحد اليومي لطلبات الخصوصية');return toast('تعذر إنشاء الطلب')}window.__privacyPendingPayload=null;closeModal();toast(j?.idempotent_replay?'الطلب مسجل مسبقًا':'تم إنشاء الطلب');renderAccount()}
 async function renderAdmin(){
- const [{j:s},{j:u},{j:sp},{j:pr},{j:rd}]=await Promise.all([api('/api/admin/summary'),api('/api/admin/users'),api('/api/admin/support'),api('/api/admin/privacy'),api('/readiness')]);
- const rl={database_persistence:'قاعدة البيانات الدائمة',sms_provider:'SMS الحقيقي',payment_provider:'الدفع الحقيقي',file_storage:'تخزين الملفات',kyc_provider:'توثيق المستقلين',source_control:'GitHub / Source Control',public_base_url:'الدومين العام',cors_origins:'نطاقات CORS',runtime_schema_ensure:'إدارة Schema'};
- $('admin').innerHTML=`<div class="kpiGrid">${[['المستخدمون',s?.users],['المهام',s?.tasks],['الطلبات',s?.orders],['دعم مفتوح',s?.open_support],['خصوصية معلقة',s?.pending_privacy]].map(x=>`<div class="card metric"><div class="label">${x[0]}</div><b>${x[1]??0}</b><small>من قاعدة البيانات</small></div>`).join('')}</div>
+ const [{j:s},{j:u},{j:sp},{j:pr},{j:rd},{j:erasure}]=await Promise.all([api('/api/admin/summary'),api('/api/admin/users'),api('/api/admin/support'),api('/api/admin/privacy'),api('/readiness'),api('/api/admin/privacy/storage-erasure')]);
+ const rl={database_persistence:'قاعدة البيانات الدائمة',sms_provider:'SMS الحقيقي',payment_provider:'الدفع الحقيقي',marketplace_payout_settlement:'تحويل مستحقات المستقلين',privacy_account_deletion:'حذف بيانات الحساب والملفات',file_storage:'تخزين الملفات',kyc_provider:'توثيق المستقلين',email_provider:'بريد التفعيل',non_test_email_sender:'بريد إرسال عام موثق',legal_review:'مراجعة الشروط والخصوصية',legal_versions:'إصدارات الشروط',source_control:'GitHub / Source Control',public_base_url:'الدومين العام',cors_origins:'نطاقات CORS',runtime_schema_ensure:'إدارة Schema'};
+ $('admin').innerHTML=`<div class="kpiGrid">${[['المستخدمون',s?.users],['المهام',s?.tasks],['الطلبات',s?.orders],['دعم مفتوح',s?.open_support],['خصوصية معلقة',s?.pending_privacy],['ملفات قيد الحذف',erasure?.counts?.pending??'—'],['ملفات حُذفت',erasure?.counts?.confirmed??'—']].map(x=>`<div class="card metric"><div class="label">${x[0]}</div><b>${x[1]??0}</b><small>من قاعدة البيانات</small></div>`).join('')}</div>
  <div class="sectionHead"><div><h2>جاهزية الإطلاق</h2><p>${rd?.ready_for_commercial_launch?'المتطلبات الحرجة مكتملة':'نسخة Beta — ما زالت توجد متطلبات قبل الإطلاق التجاري'}</p></div><span class="pill ${rd?.ready_for_commercial_launch?'green':'amber'}">${rd?.ready_for_commercial_launch?'جاهز تجاريًا':'Beta'}</span></div><div class="grid three">${(rd?.checks||[]).map(x=>`<div class="card"><div class="row space"><b>${rl[x.key]||x.key}</b><span class="pill ${x.ok?'green':x.required?'red':'amber'}">${x.ok?'جاهز':x.required?'مطلوب':'موصى به'}</span></div><p>${esc(x.value||'—')}</p></div>`).join('')}</div>
+ <p class="muted" style="font-size:12px;margin:10px 0">حذف الحساب يتم على مرحلتين: إخفاء الهوية في قاعدة البيانات، ثم حذف الملفات من التخزين الخاص والتحقق من نجاحه. إذا كانت الملفات معلقة فلا يظهر الطلب مكتملًا. عند تعذر جلب الإحصائية تظهر علامة — بدل رقم مضلل.</p>
  <div class="sectionHead"><div><h2>المستخدمون</h2><p>آخر الحسابات</p></div></div><div class="card" style="overflow:auto"><table class="table"><thead><tr><th>الاسم</th><th>الجوال</th><th>الدور</th><th>التوثيق</th><th>الحالة</th></tr></thead><tbody>${(u?.items||[]).slice(0,30).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.phone)}</td><td>${x.role}</td><td>${x.role==='freelancer'?`<button class="btn ${x.kyc_status==='approved'?'green':'soft'}" onclick="setKyc(${x.id},'${x.kyc_status==='approved'?'pending':'approved'}')">${x.kyc_status||'pending'}</button>`:'—'}</td><td>${x.is_verified?'✓':'—'}</td></tr>`).join('')}</tbody></table></div>
- <div class="grid two" style="margin-top:14px"><div><div class="sectionHead"><h2>الدعم</h2></div><div class="list">${(sp?.items||[]).slice(0,8).map(x=>`<div class="rowCard"><div><h3>${esc(x.subject)}</h3><p>${esc(x.name)} · ${esc(x.message).slice(0,90)}</p></div><button class="btn soft" onclick="adminSupport(${x.id},'${esc(x.subject).replace(/'/g,"&#39;")}')">${x.status}</button></div>`).join('')||'<div class="card empty">لا توجد تذاكر.</div>'}</div></div><div><div class="sectionHead"><h2>طلبات الخصوصية</h2></div><div class="list">${(pr?.items||[]).slice(0,8).map(x=>`<div class="rowCard"><div><h3>${x.request_type} · ${esc(x.name)}</h3><p>${esc(x.details||'')}</p></div><button class="btn soft" onclick="adminPrivacy(${x.id})">${x.status}</button></div>`).join('')||'<div class="card empty">لا توجد طلبات.</div>'}</div></div></div>`;
+ <div class="grid two" style="margin-top:14px"><div><div class="sectionHead"><h2>الدعم</h2></div><div class="list">${(sp?.items||[]).slice(0,8).map(x=>`<div class="rowCard"><div><h3>${esc(x.subject)}</h3><p>${esc(x.name)} · ${esc(x.message).slice(0,90)}</p></div><button class="btn soft" onclick="adminSupport(${x.id},'${esc(x.subject).replace(/'/g,"&#39;")}')">${x.status}</button></div>`).join('')||'<div class="card empty">لا توجد تذاكر.</div>'}</div></div><div><div class="sectionHead"><h2>طلبات الخصوصية</h2></div><div class="list">${(pr?.items||[]).slice(0,8).map(x=>`<div class="rowCard"><div><h3>${x.request_type} · ${esc(x.name)}</h3><p>${esc(x.details||'')}</p></div><button class="btn soft" onclick="adminPrivacy(${x.id})">${x.request_type==='delete'&&x.deletion_executed_at&&x.status==='in_progress'?'الحساب محذوف · ملفات قيد الحذف':x.status}</button></div>`).join('')||'<div class="card empty">لا توجد طلبات.</div>'}</div></div></div>`;
 }
 async function setKyc(id,status){const {r}=await api(`/api/admin/freelancers/${id}/kyc`,{method:'PATCH',body:JSON.stringify({status})});if(!r.ok)return toast('تعذر تحديث KYC');toast('تم تحديث التوثيق');renderAdmin()}
 function adminSupport(id,subject){openModal(`<div class="modalHead"><h2>${subject}</h2><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>رد الإدارة</label><textarea id="asr"></textarea></div><div class="field"><label>الحالة</label><select id="ass"><option value="in_progress">قيد المعالجة</option><option value="resolved">تم الحل</option><option value="closed">مغلقة</option></select></div><div class="actions"><button class="btn primary" onclick="saveAdminSupport(${id})">حفظ</button></div>`)}
 async function saveAdminSupport(id){const {r}=await api(`/api/admin/support/${id}`,{method:'PATCH',body:JSON.stringify({admin_reply:$('asr').value,status:$('ass').value})});if(!r.ok)return toast('تعذر الحفظ');closeModal();toast('تم تحديث التذكرة');renderAdmin()}
 function adminPrivacy(id){openModal(`<div class="modalHead"><h2>معالجة طلب الخصوصية</h2><button class="x" onclick="closeModal()">×</button></div><div class="field"><label>ملاحظة الإدارة</label><textarea id="apr"></textarea></div><div class="field"><label>الحالة</label><select id="aps"><option value="in_progress">قيد المعالجة</option><option value="completed">مكتمل</option><option value="rejected">مرفوض</option></select></div><div class="actions"><button class="btn primary" onclick="saveAdminPrivacy(${id})">حفظ</button></div>`)}
-async function saveAdminPrivacy(id){const {r}=await api(`/api/admin/privacy/${id}`,{method:'PATCH',body:JSON.stringify({admin_note:$('apr').value,status:$('aps').value})});if(!r.ok)return toast('تعذر الحفظ');closeModal();toast('تم تحديث الطلب');renderAdmin()}
+async function saveAdminPrivacy(id){const {r,j}=await api(`/api/admin/privacy/${id}`,{method:'PATCH',body:JSON.stringify({admin_note:$('apr').value,status:$('aps').value})});if(!r.ok)return toast(j?.error==='account_deletion_blocked'?'تعذر الحذف: توجد طلبات نشطة أو ملفات لا يمكن حذفها بأمان.':'تعذر الحفظ');closeModal();toast(j?.storage_deletion_pending?'تم إخفاء الحساب، وجارٍ حذف ملفاته الخاصة مع إعادة المحاولة عند الفشل.':'تم تحديث الطلب');renderAdmin()}
 boot();
 </script>
 <style>
@@ -3092,7 +3209,7 @@ boot();
  function wizardReview(){const cat=categories.find(c=>String(c.id)===String(document.getElementById('ntCat').value)),due=document.getElementById('ntDue').value;document.getElementById('wizardReview').innerHTML=`<div class="item"><b>${esc(document.getElementById('ntTitle').value)}</b><small>${esc(cat?.name_ar||'عام')} · ${document.getElementById('ntUrg').value==='urgent'?'عاجلة':'عادية'}</small></div><div class="item"><b>${document.getElementById('ntMin').value||document.getElementById('ntMax').value?`${money(document.getElementById('ntMin').value||document.getElementById('ntMax').value)}${document.getElementById('ntMin').value&&document.getElementById('ntMax').value?' – '+money(document.getElementById('ntMax').value):''}`:'ميزانية مرنة'}</b><small>${due?'الموعد: '+new Date(due).toLocaleString('ar-SA'):'بدون موعد نهائي'}</small></div><div class="item" style="grid-column:1/-1"><b>التفاصيل</b><small>${esc(document.getElementById('ntDesc').value).slice(0,400)}</small></div>`}
  window.taskWizardGo=function(delta){let n=window.__taskWizardStep||1;if(delta>0&&!wizardValid(n))return;n=Math.max(1,Math.min(4,n+delta));window.__taskWizardStep=n;document.querySelectorAll('[data-wpane]').forEach(x=>x.classList.toggle('on',Number(x.dataset.wpane)===n));document.querySelectorAll('[data-wstep]').forEach(x=>{const v=Number(x.dataset.wstep);x.classList.toggle('on',v===n);x.classList.toggle('done',v<n)});document.getElementById('wizardBack').style.display=n>1?'inline-flex':'none';document.getElementById('wizardNext').style.display=n<4?'inline-flex':'none';document.getElementById('wizardPublish').style.display=n===4?'inline-flex':'none';if(n===4)wizardReview()};
  window.createTask=async function(){if(!wizardValid(2)||!wizardValid(3))return;const publish=document.getElementById('wizardPublish');if(publish?.disabled)return;if(publish){publish.disabled=true;publish.textContent='جاري النشر…'}const reset=()=>{if(publish){publish.disabled=false;publish.textContent='نشر المهمة'}};let attachments=[];try{attachments=await window.minjazCollectAttachments('ntFiles','ntAttachments','ntUploadState')}catch(e){reset();return toast(e.message==='storage_not_configured'?'اربط Railway Bucket أو استخدم رابط HTTPS':'تعذر رفع المرفق')}const due=document.getElementById('ntDue').value;const b={title:document.getElementById('ntTitle').value.trim(),description:document.getElementById('ntDesc').value.trim(),category_id:+document.getElementById('ntCat').value,service_id:+(document.getElementById('ntService')?.value||0)||null,urgency:document.getElementById('ntUrg').value,budget_min:+document.getElementById('ntMin').value||null,budget_max:+document.getElementById('ntMax').value||null,due_at:due?new Date(due).toISOString():null,attachments,idempotency_key:window.__taskCreateIdempotencyKey};const {r,j}=await api('/api/v1/tasks',{method:'POST',body:JSON.stringify(b)});if(!r.ok){reset();if(j?.error==='legal_acceptance_required'){toast('وافق على الشروط الحالية قبل نشر مهمة جديدة');window.openLegal500?.();return}if(j?.error==='idempotency_key_reused')return toast('تغيّرت بيانات المهمة أثناء النشر؛ افتح النموذج من جديد');return toast(j?.error==='budget_below_minimum'?'الحد الأدنى للمهمة 49 ريال':j?.error==='budget_above_maximum'?'الميزانية أعلى من الحد المسموح':j?.error==='invalid_budget_range'?'تأكد من نطاق الميزانية':j?.error==='invalid_due_at'||j?.error==='due_at_must_be_future'?'تأكد من الموعد النهائي':j?.error==='invalid_category'?'اختر قسمًا صحيحًا':'راجع بيانات المهمة')}closeModal();toast(j?.idempotent_replay?'المهمة منشورة بالفعل — فتحنا نفس النسخة':'تم نشر المهمة — نبدأ نستقبل العروض');await renderTasks()};
- window.freelancerPublicModal=async function(fid){const x=await api(`/api/v1/freelancers/${fid}/public`);if(!x.r.ok)return toast('تعذر فتح ملف المستقل');const p=x.j,skills=Array.isArray(p.skills)?p.skills:[],portfolio=p.portfolio||[],reviews=p.reviews||[];let invite='';if(me?.user?.role==='client'){const tx=await api('/api/v1/tasks');const open=(tx.j?.items||[]).filter(t=>t.status==='open');invite=open.length?`<div class="inviteBox"><b style="font-family:Alexandria;font-size:10px">ادعُ ${esc(p.name)} لمهمة</b><div class="form2" style="margin-top:8px"><div class="field"><label>المهمة</label><select id="inviteTask">${open.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('')}</select></div><div class="field"><label>رسالة قصيرة — اختياري</label><input id="inviteNote" placeholder="شفت ملفك وأعتقد المهمة تناسبك"></div></div><button class="btn primary" onclick="inviteFreelancer(${fid})">إرسال الدعوة</button></div>`:'<div class="inviteBox">أنشئ مهمة مفتوحة أولًا حتى تقدر تدعو هذا المستقل.</div>'}openModal(`<div class="modalHead"><h2>ملف المستقل</h2><button class="x" onclick="closeModal()">×</button></div><div class="profileHero"><div><h2>${esc(p.name||'مستقل')}</h2><p>${esc(p.bio||'لم يضف نبذة بعد.')}</p><div class="skillChips" style="margin-top:9px">${skills.map(s=>`<span class="skillChip" style="background:#ffffff14;color:#fff">${esc(s)}</span>`).join('')}</div></div><span class="pill ${p.kyc_status==='approved'?'green':'amber'}">${p.kyc_status==='approved'?'✓ موثق':'التوثيق قيد المراجعة'}</span></div><div class="profileMetrics"><div class="profileMetric"><b>${Number(p.rating||0).toFixed(1)} ★</b><small>التقييم</small></div><div class="profileMetric"><b>${p.completed_tasks||0}</b><small>مهمة مكتملة</small></div><div class="profileMetric"><b>${p.on_time_rate||100}%</b><small>في الموعد</small></div><div class="profileMetric"><b>${p.avg_response_minutes?p.avg_response_minutes+' د':'—'}</b><small>متوسط الرد</small></div></div><div class="sectionHead"><div><h2>نماذج الأعمال</h2><p>أعمال أضافها المستقل إلى ملفه</p></div></div><div class="portfolioGrid">${portfolio.map(w=>`<div class="portfolioCard"><h3>${esc(w.title)}</h3><p>${esc(w.description||'')}</p>${w.external_url?`<a class="btn ghost" style="display:inline-flex;margin-top:8px;text-decoration:none" target="_blank" rel="noopener" href="${esc(w.external_url)}">فتح الرابط</a>`:''}</div>`).join('')||'<div class="card empty">ما أضاف أعمال بعد.</div>'}</div><div class="sectionHead"><div><h2>آخر التقييمات</h2><p>من طلبات مكتملة على مِنجاز</p></div></div>${reviews.map(r=>`<div class="reviewCard"><b>${esc(r.reviewer_name||'عميل')} · ${((Number(r.quality||0)+Number(r.timeliness||0)+Number(r.communication||0))/3).toFixed(1)} ★</b><p>${esc(r.comment||'بدون تعليق')}</p></div>`).join('')||'<div class="empty">ما فيه تقييمات مكتوبة حتى الآن.</div>'}${invite}`)};
+ window.freelancerPublicModal=async function(fid){const x=await api(`/api/v1/freelancers/${fid}/public`);if(!x.r.ok)return toast('تعذر فتح ملف المستقل');const p=x.j,skills=Array.isArray(p.skills)?p.skills:[],portfolio=p.portfolio||[],reviews=p.reviews||[],specialties=Array.isArray(p.marketplace_specialties)?p.marketplace_specialties:[];let invite='';if(me?.user?.role==='client'){const tx=await api('/api/v1/tasks');const open=(tx.j?.items||[]).filter(t=>t.status==='open');invite=open.length?`<div class="inviteBox"><b style="font-family:Alexandria;font-size:10px">ادعُ ${esc(p.name)} لمهمة</b><div class="form2" style="margin-top:8px"><div class="field"><label>المهمة</label><select id="inviteTask">${open.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('')}</select></div><div class="field"><label>رسالة قصيرة — اختياري</label><input id="inviteNote" placeholder="شفت ملفك وأعتقد المهمة تناسبك"></div></div><button class="btn primary" onclick="inviteFreelancer(${fid})">إرسال الدعوة</button></div>`:'<div class="inviteBox">أنشئ مهمة مفتوحة أولًا حتى تقدر تدعو هذا المستقل.</div>'}openModal(`<div class="modalHead"><h2>ملف المستقل</h2><button class="x" onclick="closeModal()">×</button></div><div class="profileHero"><div><h2>${esc(p.name||'مستقل')}</h2><p>${esc(p.bio||'لم يضف نبذة بعد.')}</p><div class="skillChips" style="margin-top:9px">${skills.map(s=>`<span class="skillChip" style="background:#ffffff14;color:#fff">${esc(s)}</span>`).join('')}</div></div><span class="pill ${p.provider_verified===true?'green':'amber'}">${p.provider_verified===true?'✓ موثق':'الهوية غير موثقة عبر مزود معتمد'}</span></div><div class="profileMetrics"><div class="profileMetric"><b>${Number(p.rating||0).toFixed(1)} ★</b><small>التقييم</small></div><div class="profileMetric"><b>${p.completed_tasks||0}</b><small>مهمة مكتملة</small></div><div class="profileMetric"><b>${Number(p.completed_tasks||0)>0?Number(p.on_time_rate||0)+'%':'—'}</b><small>في الموعد</small></div><div class="profileMetric"><b>${p.avg_response_minutes?p.avg_response_minutes+' د':'—'}</b><small>متوسط الرد</small></div></div><div class="sectionHead"><div><h2>تخصصات المستقل</h2><p>تخصصات اختارها المستقل بنفسه، وليست شهادة أو إثبات خبرة.</p></div></div><div class="skillChips">${specialties.map(item=>`<span class="skillChip">${esc(item.category_name)} ← ${esc(item.specialization)}</span>`).join('')||'<span class="note">لم يحدد المستقل تخصصات فرعية بعد.</span>'}</div><div class="sectionHead"><div><h2>نماذج الأعمال</h2><p>أعمال أضافها المستقل إلى ملفه</p></div></div><div class="portfolioGrid">${portfolio.map(w=>`<div class="portfolioCard"><h3>${esc(w.title)}</h3><p>${esc(w.description||'')}</p>${w.external_url?`<a class="btn ghost" style="display:inline-flex;margin-top:8px;text-decoration:none" target="_blank" rel="noopener" href="${esc(w.external_url)}">فتح الرابط</a>`:''}</div>`).join('')||'<div class="card empty">ما أضاف أعمال بعد.</div>'}</div><div class="sectionHead"><div><h2>آخر التقييمات</h2><p>من طلبات مكتملة على مِنجاز</p></div></div>${reviews.map(r=>`<div class="reviewCard"><b>${esc(r.reviewer_name||'عميل')} · ${((Number(r.quality||0)+Number(r.timeliness||0)+Number(r.communication||0))/3).toFixed(1)} ★</b><p>${esc(r.comment||'بدون تعليق')}</p></div>`).join('')||'<div class="empty">ما فيه تقييمات مكتوبة حتى الآن.</div>'}${invite}`)};
  window.inviteFreelancer=async function(fid){const task_id=+document.getElementById('inviteTask').value,note=document.getElementById('inviteNote').value,btn=document.querySelector('.inviteBox .btn.primary');if(btn?.disabled)return;if(btn){btn.disabled=true;btn.textContent='جاري الإرسال…'}const reset=()=>{if(btn){btn.disabled=false;btn.textContent='إرسال الدعوة'}};let response;try{response=await api(`/api/v1/freelancers/${fid}/invite`,{method:'POST',body:JSON.stringify({task_id,note})})}catch(e){reset();return toast('تعذر الاتصال — حاول مرة ثانية')}const {r,j}=response;if(!r.ok){reset();return toast(j?.error==='task_not_found'?'المهمة لم تعد مفتوحة':'تعذر إرسال الدعوة')}toast(j?.idempotent_replay?'الدعوة مرسلة مسبقًا':'تم إرسال الدعوة للمستقل');closeModal()};
  const _renderOffer=renderOfferCompare;renderOfferCompare=function(){_renderOffer();document.querySelectorAll('.offerCard').forEach(card=>{const choose=[...card.querySelectorAll('button')].find(b=>String(b.getAttribute('onclick')||'').includes('confirmAcceptProposal'));if(!choose)return;const pid=Number((choose.getAttribute('onclick').match(/\d+/)||[])[0]);const p=(offerCompareState.items||[]).find(x=>Number(x.id)===pid);if(!p||card.querySelector('.profileOpenV419'))return;const b=document.createElement('button');b.className='btn ghost profileOpenV419';b.textContent='عرض الملف';b.onclick=()=>freelancerPublicModal(p.freelancer_id);choose.parentElement.insertBefore(b,choose)});};
  const _taskRow=taskRowFreelancer;taskRowFreelancer=function(x){let html=_taskRow(x);if(x.invited)html=html.replace('<div class="rowMeta">','<div class="rowMeta"><span class="pill inviteBadge">دعوة خاصة</span>');return html};
@@ -3113,12 +3230,45 @@ boot();
 <script>
 (function(){
  if(!navByRole.client.some(x=>x[0]==='freelancers'))navByRole.client.splice(2,0,['freelancers','♙','المستقلون']);
- let freelancerDirectoryFilters={q:'',skill:'',available:'',verified:'',sort:'rating'};
+ let freelancerDirectoryFilters={q:'',skill:'',available:'',verified:'',sort:'rating',category_id:'',service_id:''};
+ let freelancerDirectoryTaxonomy=null;
+ async function getFreelancerDirectoryTaxonomy(){
+  if(freelancerDirectoryTaxonomy)return freelancerDirectoryTaxonomy;
+  const [parents,children]=await Promise.all([api('/api/v1/categories'),api('/api/v1/services')]);
+  if(!parents.r.ok||!children.r.ok||!Array.isArray(parents.j?.items)||!Array.isArray(children.j?.items))
+   throw Error('تعذر تحميل الأقسام والتخصصات');
+  freelancerDirectoryTaxonomy={categories:parents.j.items,services:children.j.items.filter(v=>String(v.slug||'').startsWith('market-'))};
+  return freelancerDirectoryTaxonomy;
+ }
+ function freelancerDirectorySelectOptions(categoryId,selectedId){
+  const choices=(freelancerDirectoryTaxonomy?.services||[]).filter(v=>String(v.category_id)===String(categoryId));
+  return '<option value="">كل التخصصات الفرعية</option>'+choices.map(x=>
+   '<option value="'+Number(x.id)+'" '+(String(x.id)===String(selectedId)?'selected':'')+'>'+esc(x.name_ar)+'</option>').join('');
+ }
+ window.changeFreelancerDirectoryCategory=function(categoryId){
+  const child=document.getElementById('fdService');if(!child)return;
+  child.innerHTML=freelancerDirectorySelectOptions(categoryId,'');child.disabled=!categoryId;
+ };
  const _goV420=go;go=async function(id){if(id!=='freelancers')return _goV420(id);currentPage=id;document.querySelectorAll('.page').forEach(x=>x.classList.toggle('on',x.id===id));document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('on',x.dataset.nav===id));document.getElementById('pageTitle').textContent='المستقلون';document.getElementById('pageSub').textContent='اكتشف المهارات وادعُ المستقل المناسب';await renderFreelancerDirectory()};
  function freelancerDirectoryQuery(){const p=new URLSearchParams();Object.entries(freelancerDirectoryFilters).forEach(([k,v])=>{if(String(v||'').trim())p.set(k,v)});return p.toString()}
- window.applyFreelancerDirectoryFilters=function(){freelancerDirectoryFilters={q:document.getElementById('fdQ')?.value.trim()||'',skill:document.getElementById('fdSkill')?.value.trim()||'',available:document.getElementById('fdAvailable')?.value||'',verified:document.getElementById('fdVerified')?.value||'',sort:document.getElementById('fdSort')?.value||'rating'};renderFreelancerDirectory()};
- window.resetFreelancerDirectoryFilters=function(){freelancerDirectoryFilters={q:'',skill:'',available:'',verified:'',sort:'rating'};renderFreelancerDirectory()};
- window.renderFreelancerDirectory=async function(){const x=await api('/api/v1/freelancers?'+freelancerDirectoryQuery()),a=x.j?.items||[];document.getElementById('freelancers').innerHTML=`<div class="sectionHead"><div><h2>اكتشف مستقلين</h2><p>النتائج مرتبة حسب الفلاتر التي تختارها، بدون توصية تلقائية ملزمة.</p></div><span class="pill blue">${a.length} مستقل</span></div><div class="freelancerToolbar"><div class="field wide"><label>بحث</label><input id="fdQ" value="${esc(freelancerDirectoryFilters.q)}" placeholder="اسم، نبذة، أو مجال"></div><div class="field"><label>مهارة</label><input id="fdSkill" value="${esc(freelancerDirectoryFilters.skill)}" placeholder="مثال: Canva"></div><div class="field"><label>التوفر</label><select id="fdAvailable"><option value="" ${!freelancerDirectoryFilters.available?'selected':''}>الكل</option><option value="1" ${freelancerDirectoryFilters.available==='1'?'selected':''}>متاح الآن</option></select></div><div class="field"><label>التوثيق</label><select id="fdVerified"><option value="" ${!freelancerDirectoryFilters.verified?'selected':''}>الكل</option><option value="1" ${freelancerDirectoryFilters.verified==='1'?'selected':''}>موثق فقط</option></select></div><div class="field"><label>الترتيب</label><select id="fdSort"><option value="rating" ${freelancerDirectoryFilters.sort==='rating'?'selected':''}>التقييم</option><option value="completed" ${freelancerDirectoryFilters.sort==='completed'?'selected':''}>الأكثر خبرة</option><option value="response" ${freelancerDirectoryFilters.sort==='response'?'selected':''}>الأسرع ردًا</option></select></div><div style="display:flex;gap:6px"><button class="btn primary" onclick="applyFreelancerDirectoryFilters()">تطبيق</button><button class="btn ghost" onclick="resetFreelancerDirectoryFilters()">مسح</button></div></div><div class="freelancerGrid">${a.map(p=>`<div class="freelancerCard"><div class="offerName"><div class="offerAvatar">${esc((p.name||'م')[0])}</div><div><h3>${esc(p.name||'مستقل')}</h3><div style="font-size:8px;color:#64748b">${p.kyc_status==='approved'?'✓ موثق':'توثيق قيد المراجعة'} · ${p.is_available?'متاح الآن':'غير متاح'}</div></div></div><p>${esc(p.bio||'لم يضف نبذة بعد.')}</p><div class="skillChips">${(p.skills||[]).slice(0,4).map(s=>`<span class="skillChip">${esc(s)}</span>`).join('')}</div><div class="rowMeta"><span class="pill green">${Number(p.rating||0).toFixed(1)} ★</span><span class="pill gray">${p.completed_tasks||0} مهمة</span><span class="pill blue">${p.on_time_rate||100}% موعد</span></div><div class="freelancerCardFoot"><small style="color:#64748b">${p.avg_response_minutes?p.avg_response_minutes+' د متوسط الرد':'متوسط الرد غير متوفر'}</small><button class="btn primary" onclick="freelancerPublicModal(${p.user_id})">عرض الملف</button></div></div>`).join('')||'<div class="card empty">ما لقينا مستقلين يطابقون الفلاتر الحالية.</div>'}</div>`};
+ window.applyFreelancerDirectoryFilters=function(){freelancerDirectoryFilters={q:document.getElementById('fdQ')?.value.trim()||'',skill:document.getElementById('fdSkill')?.value.trim()||'',available:document.getElementById('fdAvailable')?.value||'',verified:document.getElementById('fdVerified')?.value||'',sort:document.getElementById('fdSort')?.value||'rating',category_id:document.getElementById('fdCategory')?.value||'',service_id:document.getElementById('fdService')?.value||''};renderFreelancerDirectory()};
+ window.resetFreelancerDirectoryFilters=function(){freelancerDirectoryFilters={q:'',skill:'',available:'',verified:'',sort:'rating',category_id:'',service_id:''};renderFreelancerDirectory()};
+ window.renderFreelancerDirectory=async function(){
+  const node=document.getElementById('freelancers');if(!node)return;
+  try{
+   await getFreelancerDirectoryTaxonomy();
+   const x=await api('/api/v1/freelancers?'+freelancerDirectoryQuery());
+   if(!x.r.ok||!Array.isArray(x.j?.items))throw Error('تعذر تحميل دليل المستقلين');
+   const a=x.j.items;
+   const categoryOptions='<option value="">كل الأقسام الرئيسية</option>'+
+    freelancerDirectoryTaxonomy.categories.map(c=>'<option value="'+Number(c.id)+'" '+(String(c.id)===String(freelancerDirectoryFilters.category_id)?'selected':'')+'>'+esc(c.name_ar)+'</option>').join('');
+   const serviceOptions=freelancerDirectorySelectOptions(freelancerDirectoryFilters.category_id,freelancerDirectoryFilters.service_id);
+   node.innerHTML=`<div class="sectionHead"><div><h2>اكتشف مستقلين حسب التخصص</h2><p>التخصصات يحددها المستقل بنفسه وليست شهادة خبرة. اختر القسم ثم الفرع، أو ابحث في المهارات.</p></div><span class="pill blue">${a.length} مستقل</span></div><div class="freelancerToolbar"><div class="field"><label for="fdCategory">القسم الرئيسي</label><select id="fdCategory" onchange="changeFreelancerDirectoryCategory(this.value)">${categoryOptions}</select></div><div class="field"><label for="fdService">التخصص الفرعي</label><select id="fdService" ${freelancerDirectoryFilters.category_id?'':'disabled'}>${serviceOptions}</select></div><div class="field wide"><label>بحث</label><input id="fdQ" value="${esc(freelancerDirectoryFilters.q)}" placeholder="اسم، نبذة، أو مجال"></div><div class="field"><label>مهارة</label><input id="fdSkill" value="${esc(freelancerDirectoryFilters.skill)}" placeholder="مثال: Canva"></div><div class="field"><label>التوفر</label><select id="fdAvailable"><option value="" ${!freelancerDirectoryFilters.available?'selected':''}>الكل</option><option value="1" ${freelancerDirectoryFilters.available==='1'?'selected':''}>متاح الآن</option></select></div><div class="field"><label>التوثيق</label><select id="fdVerified"><option value="" ${!freelancerDirectoryFilters.verified?'selected':''}>الكل</option><option value="1" ${freelancerDirectoryFilters.verified==='1'?'selected':''}>موثق فقط</option></select></div><div class="field"><label>الترتيب</label><select id="fdSort"><option value="rating" ${freelancerDirectoryFilters.sort==='rating'?'selected':''}>التقييم</option><option value="completed" ${freelancerDirectoryFilters.sort==='completed'?'selected':''}>الأكثر خبرة</option><option value="response" ${freelancerDirectoryFilters.sort==='response'?'selected':''}>الأسرع ردًا</option></select></div><div style="display:flex;gap:6px"><button class="btn primary" onclick="applyFreelancerDirectoryFilters()">تطبيق</button><button class="btn ghost" onclick="resetFreelancerDirectoryFilters()">مسح</button></div></div><div class="freelancerGrid">${a.map(p=>`<div class="freelancerCard"><div class="offerName"><div class="offerAvatar">${esc((p.name||'م')[0])}</div><div><h3>${esc(p.name||'مستقل')}</h3><div style="font-size:8px;color:#64748b">${p.provider_verified===true?'✓ موثق':'توثيق قيد المراجعة'} · ${p.is_available?'متاح الآن':'غير متاح'}</div></div></div><p>${esc(p.bio||'لم يضف نبذة بعد.')}</p><div class="skillChips">${(p.skills||[]).slice(0,3).map(s=>`<span class="skillChip">${esc(s)}</span>`).join('')}${(p.marketplace_specialties||[]).slice(0,3).map(sp=>`<span class="skillChip" title="تخصص يحدده المستقل بنفسه">${esc(sp.specialization)}</span>`).join('')}</div><div class="rowMeta"><span class="pill green">${Number(p.rating||0).toFixed(1)} ★</span><span class="pill gray">${p.completed_tasks||0} مهمة</span><span class="pill blue">${Number(p.completed_tasks||0)>0?Number(p.on_time_rate||0)+'% موعد':'الالتزام بالموعد غير محسوب'}</span></div><div class="freelancerCardFoot"><small style="color:#64748b">${p.avg_response_minutes?p.avg_response_minutes+' د متوسط الرد':'متوسط الرد غير متوفر'}</small><button class="btn primary" onclick="freelancerPublicModal(${p.user_id})">عرض الملف</button></div></div>`).join('')||'<div class="card empty">ما لقينا مستقلين يطابقون الفلاتر الحالية.</div>'}</div>`;
+  }catch(error){
+   node.innerHTML='<div class="card empty">تعذر تحميل دليل المستقلين. <button type="button" class="btn ghost" onclick="renderFreelancerDirectory()">إعادة المحاولة</button></div>';
+   console.warn('Freelancer directory unavailable',error.message);
+  }
+ };
  const _renderClientHomeV420=renderClientHome;renderClientHome=async function(){await _renderClientHomeV420();const hero=document.querySelector('#home .heroActions');if(hero&&!hero.querySelector('[data-find-freelancers]')){const b=document.createElement('button');b.className='btn ghost';b.dataset.findFreelancers='1';b.textContent='اكتشف مستقلين';b.onclick=()=>go('freelancers');hero.appendChild(b)}};
 })();
 </script>
@@ -6979,5 +7129,7 @@ body{font-size:14px;line-height:1.65}
 </script>
 
 <script src="/minjaz-files-demo-v302.js"></script>\n<script src="/minjaz-work-center-v31.js"></script>\n
-<script src="/minjaz-push-v312.js"></script>\n<script src="/minjaz-admin-provider-v315.js"></script>\n<script src="/minjaz-release-v316.js"></script>\n</body>
+<script src="/minjaz-push-v312.js"></script>\n<script src="/minjaz-admin-provider-v315.js"></script>\n<script src="/minjaz-release-v316.js"></script>\n<link id="minjazUnifiedDesign" rel="stylesheet" href="/minjaz-unified-ui-v1.css">
+<script src="/minjaz-account-registration-v1.js"></script>
+</body>
 </html>

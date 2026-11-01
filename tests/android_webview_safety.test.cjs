@@ -38,7 +38,16 @@ for (const scheme of ['https', 'http', 'mailto', 'tel', 'sms', 'smsto', 'market'
   assert.ok(external.includes('"' + scheme + '".equals(scheme)'), 'Missing allowlisted scheme: ' + scheme);
 }
 assert.match(gradle, /versionCode 14\s*versionName "1\.0\.0-rc4"/);
-assert.match(gradle, /versionCode 13\s*versionName "0\.13-back-reliability"/);
+assert.match(gradle, /versionCode 21\s*versionName "0\.21-native-discovery-beta"/);
+assert.match(gradle, /buildConfigField "String", "APP_URL", '"https:\/\/beta\.minjazapp\.com\/workspace"'/);
+assert.match(gradle, /buildConfigField "String", "APP_URL", '"https:\/\/minjaz-app-prod-production\.up\.railway\.app"'/);
+assert.match(source, /private static final String APP_URL = BuildConfig\.APP_URL/);
+assert.match(source, /private static final String APP_HOST = Uri\.parse\(APP_URL\)\.getHost\(\)/);
+const previewLinks = fs.readFileSync('android-preview/app/src/preview/AndroidManifest.xml', 'utf8');
+const productionLinks = fs.readFileSync('android-preview/app/src/production/AndroidManifest.xml', 'utf8');
+assert.match(previewLinks, /android:host="beta\.minjazapp\.com"/);
+assert.doesNotMatch(previewLinks, /minjaz-app-prod-production/);
+assert.match(productionLinks, /android:host="minjaz-app-prod-production\.up\.railway\.app"/);
 
 // Test guards for network hand-offs and callbacks from destroyed WebViews.
 const network = region('private void registerNetworkRecovery()', 'private void recoverWebView()');

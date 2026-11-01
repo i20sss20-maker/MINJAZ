@@ -8,3 +8,4 @@ __pycache__/
 *.jks
 *.keystore
 release-private/
+\n# Generated from the official MINJAZ SVG before Xcode builds\nios-minjaz/Sources/Assets.xcassets/AppIcon.appiconset/Minjaz-1024.png\n

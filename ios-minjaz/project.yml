@@ -1,0 +1,58 @@
+# Generate Minjaz.xcodeproj with XcodeGen, then open it in Xcode.
+# Debug = private beta, Release = established production domain.
+# Never change a signing target or release to production without a deliberate review.
+name: Minjaz
+options:
+  deploymentTarget:
+    iOS: '16.0'
+  developmentLanguage: ar
+  createIntermediateGroups: true
+# XcodeGen maps BetaRelease to a release-mode iPhone build, distinct from
+# both Debug (simulator) and Release (protected production bundle/origin).
+configs:
+  Debug: debug
+  BetaRelease: release
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '16.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    SUPPORTS_MACCATALYST: NO
+    # Keep our checked-in Info.plist; XcodeGen info.path recreates the file
+    # and silently drops MinjazBaseURL, causing a physical-device app crash.
+    GENERATE_INFOPLIST_FILE: NO
+    INFOPLIST_FILE: Sources/Info.plist
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Minjaz:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_NAME: Minjaz
+        PRODUCT_MODULE_NAME: Minjaz
+        MARKETING_VERSION: '0.2.0'
+        CURRENT_PROJECT_VERSION: '1'
+        TARGETED_DEVICE_FAMILY: '1,2'
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview
+          MINJAZ_BASE_URL: 'https://beta.minjazapp.com'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'DEBUG MINJAZ_PREVIEW_BUILD'
+        BetaRelease:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.preview
+          MINJAZ_BASE_URL: 'https://beta.minjazapp.com'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: 'MINJAZ_PREVIEW_BUILD'
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: sa.minjaz.app
+          MINJAZ_BASE_URL: 'https://minjaz-app-prod-production.up.railway.app'
+    scheme:
+      testTargets: []
